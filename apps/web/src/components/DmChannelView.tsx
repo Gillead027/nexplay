@@ -90,7 +90,6 @@ export function DmChannelView({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const isTimedOut = Boolean(session.timeoutUntil && session.timeoutUntil > Date.now());
 
   useEffect(() => {
     let active = true;
@@ -175,7 +174,9 @@ export function DmChannelView({
     }
   }
 
-  const composerDisabled = isTimedOut || isBlockedByMe;
+  // Sem gate de timeout aqui de propósito: timeout passou a ser por servidor
+  // (ver DISCORD_PARITY_PLAN.md) — DM é uma conversa fora de qualquer servidor.
+  const composerDisabled = isBlockedByMe;
 
   return (
     <section className="text-channel-view dm-channel-view" aria-label={`Conversa com ${other.displayName}`}>
@@ -244,14 +245,6 @@ export function DmChannelView({
       {isBlockedByMe && (
         <div className="reply-composer-banner timeout-composer-banner">
           <span>Você bloqueou {other.displayName} — desbloqueie pra continuar a conversa.</span>
-        </div>
-      )}
-      {isTimedOut && session.timeoutUntil && !isBlockedByMe && (
-        <div className="reply-composer-banner timeout-composer-banner">
-          <span>
-            Você está em timeout e não pode enviar mensagens até{' '}
-            {new Date(session.timeoutUntil).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.
-          </span>
         </div>
       )}
       <form className="text-channel-form" onSubmit={submitMessage}>

@@ -744,7 +744,7 @@ export function useVoiceRoom() {
         }
         setMessages([]);
         setDeafened(false);
-        const credentials = await api.getLiveKitToken(channel.id);
+        const credentials = await api.getLiveKitToken(channel.serverId, channel.id);
         suppressPresenceSoundsRef.current = true;
         await withTimeout(
           room.connect(credentials.url, credentials.token, { autoSubscribe: true }),
@@ -1029,7 +1029,8 @@ export function useVoiceRoom() {
         const result = await routeVoiceChatInput({
           text,
           voiceChannelId: currentChannel?.id ?? null,
-          sendMusicCommand: api.sendMusicCommand,
+          sendMusicCommand: (roomId, commandText, textChannelId) =>
+            api.sendMusicCommand(currentChannel!.serverId, roomId, commandText, textChannelId),
           publishChatMessage: async (messageText) => {
             const message: ChatMessage = {
               id: crypto.randomUUID(),
@@ -1065,7 +1066,7 @@ export function useVoiceRoom() {
         throw commandError;
       }
     },
-    [currentChannel?.id, room],
+    [currentChannel?.id, currentChannel?.serverId, room],
   );
 
   // O áudio chega pra todo mundo via uma track de verdade publicada por

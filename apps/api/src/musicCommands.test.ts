@@ -2,7 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { authorizeMusicCommand } from './musicCommands.js';
 
-const channels = [{ id: 'geral', name: 'Geral', description: 'Conversa livre' }];
+const channels = [
+  { id: 'geral', serverId: 'server-1', name: 'Geral', description: 'Conversa livre', createdBy: null, createdAt: 0 },
+];
 const requester = { id: 'user-canonical', displayName: 'Gillezin' };
 
 describe('authorizeMusicCommand', () => {

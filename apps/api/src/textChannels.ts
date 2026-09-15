@@ -15,6 +15,7 @@ import type { UserRecord } from './users.js';
 
 interface TextChannelRow {
   id: string;
+  server_id: string;
   name: string;
   description: string;
   created_by: string | null;
@@ -43,14 +44,14 @@ interface TextBotMessageRow {
 }
 
 const listChannelsStatement = db.prepare(
-  'SELECT * FROM text_channels ORDER BY created_at ASC, name COLLATE NOCASE ASC',
+  'SELECT * FROM text_channels WHERE server_id = ? ORDER BY created_at ASC, name COLLATE NOCASE ASC',
 );
 const selectChannelByIdStatement = db.prepare('SELECT * FROM text_channels WHERE id = ?');
 const selectChannelByNameStatement = db.prepare(
-  'SELECT * FROM text_channels WHERE name = ? COLLATE NOCASE',
+  'SELECT * FROM text_channels WHERE server_id = ? AND name = ? COLLATE NOCASE',
 );
 const insertChannelStatement = db.prepare(
-  'INSERT INTO text_channels (id, name, description, created_by, created_at) VALUES (?, ?, ?, ?, ?)',
+  'INSERT INTO text_channels (id, server_id, name, description, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)',
 );
 const insertMessageStatement = db.prepare(
   'INSERT INTO text_messages (id, channel_id, sender_id, text, created_at, reply_to_message_id) VALUES (?, ?, ?, ?, ?, ?)',
@@ -163,6 +164,7 @@ const deleteBotMessageByIdStatement = db.prepare('DELETE FROM text_bot_messages 
 function toChannel(row: TextChannelRow): TextChannel {
   return {
     id: row.id,
+    serverId: row.server_id,
     name: row.name,
     description: row.description,
     createdBy: row.created_by,
@@ -210,8 +212,8 @@ function channelSlug(name: string): string {
   return slugify(name, (id) => Boolean(selectChannelByIdStatement.get(id)));
 }
 
-export function listTextChannels(): TextChannel[] {
-  return (listChannelsStatement.all() as unknown as TextChannelRow[]).map(toChannel);
+export function listTextChannels(serverId: string): TextChannel[] {
+  return (listChannelsStatement.all(serverId) as unknown as TextChannelRow[]).map(toChannel);
 }
 
 export function getTextChannelById(id: string): TextChannel | undefined {
@@ -219,18 +221,20 @@ export function getTextChannelById(id: string): TextChannel | undefined {
   return row && toChannel(row);
 }
 
-export function getTextChannelByName(name: string): TextChannel | undefined {
-  const row = selectChannelByNameStatement.get(name) as unknown as TextChannelRow | undefined;
+export function getTextChannelByName(serverId: string, name: string): TextChannel | undefined {
+  const row = selectChannelByNameStatement.get(serverId, name) as unknown as TextChannelRow | undefined;
   return row && toChannel(row);
 }
 
 export function createTextChannel(
+  serverId: string,
   name: string,
   description: string,
   creatorId: string,
 ): TextChannel {
   const channel: TextChannel = {
     id: channelSlug(name),
+    serverId,
     name,
     description,
     createdBy: creatorId,
@@ -238,6 +242,7 @@ export function createTextChannel(
   };
   insertChannelStatement.run(
     channel.id,
+    channel.serverId,
     channel.name,
     channel.description,
     channel.createdBy,

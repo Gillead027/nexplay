@@ -3,6 +3,8 @@ export const DISPLAY_NAME_MAX_LENGTH = 24;
 export const CHAT_MESSAGE_MAX_LENGTH = 500;
 export const TEXT_CHANNEL_NAME_MAX_LENGTH = 32;
 export const TEXT_CHANNEL_DESCRIPTION_MAX_LENGTH = 120;
+export const SERVER_NAME_MAX_LENGTH = 50;
+export const SERVER_DESCRIPTION_MAX_LENGTH = 120;
 export const PASSWORD_MIN_LENGTH = 8;
 export const PASSWORD_MAX_LENGTH = 72;
 export const STATUS_TEXT_MAX_LENGTH = 60;
@@ -37,11 +39,6 @@ export const ATTACHMENT_FILENAME_MAX_LENGTH = 200;
 // própria origem.
 export const ATTACHMENT_INLINE_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'] as const;
 
-// Cargo automático que todo usuário registrado recebe (não aparece como
-// atribuível manualmente — ver roles.ts). Posição fixa em 0: é sempre o
-// cargo de menor hierarquia, nunca pode ser apagado nem reordenado.
-export const EVERYONE_ROLE_ID = 'everyone';
-
 // Bitfield de permissões — reduzido (sem herança complexa de categorias/canal
 // por permissão, ver DISCORD_PARITY_PLAN.md), mas real: cada flag é checada
 // de verdade no backend em apps/api/src/index.ts, não é decorativo.
@@ -60,6 +57,7 @@ export const Permission = {
   BAN_MEMBERS: 1 << 11,
   MODERATE_MEMBERS: 1 << 12,
   ADMINISTRATOR: 1 << 13,
+  MANAGE_SERVER: 1 << 14,
 } as const;
 
 export type PermissionFlag = (typeof Permission)[keyof typeof Permission];
@@ -97,6 +95,7 @@ export interface PermissionDefinition {
 // (ver ServerSettings.tsx) — uma única fonte de verdade, sem duplicar rótulos.
 export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { flag: Permission.ADMINISTRATOR, category: 'Geral', label: 'Administrador', description: 'Concede todas as permissões, ignorando as demais.' },
+  { flag: Permission.MANAGE_SERVER, category: 'Geral', label: 'Gerenciar servidor', description: 'Editar nome, descrição e ícone do servidor, e gerenciar o convite.' },
   { flag: Permission.VIEW_CHANNELS, category: 'Geral', label: 'Ver canais', description: 'Ver os canais de texto e voz do servidor.' },
   { flag: Permission.MANAGE_CHANNELS, category: 'Geral', label: 'Gerenciar canais', description: 'Criar e apagar canais de texto e voz.' },
   { flag: Permission.MANAGE_ROLES, category: 'Geral', label: 'Gerenciar cargos', description: 'Criar, editar, apagar e atribuir cargos com posição menor que a sua.' },
@@ -114,12 +113,19 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
 
 export interface Role {
   id: string;
+  serverId: string;
   name: string;
   color: string;
   position: number;
   hoist: boolean;
   permissions: number;
   createdAt: number;
+  // Convenção: @everyone é sempre seedado com position 0 (menor hierarquia
+  // possível, nunca apagável nem reordenável) — computado a partir disso em
+  // vez de comparar contra um id fixo, já que cada servidor tem seu próprio
+  // cargo @everyone com id gerado (roles.id é chave global, não composta por
+  // servidor, então dois servidores nunca podem compartilhar um id de cargo).
+  isEveryone: boolean;
 }
 
 export interface MemberSummary {
@@ -130,6 +136,34 @@ export interface MemberSummary {
   statusText: string;
   roleIds: string[];
   timeoutUntil: number | null;
+}
+
+export interface Server {
+  id: string;
+  name: string;
+  description: string;
+  iconDataUrl: string;
+  ownerId: string | null;
+  createdAt: number;
+}
+
+export interface ServerMember {
+  serverId: string;
+  userId: string;
+  roleIds: string[];
+  permissions: number;
+  timeoutUntil: number | null;
+  joinedAt: number;
+}
+
+export interface Invite {
+  code: string;
+  serverId: string;
+  createdBy: string | null;
+  uses: number;
+  maxUses: number | null;
+  expiresAt: number | null;
+  createdAt: number;
 }
 
 export interface BanRecord {
@@ -154,6 +188,12 @@ export const ACCENT_COLORS = [
 
 export type AccentColor = (typeof ACCENT_COLORS)[number];
 
+// Só identidade/perfil de conta — cargos/permissões/timeout deixaram de ser
+// instância-inteira e viraram por servidor (ver ServerMember), já que um
+// usuário pode ter cargos e um timeout diferentes em cada servidor. O
+// cliente busca isso separadamente por servidor ativo (GET
+// /api/servers/:serverId/members/me), o mesmo padrão de useFriendsState
+// já usado pra amigos/DMs (não embutido na sessão global).
 export interface UserSession {
   id: string;
   displayName: string;
@@ -163,16 +203,22 @@ export interface UserSession {
   pronouns: string;
   avatarUrl: string;
   bannerUrl: string;
-  roleIds: string[];
-  permissions: number;
-  timeoutUntil: number | null;
 }
 
 export interface VoiceChannel {
   id: string;
+  serverId: string;
   name: string;
   description: string;
+  createdBy: string | null;
+  createdAt: number;
 }
+
+// União discriminada montada só na camada API juntando text_channels e
+// voice_channels (duas tabelas SQL físicas separadas de propósito — ver
+// DISCORD_PARITY_PLAN.md sobre o risco de colisão de id ao unificá-las
+// fisicamente) num único "canais deste servidor" pro cliente consumir.
+export type Channel = ({ type: 'TEXT' } & TextChannel) | ({ type: 'VOICE' } & VoiceChannel);
 
 export interface AuthenticatedUserIdentity {
   id: string;
@@ -438,8 +484,17 @@ export function isMusicBotCommandRequest(value: unknown): value is MusicBotComma
   return false;
 }
 
+// Formato cru do env var VOICE_CHANNELS, usado só pra semear o servidor
+// padrão no primeiro boot (ver db.ts) — sem server_id/createdBy/createdAt
+// porque nesse momento o servidor padrão pode nem existir ainda.
+export interface VoiceChannelSeed {
+  id: string;
+  name: string;
+  description: string;
+}
+
 /** Mantém API e serviços usando a mesma definição dos canais de voz. */
-export function parseVoiceChannels(value: string): VoiceChannel[] {
+export function parseVoiceChannels(value: string): VoiceChannelSeed[] {
   const channels = value.split(',').map((entry) => {
     const [rawId, rawName, ...descriptionParts] = entry.split(':');
     const id = rawId?.trim() ?? '';
@@ -474,9 +529,10 @@ export interface RoomSummary extends VoiceChannel {
   participants: RoomParticipantSummary[];
 }
 
+// Canais deixaram de vir daqui — cada servidor tem os seus, buscados via
+// GET /api/servers/:serverId/channels (ver Channel acima).
 export interface PublicConfig {
   livekitUrl: string;
-  channels: VoiceChannel[];
 }
 
 export interface LiveKitTokenResponse {
@@ -532,6 +588,7 @@ export interface MessageAttachment {
 
 export interface TextChannel {
   id: string;
+  serverId: string;
   name: string;
   description: string;
   createdBy: string | null;
@@ -633,24 +690,28 @@ export interface DmMessage {
 // cliente web. Uma única união discriminada mantém servidor e cliente no
 // mesmo contrato sem precisar de um gerador de esquema à parte.
 export type RealtimeEvent =
-  | { type: 'TEXT_MESSAGE_CREATE'; channelId: string; message: TextMessage }
-  | { type: 'TEXT_MESSAGE_UPSERT'; channelId: string; message: TextMessage }
-  | { type: 'TEXT_MESSAGE_DELETE'; channelId: string; messageId: string }
-  | { type: 'TEXT_CHANNEL_CREATE'; channel: TextChannel }
-  | { type: 'VOICE_CHANNEL_CREATE'; channel: VoiceChannel }
-  | { type: 'VOICE_CHANNEL_DELETE'; channelId: string }
-  | { type: 'ROOM_STATE_UPDATE'; room: RoomSummary }
-  | { type: 'TEXT_MESSAGE_REACTION_ADD'; channelId: string; messageId: string; emoji: ReactionEmoji; userId: string }
-  | { type: 'TEXT_MESSAGE_REACTION_REMOVE'; channelId: string; messageId: string; emoji: ReactionEmoji; userId: string }
-  | { type: 'SOUNDBOARD_SOUND_CREATE'; sound: SoundboardSound }
-  | { type: 'SOUNDBOARD_SOUND_DELETE'; soundId: string }
-  | { type: 'ROLE_CREATE'; role: Role }
-  | { type: 'ROLE_UPDATE'; role: Role }
-  | { type: 'ROLE_DELETE'; roleId: string }
-  | { type: 'MEMBER_ROLES_UPDATE'; userId: string; roleIds: string[] }
-  | { type: 'MEMBER_TIMEOUT_UPDATE'; userId: string; timeoutUntil: number | null }
+  | { type: 'TEXT_MESSAGE_CREATE'; serverId: string; channelId: string; message: TextMessage }
+  | { type: 'TEXT_MESSAGE_UPSERT'; serverId: string; channelId: string; message: TextMessage }
+  | { type: 'TEXT_MESSAGE_DELETE'; serverId: string; channelId: string; messageId: string }
+  | { type: 'TEXT_CHANNEL_CREATE'; serverId: string; channel: TextChannel }
+  | { type: 'VOICE_CHANNEL_CREATE'; serverId: string; channel: VoiceChannel }
+  | { type: 'VOICE_CHANNEL_DELETE'; serverId: string; channelId: string }
+  | { type: 'ROOM_STATE_UPDATE'; serverId: string; room: RoomSummary }
+  | { type: 'TEXT_MESSAGE_REACTION_ADD'; serverId: string; channelId: string; messageId: string; emoji: ReactionEmoji; userId: string }
+  | { type: 'TEXT_MESSAGE_REACTION_REMOVE'; serverId: string; channelId: string; messageId: string; emoji: ReactionEmoji; userId: string }
+  | { type: 'SOUNDBOARD_SOUND_CREATE'; serverId: string; sound: SoundboardSound }
+  | { type: 'SOUNDBOARD_SOUND_DELETE'; serverId: string; soundId: string }
+  | { type: 'ROLE_CREATE'; serverId: string; role: Role }
+  | { type: 'ROLE_UPDATE'; serverId: string; role: Role }
+  | { type: 'ROLE_DELETE'; serverId: string; roleId: string }
+  | { type: 'MEMBER_ROLES_UPDATE'; serverId: string; userId: string; roleIds: string[] }
+  | { type: 'MEMBER_TIMEOUT_UPDATE'; serverId: string; userId: string; timeoutUntil: number | null }
+  | { type: 'MEMBER_JOIN'; serverId: string; member: MemberSummary }
+  | { type: 'MEMBER_LEAVE'; serverId: string; userId: string }
   | { type: 'MEMBER_BANNED'; userId: string }
   | { type: 'MEMBER_UNBANNED'; userId: string }
+  | { type: 'SERVER_CREATE'; server: Server }
+  | { type: 'SERVER_UPDATE'; server: Server }
   | { type: 'FRIENDSHIP_UPDATE'; participantIds: [string, string]; status: RawFriendshipStatus; requestedBy: string | null }
   | { type: 'DM_CHANNEL_CREATE'; channel: DmChannel }
   | { type: 'DM_MESSAGE_CREATE'; dmChannelId: string; message: DmMessage }

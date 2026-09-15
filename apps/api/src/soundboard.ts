@@ -26,11 +26,12 @@ const listSoundsStatement = db.prepare(`
     sounds.created_at
   FROM soundboard_sounds AS sounds
   INNER JOIN users ON users.id = sounds.created_by
+  WHERE sounds.server_id = ?
   ORDER BY sounds.created_at ASC
 `);
 const selectSoundByIdStatement = db.prepare('SELECT * FROM soundboard_sounds WHERE id = ?');
 const insertSoundStatement = db.prepare(
-  'INSERT INTO soundboard_sounds (id, name, emoji, audio_data_url, duration_ms, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  'INSERT INTO soundboard_sounds (id, server_id, name, emoji, audio_data_url, duration_ms, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
 );
 const deleteSoundStatement = db.prepare('DELETE FROM soundboard_sounds WHERE id = ? AND created_by = ?');
 const deleteSoundAsModeratorStatement = db.prepare('DELETE FROM soundboard_sounds WHERE id = ?');
@@ -48,8 +49,8 @@ function toSound(row: SoundboardSoundRow): SoundboardSound {
   };
 }
 
-export function listSoundboardSounds(): SoundboardSound[] {
-  return (listSoundsStatement.all() as unknown as SoundboardSoundRow[]).map(toSound);
+export function listSoundboardSounds(serverId: string): SoundboardSound[] {
+  return (listSoundsStatement.all(serverId) as unknown as SoundboardSoundRow[]).map(toSound);
 }
 
 export function getSoundboardSoundById(id: string): { createdBy: string } | undefined {
@@ -58,6 +59,7 @@ export function getSoundboardSoundById(id: string): { createdBy: string } | unde
 }
 
 export function createSoundboardSound(
+  serverId: string,
   name: string,
   emoji: string,
   audioDataUrl: string,
@@ -74,7 +76,7 @@ export function createSoundboardSound(
     createdByName: creator.username,
     createdAt: Date.now(),
   };
-  insertSoundStatement.run(sound.id, sound.name, sound.emoji, sound.audioDataUrl, sound.durationMs, sound.createdBy, sound.createdAt);
+  insertSoundStatement.run(sound.id, serverId, sound.name, sound.emoji, sound.audioDataUrl, sound.durationMs, sound.createdBy, sound.createdAt);
   return sound;
 }
 

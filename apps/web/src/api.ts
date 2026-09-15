@@ -2,10 +2,12 @@ import type {
   AccentColor,
   BanRecord,
   BlockedUserSummary,
+  Channel,
   DmChannel,
   DmMessage,
   FriendRequestSummary,
   FriendSummary,
+  Invite,
   LiveKitTokenResponse,
   MemberSummary,
   MessageAttachment,
@@ -14,6 +16,8 @@ import type {
   ReactionEmoji,
   Role,
   RoomSummary,
+  Server,
+  ServerMember,
   SoundboardSound,
   TextChannel,
   TextMessage,
@@ -58,6 +62,8 @@ async function uploadFile<T>(path: string, file: File): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+const s = (serverId: string) => `/api/servers/${encodeURIComponent(serverId)}`;
+
 export const api = {
   getSession: () => request<{ user: UserSession }>('/api/session'),
   register: (username: string, password: string, inviteToken: string, accentColor: AccentColor) =>
@@ -85,35 +91,45 @@ export const api = {
     }),
   getUserAvatar: (userId: string) => request<{ avatarUrl: string }>(`/api/users/${userId}/avatar`),
   getUserProfile: (userId: string) => request<{ user: UserSession }>(`/api/users/${userId}/profile`),
-  sendMusicCommand: (roomId: string, text: string, textChannelId?: string) =>
-    request<MusicCommandResponse>('/api/music/command', {
-      method: 'POST',
-      body: JSON.stringify({ roomId, text, ...(textChannelId ? { textChannelId } : {}) }),
-    }),
   getConfig: () => request<PublicConfig>('/api/config'),
-  getRooms: () =>
-    request<{ rooms: RoomSummary[]; livekitAvailable: boolean }>('/api/rooms'),
-  disconnectVoiceParticipant: (roomId: string, identity: string) =>
-    request<void>(`/api/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(identity)}/disconnect`, {
+
+  // Servidores — fundação de múltiplos servidores (ver DISCORD_PARITY_PLAN.md).
+  getServers: () => request<{ servers: Server[] }>('/api/servers'),
+  createServer: (name: string, description: string) =>
+    request<{ server: Server }>('/api/servers', { method: 'POST', body: JSON.stringify({ name, description }) }),
+  updateServer: (serverId: string, patch: { name?: string; description?: string; iconDataUrl?: string }) =>
+    request<{ server: Server }>(s(serverId), { method: 'PATCH', body: JSON.stringify(patch) }),
+  getServerMember: (serverId: string) => request<{ member: ServerMember }>(`${s(serverId)}/members/me`),
+  leaveServer: (serverId: string) => request<void>(`${s(serverId)}/members/me`, { method: 'DELETE' }),
+  getChannels: (serverId: string) => request<{ channels: Channel[] }>(`${s(serverId)}/channels`),
+  getServerInvite: (serverId: string) => request<{ invite: Invite }>(`${s(serverId)}/invite`, { method: 'POST' }),
+  regenerateServerInvite: (serverId: string) =>
+    request<{ invite: Invite }>(`${s(serverId)}/invite/regenerate`, { method: 'POST' }),
+  redeemInvite: (code: string) => request<{ server: Server }>(`/api/invites/${encodeURIComponent(code)}/redeem`, { method: 'POST' }),
+
+  getRooms: (serverId: string) =>
+    request<{ rooms: RoomSummary[]; livekitAvailable: boolean }>(`${s(serverId)}/rooms`),
+  disconnectVoiceParticipant: (serverId: string, roomId: string, identity: string) =>
+    request<void>(`${s(serverId)}/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(identity)}/disconnect`, {
       method: 'POST',
     }),
-  getTextChannels: () => request<{ channels: TextChannel[] }>('/api/text-channels'),
-  createTextChannel: (name: string, description: string) =>
-    request<{ channel: TextChannel }>('/api/text-channels', {
+  getTextChannels: (serverId: string) => request<{ channels: TextChannel[] }>(`${s(serverId)}/text-channels`),
+  createTextChannel: (serverId: string, name: string, description: string) =>
+    request<{ channel: TextChannel }>(`${s(serverId)}/text-channels`, {
       method: 'POST',
       body: JSON.stringify({ name, description }),
     }),
-  createVoiceChannel: (name: string, description: string) =>
-    request<{ channel: VoiceChannel }>('/api/voice-channels', {
+  createVoiceChannel: (serverId: string, name: string, description: string) =>
+    request<{ channel: VoiceChannel }>(`${s(serverId)}/voice-channels`, {
       method: 'POST',
       body: JSON.stringify({ name, description }),
     }),
-  deleteVoiceChannel: (channelId: string) =>
-    request<void>(`/api/voice-channels/${encodeURIComponent(channelId)}`, { method: 'DELETE' }),
-  getTextMessages: (channelId: string) =>
-    request<{ messages: TextMessage[] }>(`/api/text-channels/${encodeURIComponent(channelId)}/messages`),
-  sendTextMessage: (channelId: string, text: string, replyToMessageId?: string, attachmentIds?: string[]) =>
-    request<{ message: TextMessage }>(`/api/text-channels/${encodeURIComponent(channelId)}/messages`, {
+  deleteVoiceChannel: (serverId: string, channelId: string) =>
+    request<void>(`${s(serverId)}/voice-channels/${encodeURIComponent(channelId)}`, { method: 'DELETE' }),
+  getTextMessages: (serverId: string, channelId: string) =>
+    request<{ messages: TextMessage[] }>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages`),
+  sendTextMessage: (serverId: string, channelId: string, text: string, replyToMessageId?: string, attachmentIds?: string[]) =>
+    request<{ message: TextMessage }>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages`, {
       method: 'POST',
       body: JSON.stringify({
         text,
@@ -121,88 +137,97 @@ export const api = {
         ...(attachmentIds?.length ? { attachmentIds } : {}),
       }),
     }),
-  uploadAttachment: (channelId: string, file: File) =>
-    uploadFile<{ attachment: MessageAttachment }>(`/api/text-channels/${encodeURIComponent(channelId)}/attachments`, file),
-  editTextMessage: (channelId: string, messageId: string, text: string) =>
+  uploadAttachment: (serverId: string, channelId: string, file: File) =>
+    uploadFile<{ attachment: MessageAttachment }>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/attachments`, file),
+  editTextMessage: (serverId: string, channelId: string, messageId: string, text: string) =>
     request<{ message: TextMessage }>(
-      `/api/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`,
+      `${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`,
       { method: 'PATCH', body: JSON.stringify({ text }) },
     ),
-  deleteTextMessage: (channelId: string, messageId: string) =>
-    request<void>(`/api/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`, {
+  deleteTextMessage: (serverId: string, channelId: string, messageId: string) =>
+    request<void>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`, {
       method: 'DELETE',
     }),
-  getPinnedMessages: (channelId: string) =>
-    request<{ messages: TextMessage[] }>(`/api/text-channels/${encodeURIComponent(channelId)}/messages/pins`),
-  pinMessage: (channelId: string, messageId: string) =>
+  getPinnedMessages: (serverId: string, channelId: string) =>
+    request<{ messages: TextMessage[] }>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/pins`),
+  pinMessage: (serverId: string, channelId: string, messageId: string) =>
     request<{ message: TextMessage }>(
-      `/api/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/pin`,
+      `${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/pin`,
       { method: 'POST' },
     ),
-  unpinMessage: (channelId: string, messageId: string) =>
-    request<void>(`/api/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/pin`, {
+  unpinMessage: (serverId: string, channelId: string, messageId: string) =>
+    request<void>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/pin`, {
       method: 'DELETE',
     }),
-  searchMessages: (channelId: string, query: string) =>
+  searchMessages: (serverId: string, channelId: string, query: string) =>
     request<{ messages: TextMessage[] }>(
-      `/api/text-channels/${encodeURIComponent(channelId)}/messages/search?q=${encodeURIComponent(query)}`,
+      `${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/search?q=${encodeURIComponent(query)}`,
     ),
-  addReaction: (channelId: string, messageId: string, emoji: ReactionEmoji) =>
+  addReaction: (serverId: string, channelId: string, messageId: string, emoji: ReactionEmoji) =>
     request<void>(
-      `/api/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/reactions`,
+      `${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/reactions`,
       { method: 'POST', body: JSON.stringify({ emoji }) },
     ),
-  removeReaction: (channelId: string, messageId: string, emoji: ReactionEmoji) =>
+  removeReaction: (serverId: string, channelId: string, messageId: string, emoji: ReactionEmoji) =>
     request<void>(
-      `/api/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(emoji)}`,
+      `${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(emoji)}`,
       { method: 'DELETE' },
     ),
-  getLiveKitToken: (roomId: string) =>
-    request<LiveKitTokenResponse>('/api/livekit/token', {
+  getLiveKitToken: (serverId: string, roomId: string) =>
+    request<LiveKitTokenResponse>(`${s(serverId)}/livekit/token`, {
       method: 'POST',
       body: JSON.stringify({ roomId }),
     }),
-  getSoundboardSounds: () => request<{ sounds: SoundboardSound[] }>('/api/soundboard'),
-  createSoundboardSound: (name: string, emoji: string, audioDataUrl: string, durationMs: number) =>
-    request<{ sound: SoundboardSound }>('/api/soundboard', {
+  sendMusicCommand: (serverId: string, roomId: string, text: string, textChannelId?: string) =>
+    request<MusicCommandResponse>(`${s(serverId)}/music/command`, {
+      method: 'POST',
+      body: JSON.stringify({ roomId, text, ...(textChannelId ? { textChannelId } : {}) }),
+    }),
+  getSoundboardSounds: (serverId: string) => request<{ sounds: SoundboardSound[] }>(`${s(serverId)}/soundboard`),
+  createSoundboardSound: (serverId: string, name: string, emoji: string, audioDataUrl: string, durationMs: number) =>
+    request<{ sound: SoundboardSound }>(`${s(serverId)}/soundboard`, {
       method: 'POST',
       body: JSON.stringify({ name, emoji, audioDataUrl, durationMs }),
     }),
-  deleteSoundboardSound: (soundId: string) =>
-    request<void>(`/api/soundboard/${encodeURIComponent(soundId)}`, { method: 'DELETE' }),
-  getRoles: () => request<{ roles: Role[] }>('/api/roles'),
-  createRole: (name: string, color: string, permissions: number, hoist: boolean) =>
-    request<{ role: Role }>('/api/roles', {
+  deleteSoundboardSound: (serverId: string, soundId: string) =>
+    request<void>(`${s(serverId)}/soundboard/${encodeURIComponent(soundId)}`, { method: 'DELETE' }),
+  getRoles: (serverId: string) => request<{ roles: Role[] }>(`${s(serverId)}/roles`),
+  createRole: (serverId: string, name: string, color: string, permissions: number, hoist: boolean) =>
+    request<{ role: Role }>(`${s(serverId)}/roles`, {
       method: 'POST',
       body: JSON.stringify({ name, color, permissions, hoist }),
     }),
-  updateRole: (roleId: string, patch: { name?: string; color?: string; permissions?: number; hoist?: boolean }) =>
-    request<{ role: Role }>(`/api/roles/${encodeURIComponent(roleId)}`, {
+  updateRole: (serverId: string, roleId: string, patch: { name?: string; color?: string; permissions?: number; hoist?: boolean }) =>
+    request<{ role: Role }>(`${s(serverId)}/roles/${encodeURIComponent(roleId)}`, {
       method: 'PATCH',
       body: JSON.stringify(patch),
     }),
-  deleteRole: (roleId: string) => request<void>(`/api/roles/${encodeURIComponent(roleId)}`, { method: 'DELETE' }),
-  assignRole: (roleId: string, userId: string) =>
-    request<void>(`/api/roles/${encodeURIComponent(roleId)}/members/${encodeURIComponent(userId)}`, { method: 'PUT' }),
-  unassignRole: (roleId: string, userId: string) =>
-    request<void>(`/api/roles/${encodeURIComponent(roleId)}/members/${encodeURIComponent(userId)}`, {
+  deleteRole: (serverId: string, roleId: string) =>
+    request<void>(`${s(serverId)}/roles/${encodeURIComponent(roleId)}`, { method: 'DELETE' }),
+  assignRole: (serverId: string, roleId: string, userId: string) =>
+    request<void>(`${s(serverId)}/roles/${encodeURIComponent(roleId)}/members/${encodeURIComponent(userId)}`, { method: 'PUT' }),
+  unassignRole: (serverId: string, roleId: string, userId: string) =>
+    request<void>(`${s(serverId)}/roles/${encodeURIComponent(roleId)}/members/${encodeURIComponent(userId)}`, {
       method: 'DELETE',
     }),
-  getMembers: () => request<{ members: MemberSummary[] }>('/api/members'),
-  timeoutMember: (userId: string, minutes: number) =>
-    request<{ timeoutUntil: number }>('/api/moderation/timeout', {
+  getMembers: (serverId: string) => request<{ members: MemberSummary[] }>(`${s(serverId)}/members`),
+  timeoutMember: (serverId: string, userId: string, minutes: number) =>
+    request<{ timeoutUntil: number }>(`${s(serverId)}/moderation/timeout`, {
       method: 'POST',
       body: JSON.stringify({ userId, minutes }),
     }),
-  clearMemberTimeout: (userId: string) =>
-    request<void>(`/api/moderation/timeout/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
-  getBans: () => request<{ bans: BanRecord[] }>('/api/moderation/bans'),
-  banMember: (userId: string, reason: string) =>
-    request<void>('/api/moderation/bans', { method: 'POST', body: JSON.stringify({ userId, reason }) }),
-  unbanMember: (userId: string) =>
-    request<void>(`/api/moderation/bans/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
-  voiceKickMember: (userId: string) =>
-    request<void>('/api/moderation/voice-kick', { method: 'POST', body: JSON.stringify({ userId }) }),
+  clearMemberTimeout: (serverId: string, userId: string) =>
+    request<void>(`${s(serverId)}/moderation/timeout/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
+  // Ban continua de instância inteira (ver DISCORD_PARITY_PLAN.md), mas
+  // checar a permissão de banir exige um servidor de referência.
+  getBans: (serverId: string) => request<{ bans: BanRecord[] }>(`/api/moderation/bans?serverId=${encodeURIComponent(serverId)}`),
+  banMember: (serverId: string, userId: string, reason: string) =>
+    request<void>('/api/moderation/bans', { method: 'POST', body: JSON.stringify({ serverId, userId, reason }) }),
+  unbanMember: (serverId: string, userId: string) =>
+    request<void>(`/api/moderation/bans/${encodeURIComponent(userId)}?serverId=${encodeURIComponent(serverId)}`, { method: 'DELETE' }),
+  voiceKickMember: (serverId: string, userId: string) =>
+    request<void>(`${s(serverId)}/moderation/voice-kick`, { method: 'POST', body: JSON.stringify({ userId }) }),
+
   getFriends: () => request<{ friends: FriendSummary[] }>('/api/friends'),
   getFriendRequests: () =>
     request<{ incoming: FriendRequestSummary[]; outgoing: FriendRequestSummary[] }>('/api/friends/requests'),

@@ -78,6 +78,7 @@ import { FriendsHome, FriendsSidebar, isBlockedByMe as computeIsBlockedByMe, rel
 import { ProfilePopover, type ProfilePopoverTarget } from './ProfilePopover';
 import { RemoteAudioSink } from './RemoteAudioSink';
 import { ScreenStage } from './ScreenStage';
+import { AddServerModal, useActiveServerMember, useServersState } from './Servers';
 import { ServerSettings } from './ServerSettings';
 import { SoundboardPanel, SoundboardToast } from './Soundboard';
 import { CreateTextChannelDialog, TextChannelView } from './TextChannels';
@@ -313,11 +314,13 @@ function IconSwap({ on, onIcon, offIcon }: { on: boolean; onIcon: ReactNode; off
 // quando existir um sistema de permissões de verdade (ver DISCORD_PARITY_PLAN.md).
 function CreateVoiceChannelDialog({
   open,
+  serverId,
   onClose,
   onCreated,
   returnFocusRef,
 }: {
   open: boolean;
+  serverId: string;
   onClose: () => void;
   onCreated: (channel: VoiceChannel) => void;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
@@ -352,7 +355,7 @@ function CreateVoiceChannelDialog({
     setSaving(true);
     setError('');
     try {
-      const { channel } = await api.createVoiceChannel(name, description);
+      const { channel } = await api.createVoiceChannel(serverId, name, description);
       setName('');
       setDescription('');
       onCreated(channel);
@@ -1606,8 +1609,7 @@ function SettingsModal({
 
 export function Workspace({ session, config, onSignOut, onProfileUpdated }: WorkspaceProps) {
   const voice = useVoiceRoom();
-  const canManageChannels = hasPermission(session.permissions, Permission.MANAGE_CHANNELS);
-  const [rooms, setRooms] = useState<RoomSummary[]>(config.channels.map((channel) => ({ ...channel, participants: [] })));
+  const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [livekitAvailable, setLivekitAvailable] = useState(true);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   // Rede de segurança independente do próprio voice.connect(): mesmo com
@@ -1680,6 +1682,21 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const [selectedDmChannelId, setSelectedDmChannelId] = useState<string | null>(null);
   const friendsState = useFriendsState(session);
   const selectedDmChannel = friendsState.dmChannels.find((channel) => channel.id === selectedDmChannelId) ?? null;
+  const serversState = useServersState(session);
+  const [activeServerId, setActiveServerId] = useState<string | null>(null);
+  // Servidor ativo por padrão: o primeiro da lista assim que ela carrega —
+  // preserva o comportamento de sempre pra quem só tem o servidor migrado
+  // ("Lobby dos amigos"). Se o servidor ativo deixar de existir na lista
+  // (ex.: o usuário saiu dele em outra aba), cai pro primeiro disponível.
+  useEffect(() => {
+    if (activeServerId && serversState.servers.some((server) => server.id === activeServerId)) return;
+    setActiveServerId(serversState.servers[0]?.id ?? null);
+  }, [serversState.servers, activeServerId]);
+  const activeServer = serversState.servers.find((server) => server.id === activeServerId) ?? null;
+  const member = useActiveServerMember(activeServerId, session);
+  const canManageChannels = hasPermission(member?.permissions ?? 0, Permission.MANAGE_CHANNELS);
+  const [addServerOpen, setAddServerOpen] = useState(false);
+  const addServerButtonRef = useRef<HTMLButtonElement>(null);
   const [createTextChannelOpen, setCreateTextChannelOpen] = useState(false);
   const [createVoiceChannelOpen, setCreateVoiceChannelOpen] = useState(false);
   const [perfMode, setPerfModeState] = useState<PerfMode>(() => getPerfMode());
@@ -1792,9 +1809,14 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   }, []);
 
   useEffect(() => {
+    if (!activeServerId) {
+      setRooms([]);
+      return;
+    }
     let active = true;
+    setRooms([]);
     const refresh = () => {
-      void api.getRooms().then((result) => {
+      void api.getRooms(activeServerId).then((result) => {
         if (!active) return;
         setRooms(result.rooms);
         setLivekitAvailable(result.livekitAvailable);
@@ -1806,14 +1828,17 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     const unsubscribeConnect = onRealtimeConnect(refresh);
     const unsubscribeEvent = onRealtimeEvent((event) => {
       if (event.type === 'ROOM_STATE_UPDATE') {
+        if (event.serverId !== activeServerId) return;
         setRooms((current) => current.map((room) => (room.id === event.room.id ? event.room : room)));
       } else if (event.type === 'VOICE_CHANNEL_CREATE') {
+        if (event.serverId !== activeServerId) return;
         setRooms((current) =>
           current.some((room) => room.id === event.channel.id)
             ? current
             : [...current, { ...event.channel, participants: [] }],
         );
       } else if (event.type === 'VOICE_CHANNEL_DELETE') {
+        if (event.serverId !== activeServerId) return;
         setRooms((current) => current.filter((room) => room.id !== event.channelId));
       }
     });
@@ -1822,10 +1847,16 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       unsubscribeConnect();
       unsubscribeEvent();
     };
-  }, []);
+  }, [activeServerId]);
 
   useEffect(() => {
+    if (!activeServerId) {
+      setTextChannels([]);
+      setSelectedTextChannelId(null);
+      return;
+    }
     let active = true;
+    textChannelsInitializedRef.current = false;
     const applyChannels = (channels: TextChannel[]) => {
       if (!active) return;
       setTextChannels(channels);
@@ -1840,14 +1871,14 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       }
     };
     const refresh = () => {
-      void api.getTextChannels().then(({ channels }) => applyChannels(channels)).catch(() => {
+      void api.getTextChannels(activeServerId).then(({ channels }) => applyChannels(channels)).catch(() => {
         // Mantém a última lista disponível; reconectar dispara um novo fetch.
       });
     };
     refresh();
     const unsubscribeConnect = onRealtimeConnect(refresh);
     const unsubscribeEvent = onRealtimeEvent((event) => {
-      if (event.type !== 'TEXT_CHANNEL_CREATE') return;
+      if (event.type !== 'TEXT_CHANNEL_CREATE' || event.serverId !== activeServerId) return;
       setTextChannels((current) => (current.some(({ id }) => id === event.channel.id) ? current : [...current, event.channel]));
     });
     return () => {
@@ -1855,12 +1886,16 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       unsubscribeConnect();
       unsubscribeEvent();
     };
-  }, []);
+  }, [activeServerId]);
 
   useEffect(() => {
+    if (!activeServerId) {
+      setSoundboardSounds([]);
+      return;
+    }
     let active = true;
     const refresh = () => {
-      void api.getSoundboardSounds().then(({ sounds }) => { if (active) setSoundboardSounds(sounds); }).catch(() => {
+      void api.getSoundboardSounds(activeServerId).then(({ sounds }) => { if (active) setSoundboardSounds(sounds); }).catch(() => {
         // Mantém a última lista disponível; reconectar dispara um novo fetch.
       });
     };
@@ -1868,8 +1903,10 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     const unsubscribeConnect = onRealtimeConnect(refresh);
     const unsubscribeEvent = onRealtimeEvent((event) => {
       if (event.type === 'SOUNDBOARD_SOUND_CREATE') {
+        if (event.serverId !== activeServerId) return;
         setSoundboardSounds((current) => (current.some(({ id }) => id === event.sound.id) ? current : [...current, event.sound]));
       } else if (event.type === 'SOUNDBOARD_SOUND_DELETE') {
+        if (event.serverId !== activeServerId) return;
         setSoundboardSounds((current) => current.filter(({ id }) => id !== event.soundId));
       }
     });
@@ -1878,7 +1915,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       unsubscribeConnect();
       unsubscribeEvent();
     };
-  }, []);
+  }, [activeServerId]);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -1888,19 +1925,14 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     const unsubscribe = onRealtimeEvent((event) => {
       if (event.type === 'MEMBER_BANNED' && event.userId === session.id) {
         void onSignOut();
-      } else if (
-        (event.type === 'MEMBER_ROLES_UPDATE' || event.type === 'MEMBER_TIMEOUT_UPDATE') &&
-        event.userId === session.id
-      ) {
-        // Cargos/timeout de outra pessoa não afetam a UI local; quando é o
-        // próprio usuário, resincroniza a sessão pra refletir a nova
-        // permissão/estado sem exigir logout — mesma ideia do resync ao
-        // reconectar o WebSocket (ver onRealtimeConnect nos outros efeitos).
-        void api.getSession().then(({ user }) => onProfileUpdated(user)).catch(() => {});
       }
+      // Cargos/timeout do próprio usuário: useActiveServerMember já
+      // resincroniza sozinho reagindo a MEMBER_ROLES_UPDATE/MEMBER_TIMEOUT_UPDATE
+      // (ver Servers.tsx) — isso deixou de precisar de um refetch de sessão
+      // desde que permissões saíram de UserSession.
     });
     return unsubscribe;
-  }, [session.id, onSignOut, onProfileUpdated]);
+  }, [session.id, onSignOut]);
 
   const connectionLabel = useMemo(() => {
     switch (voice.connectionState) {
@@ -1951,14 +1983,17 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
 
   async function disconnectParticipantFromVoice(identity: string, name: string) {
     const roomId = voice.currentChannel?.id;
-    if (!roomId || !voice.connected || disconnectingIdentity) return;
+    const voiceServerId = voice.currentChannel?.serverId;
+    if (!roomId || !voiceServerId || !voice.connected || disconnectingIdentity) return;
     if (!window.confirm(`Desconectar ${name} do canal de voz?`)) return;
     setDisconnectingIdentity(identity);
     try {
-      await api.disconnectVoiceParticipant(roomId, identity);
-      const result = await api.getRooms();
-      setRooms(result.rooms);
-      setLivekitAvailable(result.livekitAvailable);
+      await api.disconnectVoiceParticipant(voiceServerId, roomId, identity);
+      if (activeServerId) {
+        const result = await api.getRooms(activeServerId);
+        setRooms(result.rooms);
+        setLivekitAvailable(result.livekitAvailable);
+      }
     } catch (error) {
       window.alert(error instanceof Error ? error.message : `N?o foi poss?vel desconectar ${name}.`);
     } finally {
@@ -2098,17 +2133,37 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       />
       <CreateTextChannelDialog
         open={createTextChannelOpen}
+        serverId={activeServerId ?? ''}
         onClose={closeCreateTextChannel}
         onCreated={handleTextChannelCreated}
         returnFocusRef={createTextChannelButtonRef}
       />
       <CreateVoiceChannelDialog
         open={createVoiceChannelOpen}
+        serverId={activeServerId ?? ''}
         onClose={closeCreateVoiceChannel}
         onCreated={handleVoiceChannelCreated}
         returnFocusRef={createVoiceChannelButtonRef}
       />
-      <ServerSettings open={serverSettingsOpen} onClose={() => setServerSettingsOpen(false)} session={session} />
+      {activeServer && member && (
+        <ServerSettings
+          open={serverSettingsOpen}
+          onClose={() => setServerSettingsOpen(false)}
+          server={activeServer}
+          member={member}
+          onServerUpdated={() => serversState.refresh()}
+        />
+      )}
+      <AddServerModal
+        open={addServerOpen}
+        onClose={() => setAddServerOpen(false)}
+        onServerReady={(serverId) => {
+          serversState.refresh();
+          setActiveServerId(serverId);
+          setView('server');
+        }}
+        returnFocusRef={addServerButtonRef}
+      />
       {voice.connected && (
         <VoiceAudioSinks
           participants={typedParticipants}
@@ -2144,16 +2199,29 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           {friendsState.incoming.length > 0 && <span className="dm-pending-badge rail-badge">{friendsState.incoming.length}</span>}
         </button>
         <span className="rail-divider" />
+        {serversState.servers.map((server) => (
+          <button
+            key={server.id}
+            className={`server-button server-current ${view === 'server' && activeServerId === server.id ? 'active' : ''}`}
+            type="button"
+            title={server.name}
+            aria-label={server.name}
+            onClick={() => {
+              setActiveServerId(server.id);
+              setView('server');
+            }}
+          >
+            {server.iconDataUrl ? <img src={server.iconDataUrl} alt="" /> : server.name.charAt(0).toUpperCase()}
+          </button>
+        ))}
         <button
-          className={`server-button server-current ${view === 'server' ? 'active' : ''}`}
+          ref={addServerButtonRef}
+          className="server-button add"
           type="button"
-          title="Lobby dos amigos"
-          aria-label="Lobby dos amigos"
-          onClick={() => setView('server')}
+          title="Adicionar servidor"
+          aria-label="Adicionar servidor"
+          onClick={() => setAddServerOpen(true)}
         >
-          S
-        </button>
-        <button className="server-button add" type="button" title="Adicionar servidor" aria-label="Adicionar servidor" disabled>
           <PlusIcon size={18} />
         </button>
       </aside>
@@ -2163,7 +2231,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           <>
             <header className="sidebar-header">
               <button type="button" className="server-menu-trigger" onClick={() => setServerSettingsOpen(true)} aria-label="Abrir configurações do servidor">
-                <strong>Lobby dos amigos</strong>
+                <strong>{activeServer?.name ?? 'Carregando…'}</strong>
                 <ChevronIcon size={16} />
               </button>
             </header>
@@ -2256,7 +2324,10 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
               <span className="voice-status-dot" />
               <div>
                 <strong>Voz conectada</strong>
-                <span>{voice.currentChannel?.name} / Lobby dos amigos</span>
+                <span>
+                  {voice.currentChannel?.name} /{' '}
+                  {serversState.servers.find((server) => server.id === voice.currentChannel?.serverId)?.name ?? '...'}
+                </span>
               </div>
             </div>
             <div className="voice-status-actions">
@@ -2360,6 +2431,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
             <FriendsHome
               state={friendsState}
               ownId={session.id}
+              serverIds={serversState.servers.map((server) => server.id)}
               onOpenProfile={openUserProfile}
               onOpenDm={openDmWith}
               onRefresh={friendsState.refresh}
@@ -2399,6 +2471,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           <TextChannelView
             channel={activeTextChannel}
             session={session}
+            member={member}
             messageStyle={messageStyle}
             voiceChannelId={voice.currentChannel?.id ?? null}
             onOpenProfile={openUserProfile}
@@ -2506,6 +2579,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                   </button>
                   <SoundboardPanel
                     open={soundboardOpen}
+                    serverId={activeServerId ?? ''}
                     onClose={() => setSoundboardOpen(false)}
                     sounds={soundboardSounds}
                     ownUserId={session.id}

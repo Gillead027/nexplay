@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { authorizeVoiceDisconnect } from './voiceModeration.js';
 
-const channels = [{ id: 'geral', name: 'Geral', description: 'Canal geral' }];
+const channels = [
+  { id: 'geral', serverId: 'server-1', name: 'Geral', description: 'Canal geral', createdBy: null, createdAt: 0 },
+];
 
 describe('authorizeVoiceDisconnect', () => {
   it('permite que um participante da sala desconecte outro participante', () => {

@@ -19,7 +19,6 @@ import {
   CHAT_MESSAGE_MAX_LENGTH,
   DISPLAY_NAME_MAX_LENGTH,
   DISPLAY_NAME_MIN_LENGTH,
-  EVERYONE_ROLE_ID,
   hasPermission,
   MESSAGE_SEARCH_QUERY_MAX_LENGTH,
   MESSAGE_SEARCH_QUERY_MIN_LENGTH,
@@ -29,6 +28,8 @@ import {
   Permission,
   PRONOUNS_MAX_LENGTH,
   ROLE_NAME_MAX_LENGTH,
+  SERVER_DESCRIPTION_MAX_LENGTH,
+  SERVER_NAME_MAX_LENGTH,
   SOUNDBOARD_AUDIO_DATA_URL_MAX_LENGTH,
   SOUNDBOARD_MAX_DURATION_MS,
   SOUNDBOARD_NAME_MAX_LENGTH,
@@ -36,6 +37,7 @@ import {
   TEXT_CHANNEL_DESCRIPTION_MAX_LENGTH,
   TEXT_CHANNEL_NAME_MAX_LENGTH,
   TIMEOUT_MAX_MINUTES,
+  type Channel,
   type LiveKitTokenResponse,
   parseParticipantMetadata,
   type HumanParticipantMetadata,
@@ -58,7 +60,6 @@ import {
   createUser,
   getUserById,
   getUserByUsername,
-  setUserTimeout,
   updateUserProfile,
   verifyPassword,
   type UserRecord,
@@ -87,12 +88,13 @@ import { addReaction, isValidReactionEmoji, removeReaction } from './reactions.j
 import { authorizeMusicCommand } from './musicCommands.js';
 import { fetchMusicThumbnail } from './musicThumbnails.js';
 import { authorizeVoiceDisconnect } from './voiceModeration.js';
-import { attachRealtime, broadcast, disconnectUser, sendToUser, sendToUsers } from './realtime.js';
+import { attachRealtime, broadcast, disconnectUser, sendToServerMembers, sendToUser, sendToUsers } from './realtime.js';
 import {
   createVoiceChannel,
   deleteVoiceChannel,
   getVoiceChannelById,
   getVoiceChannelByName,
+  listAllVoiceChannels,
   listVoiceChannels,
 } from './voiceChannels.js';
 import { createSoundboardSound, deleteSoundboardSound, getSoundboardSoundById, listSoundboardSounds } from './soundboard.js';
@@ -115,12 +117,22 @@ import {
   getUserHighestPosition,
   getUserPermissionBitfield,
   getUserRoleIds,
-  listMembers,
   listRoles,
   unassignRole,
   updateRole,
 } from './roles.js';
 import { authorizeModerationAction, banUser, isBanned, listBans, unbanUser } from './moderation.js';
+import { getDefaultServerId } from './db.js';
+import { createServer, getServerById, listServersForUser, updateServer } from './servers.js';
+import {
+  addServerMember,
+  getServerMember,
+  isServerMember,
+  listServerMembers,
+  removeServerMember,
+  setServerMemberTimeout,
+} from './serverMembers.js';
+import { getInviteByCode, getOrCreateServerInvite, regenerateServerInvite, redeemInvite } from './invites.js';
 import {
   getFriendshipBetween,
   listFriends,
@@ -321,6 +333,23 @@ const musicCommandSchema = z.object({
   textChannelId: z.string().min(1).max(32).optional(),
 });
 
+const serverCreateSchema = z.object({
+  name: z.string().trim().min(1).max(SERVER_NAME_MAX_LENGTH),
+  description: z.string().trim().max(SERVER_DESCRIPTION_MAX_LENGTH).default(''),
+});
+
+const serverUpdateSchema = z.object({
+  name: z.string().trim().min(1).max(SERVER_NAME_MAX_LENGTH).optional(),
+  description: z.string().trim().max(SERVER_DESCRIPTION_MAX_LENGTH).optional(),
+  iconDataUrl: z
+    .string()
+    .max(AVATAR_DATA_URL_MAX_LENGTH)
+    .refine((value) => value === '' || dataUrlPattern.test(value), 'Ícone inválido.')
+    .optional(),
+});
+
+const inviteCodeSchema = z.string().trim().min(1).max(32);
+
 const channelSchema = z.object({
   name: z
     .string()
@@ -373,6 +402,7 @@ const timeoutSchema = z.object({
 
 const banSchema = z.object({
   userId: z.string().min(1),
+  serverId: z.string().min(1),
   reason: z.string().trim().max(BAN_REASON_MAX_LENGTH).default(''),
 });
 
@@ -407,10 +437,29 @@ function currentUser(response: Response): UserRecord {
   return response.locals.user as UserRecord;
 }
 
-function requirePermission(flag: number) {
+// Precisa rodar DEPOIS de requireSession e ANTES de qualquer rota/middleware
+// que leia response.locals.serverId — resolve o :serverId da rota e garante
+// que o usuário autenticado é membro dele. 404, nunca 403: não revela a
+// existência de um servidor do qual a pessoa não faz parte.
+function requireServerMembership(request: Request, response: Response, next: NextFunction): void {
+  const serverId = request.params.serverId;
+  const user = currentUser(response);
+  if (typeof serverId !== 'string' || !isServerMember(serverId, user.id)) {
+    response.status(404).json({ error: 'Servidor não encontrado.' });
+    return;
+  }
+  response.locals.serverId = serverId;
+  next();
+}
+
+function currentServerId(response: Response): string {
+  return response.locals.serverId as string;
+}
+
+function requireServerPermission(flag: number) {
   return (_request: Request, response: Response, next: NextFunction): void => {
     const user = currentUser(response);
-    if (!hasPermission(getUserPermissionBitfield(user.id), flag)) {
+    if (!hasPermission(getUserPermissionBitfield(user.id, currentServerId(response)), flag)) {
       response.status(403).json({ error: 'Você não tem permissão para fazer isso.' });
       return;
     }
@@ -418,12 +467,17 @@ function requirePermission(flag: number) {
   };
 }
 
-function activeTimeoutRemainingMs(user: UserRecord): number {
-  return user.timeoutUntil && user.timeoutUntil > Date.now() ? user.timeoutUntil - Date.now() : 0;
+function activeTimeoutRemainingMs(timeoutUntil: number | null): number {
+  return timeoutUntil && timeoutUntil > Date.now() ? timeoutUntil - Date.now() : 0;
 }
 
-function rejectIfTimedOut(user: UserRecord, response: Response): boolean {
-  const remaining = activeTimeoutRemainingMs(user);
+// Timeout passou a ser por servidor (server_members.timeout_until, ver
+// serverMembers.ts) em vez de instância inteira — um timeout no servidor A
+// não impede mais mensagem/soundboard/voz no servidor B, nem DM (DM nunca
+// chama esta função — ver decisão em DISCORD_PARITY_PLAN.md).
+function rejectIfTimedOut(serverId: string, userId: string, response: Response): boolean {
+  const member = getServerMember(serverId, userId);
+  const remaining = activeTimeoutRemainingMs(member?.timeoutUntil ?? null);
   if (remaining <= 0) return false;
   const minutes = Math.ceil(remaining / 60_000);
   response.status(403).json({ error: `Você está em timeout por mais ${minutes} minuto(s).` });
@@ -433,9 +487,11 @@ function rejectIfTimedOut(user: UserRecord, response: Response): boolean {
 // Usado tanto pra "expulsar da voz" (KICK_MEMBERS) quanto pra forçar
 // desconexão ao aplicar ban/timeout — procura em qual canal de voz (se
 // algum) o usuário está agora, já que não guardamos esse estado localmente
-// (a fonte da verdade é sempre o LiveKit).
+// (a fonte da verdade é sempre o LiveKit). Ban é global (ver
+// DISCORD_PARITY_PLAN.md), então a varredura precisa cobrir TODOS os
+// servidores, não só um.
 async function findActiveRoomIdForUser(userId: string): Promise<string | null> {
-  for (const channel of listVoiceChannels()) {
+  for (const channel of listAllVoiceChannels()) {
     try {
       const participants = await roomService.listParticipants(channel.id);
       if (participants.some((participant) => participant.identity === userId)) return channel.id;
@@ -463,7 +519,9 @@ async function forceDisconnectFromVoice(userId: string): Promise<void> {
 async function refreshMusicBotTextMessage(textChannelId: string): Promise<void> {
   const existing = getMusicBotTextMessage(textChannelId);
   const voiceChannelId = existing?.musicCard?.voiceChannelId;
-  if (!existing || !voiceChannelId) return;
+  const textChannel = getTextChannelById(textChannelId);
+  if (!existing || !voiceChannelId || !textChannel) return;
+  const serverId = textChannel.serverId;
   try {
     const stateResponse = await fetch(
       `${config.MUSIC_BOT_INTERNAL_URL}/state?channelId=${encodeURIComponent(voiceChannelId)}`,
@@ -473,7 +531,7 @@ async function refreshMusicBotTextMessage(textChannelId: string): Promise<void> 
     const state = (await stateResponse.json()) as { nowPlaying?: unknown };
     if (!state.nowPlaying || typeof state.nowPlaying !== 'object') {
       if (deleteMusicBotTextMessage(textChannelId)) {
-        broadcast({ type: 'TEXT_MESSAGE_DELETE', channelId: textChannelId, messageId: existing.id });
+        sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_DELETE', serverId, channelId: textChannelId, messageId: existing.id });
       }
       return;
     }
@@ -482,7 +540,7 @@ async function refreshMusicBotTextMessage(textChannelId: string): Promise<void> 
       voiceChannelId,
     };
     const { message } = upsertMusicBotTextMessage(textChannelId, existing.text, nowPlaying);
-    broadcast({ type: 'TEXT_MESSAGE_UPSERT', channelId: textChannelId, message });
+    sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_UPSERT', serverId, channelId: textChannelId, message });
   } catch {
     // Worker reiniciando: preserva o último card e tenta de novo no próximo ciclo.
   }
@@ -498,10 +556,17 @@ function toUserSession(user: UserRecord): UserSession {
     pronouns: user.pronouns,
     avatarUrl: user.avatarDataUrl,
     bannerUrl: user.bannerDataUrl,
-    roleIds: getUserRoleIds(user.id),
-    permissions: getUserPermissionBitfield(user.id),
-    timeoutUntil: user.timeoutUntil,
   };
+}
+
+// Monta o Channel[] unificado de um servidor a partir das duas tabelas
+// físicas separadas (text_channels/voice_channels — ver DISCORD_PARITY_PLAN.md
+// sobre o risco de colisão de id ao fundi-las de verdade).
+function listChannelsForServer(serverId: string): Channel[] {
+  return [
+    ...listTextChannels(serverId).map((channel): Channel => ({ type: 'TEXT', ...channel })),
+    ...listVoiceChannels(serverId).map((channel): Channel => ({ type: 'VOICE', ...channel })),
+  ];
 }
 
 app.get('/api/health', (_request, response) => {
@@ -527,7 +592,14 @@ app.post('/api/auth/register', authLimiter, (request, response) => {
   }
 
   const user = createUser(username, body.data.password, body.data.accentColor);
-  assignDefaultRole(user.id);
+  // Criar uma conta com o INVITE_TOKEN global sempre junta a pessoa ao
+  // servidor mais antigo da instância automaticamente — exatamente como
+  // "criar uma conta" já significava "entrar no único servidor" antes de
+  // múltiplos servidores existirem. Servidores criados depois exigem
+  // convite próprio (ver POST /api/invites/:code/redeem).
+  const defaultServerId = getDefaultServerId();
+  addServerMember(defaultServerId, user.id);
+  assignDefaultRole(defaultServerId, user.id);
   const session = createSession(user.id, user.username);
   setSessionCookie(response, session);
   response.status(201).json({ user: toUserSession(user) });
@@ -621,9 +693,117 @@ app.get('/api/users/:id/profile', requireSession, (request, response) => {
 app.get('/api/config', requireSession, (_request, response) => {
   const payload: PublicConfig = {
     livekitUrl: config.LIVEKIT_PUBLIC_URL,
-    channels: listVoiceChannels(),
   };
   response.json(payload);
+});
+
+app.get('/api/servers', requireSession, (_request, response) => {
+  response.json({ servers: listServersForUser(currentUser(response).id) });
+});
+
+// Qualquer usuário autenticado pode criar um servidor, sem permissão
+// especial (igual Discord real) — quem cria vira dono e Administrador dele.
+app.post('/api/servers', requireSession, channelCreateLimiter, (request, response) => {
+  const body = serverCreateSchema.safeParse(request.body);
+  if (!body.success) {
+    response.status(400).json({ error: 'Informe um nome de servidor válido.' });
+    return;
+  }
+  const server = createServer(body.data.name, body.data.description, currentUser(response));
+  sendToServerMembers(server.id, { type: 'SERVER_CREATE', server });
+  response.status(201).json({ server });
+});
+
+app.patch(
+  '/api/servers/:serverId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_SERVER),
+  (request, response) => {
+    const body = serverUpdateSchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Servidor inválido — verifique nome, descrição e ícone.' });
+      return;
+    }
+    const result = updateServer(currentServerId(response), body.data);
+    if (!result.ok) {
+      response.status(404).json({ error: 'Servidor não encontrado.' });
+      return;
+    }
+    sendToServerMembers(result.server.id, { type: 'SERVER_UPDATE', server: result.server });
+    response.json({ server: result.server });
+  },
+);
+
+app.get('/api/servers/:serverId/channels', requireSession, requireServerMembership, (_request, response) => {
+  response.json({ channels: listChannelsForServer(currentServerId(response)) });
+});
+
+app.get(
+  '/api/servers/:serverId/members/me',
+  requireSession,
+  requireServerMembership,
+  (_request, response) => {
+    const member = getServerMember(currentServerId(response), currentUser(response).id);
+    if (!member) {
+      response.status(404).json({ error: 'Servidor não encontrado.' });
+      return;
+    }
+    response.json({ member });
+  },
+);
+
+app.delete('/api/servers/:serverId/members/me', requireSession, requireServerMembership, (_request, response) => {
+  removeServerMember(currentServerId(response), currentUser(response).id);
+  sendToServerMembers(currentServerId(response), { type: 'MEMBER_LEAVE', serverId: currentServerId(response), userId: currentUser(response).id });
+  response.status(204).end();
+});
+
+app.post(
+  '/api/servers/:serverId/invite',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_SERVER),
+  (_request, response) => {
+    const invite = getOrCreateServerInvite(currentServerId(response), currentUser(response).id);
+    response.json({ invite });
+  },
+);
+
+app.post(
+  '/api/servers/:serverId/invite/regenerate',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_SERVER),
+  (_request, response) => {
+    const invite = regenerateServerInvite(currentServerId(response), currentUser(response).id);
+    response.json({ invite });
+  },
+);
+
+app.post('/api/invites/:code/redeem', requireSession, dmChannelLimiter, (request, response) => {
+  const code = inviteCodeSchema.safeParse(request.params.code);
+  if (!code.success) {
+    response.status(404).json({ error: 'Convite não encontrado.' });
+    return;
+  }
+  const user = currentUser(response);
+  const result = redeemInvite(code.data, user.id);
+  if (!result.ok) {
+    response.status(404).json({ error: 'Convite não encontrado.' });
+    return;
+  }
+  const server = getServerById(result.serverId);
+  if (!server) {
+    response.status(404).json({ error: 'Convite não encontrado.' });
+    return;
+  }
+  if (!result.alreadyMember) {
+    const member = listServerMembers(server.id).find((candidate) => candidate.id === user.id);
+    if (member) sendToServerMembers(server.id, { type: 'MEMBER_JOIN', serverId: server.id, member });
+    sendToUser(user.id, { type: 'SERVER_CREATE', server });
+  }
+  response.status(result.alreadyMember ? 200 : 201).json({ server });
 });
 
 app.get('/api/music/thumbnail', requireSession, async (request, response) => {
@@ -640,54 +820,72 @@ app.get('/api/music/thumbnail', requireSession, async (request, response) => {
   }
 });
 
-app.get('/api/text-channels', requireSession, (_request, response) => {
-  response.json({ channels: listTextChannels() });
-});
-
-app.post('/api/text-channels', requireSession, requirePermission(Permission.MANAGE_CHANNELS), channelCreateLimiter, (request, response) => {
-  const body = channelSchema.safeParse(request.body);
-  if (!body.success) {
-    response.status(400).json({ error: 'Informe um nome de canal válido.' });
-    return;
-  }
-
-  const name = body.data.name.replace(/\s+/g, ' ');
-  if (getTextChannelByName(name)) {
-    response.status(409).json({ error: 'Já existe um canal com esse nome.' });
-    return;
-  }
-  if (listTextChannels().length >= 50) {
-    response.status(409).json({ error: 'O servidor atingiu o limite de 50 canais de texto.' });
-    return;
-  }
-
-  const channel = createTextChannel(
-    name,
-    body.data.description || `Canal #${name}`,
-    currentUser(response).id,
-  );
-  broadcast({ type: 'TEXT_CHANNEL_CREATE', channel });
-  response.status(201).json({ channel });
-});
-
-app.get('/api/text-channels/:channelId/messages', requireSession, async (request, response) => {
-  const channelId = request.params.channelId;
-  if (typeof channelId !== 'string' || !getTextChannelById(channelId)) {
-    response.status(404).json({ error: 'Canal de texto não encontrado.' });
-    return;
-  }
-  await refreshMusicBotTextMessage(channelId);
-  response.json({ messages: listTextMessages(channelId) });
+app.get('/api/servers/:serverId/text-channels', requireSession, requireServerMembership, (_request, response) => {
+  response.json({ channels: listTextChannels(currentServerId(response)) });
 });
 
 app.post(
-  '/api/text-channels/:channelId/messages',
+  '/api/servers/:serverId/text-channels',
   requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_CHANNELS),
+  channelCreateLimiter,
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const body = channelSchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Informe um nome de canal válido.' });
+      return;
+    }
+
+    const name = body.data.name.replace(/\s+/g, ' ');
+    if (getTextChannelByName(serverId, name)) {
+      response.status(409).json({ error: 'Já existe um canal com esse nome.' });
+      return;
+    }
+    if (listTextChannels(serverId).length >= 50) {
+      response.status(409).json({ error: 'O servidor atingiu o limite de 50 canais de texto.' });
+      return;
+    }
+
+    const channel = createTextChannel(
+      serverId,
+      name,
+      body.data.description || `Canal #${name}`,
+      currentUser(response).id,
+    );
+    sendToServerMembers(serverId, { type: 'TEXT_CHANNEL_CREATE', serverId, channel });
+    response.status(201).json({ channel });
+  },
+);
+
+app.get(
+  '/api/servers/:serverId/text-channels/:channelId/messages',
+  requireSession,
+  requireServerMembership,
+  async (request, response) => {
+    const channelId = request.params.channelId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== currentServerId(response)) {
+      response.status(404).json({ error: 'Canal de texto não encontrado.' });
+      return;
+    }
+    await refreshMusicBotTextMessage(channelId as string);
+    response.json({ messages: listTextMessages(channelId as string) });
+  },
+);
+
+app.post(
+  '/api/servers/:serverId/text-channels/:channelId/messages',
+  requireSession,
+  requireServerMembership,
   textMessageLimiter,
   (request, response) => {
+    const serverId = currentServerId(response);
     const channelId = request.params.channelId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
     const body = textMessageSchema.safeParse(request.body);
-    if (typeof channelId !== 'string' || !getTextChannelById(channelId)) {
+    if (!channel || channel.serverId !== serverId) {
       response.status(404).json({ error: 'Canal de texto não encontrado.' });
       return;
     }
@@ -695,33 +893,36 @@ app.post(
       response.status(400).json({ error: 'Envie um texto (até 500 caracteres) ou pelo menos um anexo.' });
       return;
     }
-    if (body.data.replyToMessageId && !getTextMessageById(channelId, body.data.replyToMessageId)) {
+    if (body.data.replyToMessageId && !getTextMessageById(channelId as string, body.data.replyToMessageId)) {
       response.status(404).json({ error: 'Mensagem original não encontrada.' });
       return;
     }
-    if (rejectIfTimedOut(currentUser(response), response)) return;
+    if (rejectIfTimedOut(serverId, currentUser(response).id, response)) return;
 
     const message = createTextMessage(
-      channelId,
+      channelId as string,
       body.data.text,
       currentUser(response),
       body.data.replyToMessageId,
       body.data.attachmentIds,
     );
-    broadcast({ type: 'TEXT_MESSAGE_CREATE', channelId, message });
+    sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_CREATE', serverId, channelId: channelId as string, message });
     response.status(201).json({ message });
   },
 );
 
 app.patch(
-  '/api/text-channels/:channelId/messages/:messageId',
+  '/api/servers/:serverId/text-channels/:channelId/messages/:messageId',
   requireSession,
+  requireServerMembership,
   textMessageLimiter,
   (request, response) => {
+    const serverId = currentServerId(response);
     const channelId = request.params.channelId;
     const messageId = request.params.messageId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
     const body = textMessageSchema.safeParse(request.body);
-    if (typeof channelId !== 'string' || typeof messageId !== 'string' || !getTextChannelById(channelId)) {
+    if (!channel || channel.serverId !== serverId || typeof messageId !== 'string') {
       response.status(404).json({ error: 'Canal de texto não encontrado.' });
       return;
     }
@@ -730,7 +931,7 @@ app.patch(
       return;
     }
 
-    const result = editTextMessage(channelId, messageId, body.data.text, currentUser(response).id);
+    const result = editTextMessage(channelId as string, messageId, body.data.text, currentUser(response).id);
     if (!result.ok) {
       if (result.reason === 'FORBIDDEN') {
         response.status(403).json({ error: 'Você só pode editar suas próprias mensagens.' });
@@ -739,67 +940,86 @@ app.patch(
       }
       return;
     }
-    broadcast({ type: 'TEXT_MESSAGE_UPSERT', channelId, message: result.message });
+    sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_UPSERT', serverId, channelId: channelId as string, message: result.message });
     response.json({ message: result.message });
   },
 );
 
-app.delete('/api/text-channels/:channelId/messages/:messageId', requireSession, async (request, response) => {
-  const channelId = request.params.channelId;
-  const messageId = request.params.messageId;
-  if (typeof channelId !== 'string' || typeof messageId !== 'string' || !getTextChannelById(channelId)) {
-    response.status(404).json({ error: 'Canal de texto não encontrado.' });
-    return;
-  }
-
-  const user = currentUser(response);
-  const canManageMessages = hasPermission(getUserPermissionBitfield(user.id), Permission.MANAGE_MESSAGES);
-  // Captura os anexos ANTES de apagar — o ON DELETE CASCADE já limpa as
-  // linhas de message_attachments junto com a mensagem, então depois não
-  // haveria mais como saber quais objetos existiam no MinIO pra remover.
-  const attachments = getAttachmentRecordsForMessage(messageId);
-  const result = deleteTextMessage(channelId, messageId, user.id, canManageMessages);
-  if (!result.ok) {
-    if (result.reason === 'FORBIDDEN') {
-      response.status(403).json({ error: 'Você só pode apagar suas próprias mensagens.' });
-    } else {
-      response.status(404).json({ error: 'Mensagem não encontrada.' });
+app.delete(
+  '/api/servers/:serverId/text-channels/:channelId/messages/:messageId',
+  requireSession,
+  requireServerMembership,
+  async (request, response) => {
+    const serverId = currentServerId(response);
+    const channelId = request.params.channelId;
+    const messageId = request.params.messageId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== serverId || typeof messageId !== 'string') {
+      response.status(404).json({ error: 'Canal de texto não encontrado.' });
+      return;
     }
-    return;
-  }
-  await Promise.all(
-    attachments.map((attachment) =>
-      deleteAttachmentObject(attachment.objectKey).catch((error) => {
-        console.error(`Falha ao remover objeto de anexo ${attachment.objectKey} do MinIO:`, error);
-      }),
-    ),
-  );
-  broadcast({ type: 'TEXT_MESSAGE_DELETE', channelId, messageId });
-  response.status(204).end();
-});
 
-app.get('/api/text-channels/:channelId/messages/pins', requireSession, (request, response) => {
-  const channelId = request.params.channelId;
-  if (typeof channelId !== 'string' || !getTextChannelById(channelId)) {
-    response.status(404).json({ error: 'Canal de texto não encontrado.' });
-    return;
-  }
-  response.json({ messages: listPinnedMessages(channelId) });
-});
+    const user = currentUser(response);
+    const canManageMessages = hasPermission(getUserPermissionBitfield(user.id, serverId), Permission.MANAGE_MESSAGES);
+    // Captura os anexos ANTES de apagar — o ON DELETE CASCADE já limpa as
+    // linhas de message_attachments junto com a mensagem, então depois não
+    // haveria mais como saber quais objetos existiam no MinIO pra remover.
+    const attachments = getAttachmentRecordsForMessage(messageId);
+    const result = deleteTextMessage(channelId as string, messageId, user.id, canManageMessages);
+    if (!result.ok) {
+      if (result.reason === 'FORBIDDEN') {
+        response.status(403).json({ error: 'Você só pode apagar suas próprias mensagens.' });
+      } else {
+        response.status(404).json({ error: 'Mensagem não encontrada.' });
+      }
+      return;
+    }
+    await Promise.all(
+      attachments.map((attachment) =>
+        deleteAttachmentObject(attachment.objectKey).catch((error) => {
+          console.error(`Falha ao remover objeto de anexo ${attachment.objectKey} do MinIO:`, error);
+        }),
+      ),
+    );
+    sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_DELETE', serverId, channelId: channelId as string, messageId });
+    response.status(204).end();
+  },
+);
 
-app.get('/api/text-channels/:channelId/messages/search', requireSession, (request, response) => {
-  const channelId = request.params.channelId;
-  if (typeof channelId !== 'string' || !getTextChannelById(channelId)) {
-    response.status(404).json({ error: 'Canal de texto não encontrado.' });
-    return;
-  }
-  const query = messageSearchQuerySchema.safeParse(request.query.q);
-  if (!query.success) {
-    response.status(400).json({ error: `Digite pelo menos ${MESSAGE_SEARCH_QUERY_MIN_LENGTH} caracteres pra buscar.` });
-    return;
-  }
-  response.json({ messages: searchTextMessages(channelId, query.data, MESSAGE_SEARCH_RESULTS_LIMIT) });
-});
+app.get(
+  '/api/servers/:serverId/text-channels/:channelId/messages/pins',
+  requireSession,
+  requireServerMembership,
+  (request, response) => {
+    const channelId = request.params.channelId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== currentServerId(response)) {
+      response.status(404).json({ error: 'Canal de texto não encontrado.' });
+      return;
+    }
+    response.json({ messages: listPinnedMessages(channelId as string) });
+  },
+);
+
+app.get(
+  '/api/servers/:serverId/text-channels/:channelId/messages/search',
+  requireSession,
+  requireServerMembership,
+  (request, response) => {
+    const channelId = request.params.channelId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== currentServerId(response)) {
+      response.status(404).json({ error: 'Canal de texto não encontrado.' });
+      return;
+    }
+    const query = messageSearchQuerySchema.safeParse(request.query.q);
+    if (!query.success) {
+      response.status(400).json({ error: `Digite pelo menos ${MESSAGE_SEARCH_QUERY_MIN_LENGTH} caracteres pra buscar.` });
+      return;
+    }
+    response.json({ messages: searchTextMessages(channelId as string, query.data, MESSAGE_SEARCH_RESULTS_LIMIT) });
+  },
+);
 
 // Upload em duas etapas (igual o fluxo real do Discord): o arquivo sobe
 // pra cá primeiro e fica "pendente" (message_id NULL, ver attachments.ts),
@@ -808,18 +1028,21 @@ app.get('/api/text-channels/:channelId/messages/search', requireSession, (reques
 // com attachmentIds) é que o anexo é vinculado. Uploads nunca vinculados são
 // varridos periodicamente (ver setInterval mais abaixo).
 app.post(
-  '/api/text-channels/:channelId/attachments',
+  '/api/servers/:serverId/text-channels/:channelId/attachments',
   requireSession,
+  requireServerMembership,
   uploadLimiter,
   handleAttachmentUpload,
   async (request, response) => {
+    const serverId = currentServerId(response);
     const channelId = request.params.channelId;
-    if (typeof channelId !== 'string' || !getTextChannelById(channelId)) {
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== serverId) {
       response.status(404).json({ error: 'Canal de texto não encontrado.' });
       return;
     }
     const user = currentUser(response);
-    if (rejectIfTimedOut(user, response)) return;
+    if (rejectIfTimedOut(serverId, user.id, response)) return;
     if (!request.file) {
       response.status(400).json({ error: 'Nenhum arquivo enviado.' });
       return;
@@ -837,7 +1060,7 @@ app.post(
     }
 
     const attachment = createPendingAttachment({
-      channelId,
+      channelId: channelId as string,
       objectKey,
       filename,
       contentType,
@@ -861,18 +1084,27 @@ function buildContentDisposition(disposition: 'inline' | 'attachment', filename:
   return `${disposition}; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
-// Serve tanto anexos já vinculados a uma mensagem (qualquer autenticado pode
-// ver, igual o resto do chat) quanto o próprio upload pendente de quem
-// acabou de enviar (pré-visualização antes de mandar a mensagem). Decide
-// inline vs. download forçado no servidor, nunca confiando no que o cliente
-// pediu — é essa política que evita servir um arquivo malicioso disfarçado
-// de imagem como HTML/SVG a partir da nossa própria origem (ver
-// ATTACHMENT_INLINE_IMAGE_TYPES no pacote compartilhado).
+// Serve tanto anexos já vinculados a uma mensagem quanto o próprio upload
+// pendente de quem acabou de enviar (pré-visualização antes de mandar a
+// mensagem). Decide inline vs. download forçado no servidor, nunca confiando
+// no que o cliente pediu — é essa política que evita servir um arquivo
+// malicioso disfarçado de imagem como HTML/SVG a partir da nossa própria
+// origem (ver ATTACHMENT_INLINE_IMAGE_TYPES no pacote compartilhado). Rota
+// não aninhada em /api/servers/:serverId (o id do anexo já é globalmente
+// único) mas ainda assim exige que o requisitante seja membro do servidor
+// dono do canal do anexo — sem isso, qualquer autenticado na instância
+// poderia ver anexos de um servidor do qual não faz parte.
 app.get('/api/attachments/:attachmentId/:filename', requireSession, async (request, response) => {
   const attachmentId = request.params.attachmentId;
   const attachment = typeof attachmentId === 'string' ? getAttachmentRecordById(attachmentId) : undefined;
   const user = currentUser(response);
-  if (!attachment || (attachment.messageId === null && attachment.uploadedBy !== user.id)) {
+  const channel = attachment ? getTextChannelById(attachment.channelId) : undefined;
+  if (
+    !attachment ||
+    !channel ||
+    !isServerMember(channel.serverId, user.id) ||
+    (attachment.messageId === null && attachment.uploadedBy !== user.id)
+  ) {
     response.status(404).json({ error: 'Anexo não encontrado.' });
     return;
   }
@@ -897,18 +1129,21 @@ app.get('/api/attachments/:attachmentId/:filename', requireSession, async (reque
 });
 
 app.post(
-  '/api/text-channels/:channelId/messages/:messageId/pin',
+  '/api/servers/:serverId/text-channels/:channelId/messages/:messageId/pin',
   requireSession,
-  requirePermission(Permission.MANAGE_MESSAGES),
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_MESSAGES),
   textMessageLimiter,
   (request, response) => {
+    const serverId = currentServerId(response);
     const channelId = request.params.channelId;
     const messageId = request.params.messageId;
-    if (typeof channelId !== 'string' || typeof messageId !== 'string' || !getTextChannelById(channelId)) {
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== serverId || typeof messageId !== 'string') {
       response.status(404).json({ error: 'Canal de texto não encontrado.' });
       return;
     }
-    const result = pinTextMessage(channelId, messageId, currentUser(response).id);
+    const result = pinTextMessage(channelId as string, messageId, currentUser(response).id);
     if (!result.ok) {
       if (result.reason === 'ALREADY_PINNED') {
         response.status(409).json({ error: 'Essa mensagem já está fixada.' });
@@ -919,46 +1154,52 @@ app.post(
       }
       return;
     }
-    broadcast({ type: 'TEXT_MESSAGE_UPSERT', channelId, message: result.message });
+    sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_UPSERT', serverId, channelId: channelId as string, message: result.message });
     response.json({ message: result.message });
   },
 );
 
 app.delete(
-  '/api/text-channels/:channelId/messages/:messageId/pin',
+  '/api/servers/:serverId/text-channels/:channelId/messages/:messageId/pin',
   requireSession,
-  requirePermission(Permission.MANAGE_MESSAGES),
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_MESSAGES),
   textMessageLimiter,
   (request, response) => {
+    const serverId = currentServerId(response);
     const channelId = request.params.channelId;
     const messageId = request.params.messageId;
-    if (typeof channelId !== 'string' || typeof messageId !== 'string' || !getTextChannelById(channelId)) {
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== serverId || typeof messageId !== 'string') {
       response.status(404).json({ error: 'Canal de texto não encontrado.' });
       return;
     }
-    const result = unpinTextMessage(channelId, messageId);
+    const result = unpinTextMessage(channelId as string, messageId);
     if (!result.ok) {
       response.status(404).json({ error: 'Essa mensagem não está fixada.' });
       return;
     }
-    broadcast({ type: 'TEXT_MESSAGE_UPSERT', channelId, message: result.message });
+    sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_UPSERT', serverId, channelId: channelId as string, message: result.message });
     response.status(204).end();
   },
 );
 
 app.post(
-  '/api/text-channels/:channelId/messages/:messageId/reactions',
+  '/api/servers/:serverId/text-channels/:channelId/messages/:messageId/reactions',
   requireSession,
+  requireServerMembership,
   reactionLimiter,
   (request, response) => {
+    const serverId = currentServerId(response);
     const channelId = request.params.channelId;
     const messageId = request.params.messageId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
     const body = reactionSchema.safeParse(request.body);
     if (
-      typeof channelId !== 'string' ||
+      !channel ||
+      channel.serverId !== serverId ||
       typeof messageId !== 'string' ||
-      !getTextChannelById(channelId) ||
-      !getTextMessageById(channelId, messageId)
+      !getTextMessageById(channelId as string, messageId)
     ) {
       response.status(404).json({ error: 'Mensagem não encontrada.' });
       return;
@@ -967,28 +1208,31 @@ app.post(
       response.status(400).json({ error: 'Emoji não suportado.' });
       return;
     }
-    if (rejectIfTimedOut(currentUser(response), response)) return;
+    if (rejectIfTimedOut(serverId, currentUser(response).id, response)) return;
 
     const userId = currentUser(response).id;
     addReaction(messageId, body.data.emoji, userId);
-    broadcast({ type: 'TEXT_MESSAGE_REACTION_ADD', channelId, messageId, emoji: body.data.emoji, userId });
+    sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_REACTION_ADD', serverId, channelId: channelId as string, messageId, emoji: body.data.emoji, userId });
     response.status(204).end();
   },
 );
 
 app.delete(
-  '/api/text-channels/:channelId/messages/:messageId/reactions/:emoji',
+  '/api/servers/:serverId/text-channels/:channelId/messages/:messageId/reactions/:emoji',
   requireSession,
+  requireServerMembership,
   reactionLimiter,
   (request, response) => {
+    const serverId = currentServerId(response);
     const channelId = request.params.channelId;
     const messageId = request.params.messageId;
     const emoji = request.params.emoji;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
     if (
-      typeof channelId !== 'string' ||
+      !channel ||
+      channel.serverId !== serverId ||
       typeof messageId !== 'string' ||
-      !getTextChannelById(channelId) ||
-      !getTextMessageById(channelId, messageId) ||
+      !getTextMessageById(channelId as string, messageId) ||
       !isValidReactionEmoji(emoji)
     ) {
       response.status(404).json({ error: 'Mensagem ou reação não encontrada.' });
@@ -997,7 +1241,7 @@ app.delete(
 
     const userId = currentUser(response).id;
     removeReaction(messageId, emoji, userId);
-    broadcast({ type: 'TEXT_MESSAGE_REACTION_REMOVE', channelId, messageId, emoji, userId });
+    sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_REACTION_REMOVE', serverId, channelId: channelId as string, messageId, emoji, userId });
     response.status(204).end();
   },
 );
@@ -1024,8 +1268,9 @@ async function computeRoomSummary(channel: VoiceChannel): Promise<RoomSummary> {
   };
 }
 
-app.get('/api/rooms', requireSession, async (_request, response) => {
-  const channels = listVoiceChannels();
+app.get('/api/servers/:serverId/rooms', requireSession, requireServerMembership, async (_request, response) => {
+  const serverId = currentServerId(response);
+  const channels = listVoiceChannels(serverId);
   try {
     const activeRoomNames = new Set(
       (await roomService.listRooms(channels.map((channel) => channel.id))).map(
@@ -1049,225 +1294,277 @@ app.get('/api/rooms', requireSession, async (_request, response) => {
   }
 });
 
-app.post('/api/voice-channels', requireSession, requirePermission(Permission.MANAGE_CHANNELS), channelCreateLimiter, (request, response) => {
-  const body = channelSchema.safeParse(request.body);
-  if (!body.success) {
-    response.status(400).json({ error: 'Informe um nome de canal válido.' });
-    return;
-  }
+app.post(
+  '/api/servers/:serverId/voice-channels',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_CHANNELS),
+  channelCreateLimiter,
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const body = channelSchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Informe um nome de canal válido.' });
+      return;
+    }
 
-  const name = body.data.name.replace(/\s+/g, ' ');
-  if (getVoiceChannelByName(name)) {
-    response.status(409).json({ error: 'Já existe um canal de voz com esse nome.' });
-    return;
-  }
-  if (listVoiceChannels().length >= 50) {
-    response.status(409).json({ error: 'O servidor atingiu o limite de 50 canais de voz.' });
-    return;
-  }
+    const name = body.data.name.replace(/\s+/g, ' ');
+    if (getVoiceChannelByName(serverId, name)) {
+      response.status(409).json({ error: 'Já existe um canal de voz com esse nome.' });
+      return;
+    }
+    if (listVoiceChannels(serverId).length >= 50) {
+      response.status(409).json({ error: 'O servidor atingiu o limite de 50 canais de voz.' });
+      return;
+    }
 
-  const channel = createVoiceChannel(name, body.data.description || `Canal #${name}`, currentUser(response).id);
-  broadcast({ type: 'VOICE_CHANNEL_CREATE', channel });
-  response.status(201).json({ channel });
+    const channel = createVoiceChannel(serverId, name, body.data.description || `Canal #${name}`, currentUser(response).id);
+    sendToServerMembers(serverId, { type: 'VOICE_CHANNEL_CREATE', serverId, channel });
+    response.status(201).json({ channel });
+  },
+);
+
+app.delete(
+  '/api/servers/:serverId/voice-channels/:channelId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_CHANNELS),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const channelId = request.params.channelId;
+    const channel = typeof channelId === 'string' ? getVoiceChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== serverId) {
+      response.status(404).json({ error: 'Canal de voz não encontrado.' });
+      return;
+    }
+    if (listVoiceChannels(serverId).length <= 1) {
+      response.status(409).json({ error: 'O servidor precisa de pelo menos um canal de voz.' });
+      return;
+    }
+    deleteVoiceChannel(channelId as string);
+    sendToServerMembers(serverId, { type: 'VOICE_CHANNEL_DELETE', serverId, channelId: channelId as string });
+    response.status(204).end();
+  },
+);
+
+app.get('/api/servers/:serverId/soundboard', requireSession, requireServerMembership, (_request, response) => {
+  response.json({ sounds: listSoundboardSounds(currentServerId(response)) });
 });
 
-app.delete('/api/voice-channels/:channelId', requireSession, requirePermission(Permission.MANAGE_CHANNELS), (request, response) => {
-  const channelId = request.params.channelId;
-  if (typeof channelId !== 'string' || !getVoiceChannelById(channelId)) {
-    response.status(404).json({ error: 'Canal de voz não encontrado.' });
-    return;
-  }
-  if (listVoiceChannels().length <= 1) {
-    response.status(409).json({ error: 'O servidor precisa de pelo menos um canal de voz.' });
-    return;
-  }
-  deleteVoiceChannel(channelId);
-  broadcast({ type: 'VOICE_CHANNEL_DELETE', channelId });
-  response.status(204).end();
-});
+app.post(
+  '/api/servers/:serverId/soundboard',
+  requireSession,
+  requireServerMembership,
+  channelCreateLimiter,
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const body = soundboardSoundSchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Som inválido — verifique nome, emoji e duração (máx. 5,5s).' });
+      return;
+    }
+    if (listSoundboardSounds(serverId).length >= 100) {
+      response.status(409).json({ error: 'O servidor atingiu o limite de 100 sons no soundboard.' });
+      return;
+    }
+    if (rejectIfTimedOut(serverId, currentUser(response).id, response)) return;
 
-app.get('/api/soundboard', requireSession, (_request, response) => {
-  response.json({ sounds: listSoundboardSounds() });
-});
+    const sound = createSoundboardSound(
+      serverId,
+      body.data.name,
+      body.data.emoji,
+      body.data.audioDataUrl,
+      body.data.durationMs,
+      currentUser(response),
+    );
+    sendToServerMembers(serverId, { type: 'SOUNDBOARD_SOUND_CREATE', serverId, sound });
+    response.status(201).json({ sound });
+  },
+);
 
-app.post('/api/soundboard', requireSession, channelCreateLimiter, (request, response) => {
-  const body = soundboardSoundSchema.safeParse(request.body);
-  if (!body.success) {
-    response.status(400).json({ error: 'Som inválido — verifique nome, emoji e duração (máx. 5,5s).' });
-    return;
-  }
-  if (listSoundboardSounds().length >= 100) {
-    response.status(409).json({ error: 'O servidor atingiu o limite de 100 sons no soundboard.' });
-    return;
-  }
-  if (rejectIfTimedOut(currentUser(response), response)) return;
-
-  const sound = createSoundboardSound(
-    body.data.name,
-    body.data.emoji,
-    body.data.audioDataUrl,
-    body.data.durationMs,
-    currentUser(response),
-  );
-  broadcast({ type: 'SOUNDBOARD_SOUND_CREATE', sound });
-  response.status(201).json({ sound });
-});
-
-app.delete('/api/soundboard/:soundId', requireSession, (request, response) => {
+app.delete('/api/servers/:serverId/soundboard/:soundId', requireSession, requireServerMembership, (request, response) => {
+  const serverId = currentServerId(response);
   const soundId = request.params.soundId;
   if (typeof soundId !== 'string' || !getSoundboardSoundById(soundId)) {
     response.status(404).json({ error: 'Som não encontrado.' });
     return;
   }
   const user = currentUser(response);
-  const canManageSoundboard = hasPermission(getUserPermissionBitfield(user.id), Permission.MANAGE_SOUNDBOARD);
+  const canManageSoundboard = hasPermission(getUserPermissionBitfield(user.id, serverId), Permission.MANAGE_SOUNDBOARD);
   if (!deleteSoundboardSound(soundId, user.id, canManageSoundboard)) {
     response.status(403).json({ error: 'Você só pode apagar sons que você mesmo enviou.' });
     return;
   }
-  broadcast({ type: 'SOUNDBOARD_SOUND_DELETE', soundId });
+  sendToServerMembers(serverId, { type: 'SOUNDBOARD_SOUND_DELETE', serverId, soundId });
   response.status(204).end();
 });
 
-app.get('/api/roles', requireSession, (_request, response) => {
-  response.json({ roles: listRoles() });
+app.get('/api/servers/:serverId/roles', requireSession, requireServerMembership, (_request, response) => {
+  response.json({ roles: listRoles(currentServerId(response)) });
 });
 
-app.post('/api/roles', requireSession, requirePermission(Permission.MANAGE_ROLES), roleLimiter, (request, response) => {
-  const body = roleCreateSchema.safeParse(request.body);
-  if (!body.success) {
-    response.status(400).json({ error: 'Cargo inválido — verifique nome, cor e permissões.' });
-    return;
-  }
-  const requesterPosition = getUserHighestPosition(currentUser(response).id);
-  if (requesterPosition <= 0) {
-    response.status(403).json({ error: 'Você precisa de um cargo com posição maior que @everyone para criar cargos.' });
-    return;
-  }
-  if (getRoleByName(body.data.name)) {
-    response.status(409).json({ error: 'Já existe um cargo com esse nome.' });
-    return;
-  }
-  // Todo cargo novo nasce logo abaixo do cargo mais alto de quem criou —
-  // sem UI de reordenar posições (fora de escopo, ver DISCORD_PARITY_PLAN.md),
-  // isso garante que quem criou sempre consiga editar/apagar o que criou.
-  const position = requesterPosition - 1;
-  const role = createRole(body.data.name, body.data.color, body.data.permissions, position, body.data.hoist);
-  broadcast({ type: 'ROLE_CREATE', role });
-  response.status(201).json({ role });
-});
-
-app.patch('/api/roles/:roleId', requireSession, requirePermission(Permission.MANAGE_ROLES), roleLimiter, (request, response) => {
-  const roleId = request.params.roleId;
-  const existing = typeof roleId === 'string' ? getRoleById(roleId) : undefined;
-  if (!existing) {
-    response.status(404).json({ error: 'Cargo não encontrado.' });
-    return;
-  }
-  const requesterPosition = getUserHighestPosition(currentUser(response).id);
-  if (existing.position >= requesterPosition) {
-    response.status(403).json({ error: 'Você só pode editar cargos com posição menor que a sua.' });
-    return;
-  }
-  const body = roleUpdateSchema.safeParse(request.body);
-  if (!body.success) {
-    response.status(400).json({ error: 'Cargo inválido — verifique nome, cor e permissões.' });
-    return;
-  }
-  if (body.data.name) {
-    const duplicate = getRoleByName(body.data.name);
-    if (duplicate && duplicate.id !== existing.id) {
+app.post(
+  '/api/servers/:serverId/roles',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_ROLES),
+  roleLimiter,
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const body = roleCreateSchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Cargo inválido — verifique nome, cor e permissões.' });
+      return;
+    }
+    const requesterPosition = getUserHighestPosition(currentUser(response).id, serverId);
+    if (requesterPosition <= 0) {
+      response.status(403).json({ error: 'Você precisa de um cargo com posição maior que @everyone para criar cargos.' });
+      return;
+    }
+    if (getRoleByName(serverId, body.data.name)) {
       response.status(409).json({ error: 'Já existe um cargo com esse nome.' });
       return;
     }
-  }
-  const result = updateRole(roleId as string, body.data);
-  if (!result.ok) {
-    response.status(404).json({ error: 'Cargo não encontrado.' });
-    return;
-  }
-  broadcast({ type: 'ROLE_UPDATE', role: result.role });
-  response.json({ role: result.role });
-});
+    // Todo cargo novo nasce logo abaixo do cargo mais alto de quem criou —
+    // sem UI de reordenar posições (fora de escopo, ver DISCORD_PARITY_PLAN.md),
+    // isso garante que quem criou sempre consiga editar/apagar o que criou.
+    const position = requesterPosition - 1;
+    const role = createRole(serverId, body.data.name, body.data.color, body.data.permissions, position, body.data.hoist);
+    sendToServerMembers(serverId, { type: 'ROLE_CREATE', serverId, role });
+    response.status(201).json({ role });
+  },
+);
 
-app.delete('/api/roles/:roleId', requireSession, requirePermission(Permission.MANAGE_ROLES), (request, response) => {
-  const roleId = request.params.roleId;
-  const existing = typeof roleId === 'string' ? getRoleById(roleId) : undefined;
-  if (!existing) {
-    response.status(404).json({ error: 'Cargo não encontrado.' });
-    return;
-  }
-  const requesterPosition = getUserHighestPosition(currentUser(response).id);
-  if (existing.position >= requesterPosition) {
-    response.status(403).json({ error: 'Você só pode apagar cargos com posição menor que a sua.' });
-    return;
-  }
-  const result = deleteRole(roleId as string);
-  if (!result.ok) {
-    if (result.reason === 'IMMUTABLE') {
-      response.status(400).json({ error: 'O cargo @everyone não pode ser apagado.' });
-    } else {
-      response.status(404).json({ error: 'Cargo não encontrado.' });
-    }
-    return;
-  }
-  broadcast({ type: 'ROLE_DELETE', roleId: roleId as string });
-  response.status(204).end();
-});
-
-app.put(
-  '/api/roles/:roleId/members/:userId',
+app.patch(
+  '/api/servers/:serverId/roles/:roleId',
   requireSession,
-  requirePermission(Permission.MANAGE_ROLES),
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_ROLES),
   roleLimiter,
   (request, response) => {
+    const serverId = currentServerId(response);
+    const roleId = request.params.roleId;
+    const existing = typeof roleId === 'string' ? getRoleById(roleId) : undefined;
+    if (!existing || existing.serverId !== serverId) {
+      response.status(404).json({ error: 'Cargo não encontrado.' });
+      return;
+    }
+    const requesterPosition = getUserHighestPosition(currentUser(response).id, serverId);
+    if (existing.position >= requesterPosition) {
+      response.status(403).json({ error: 'Você só pode editar cargos com posição menor que a sua.' });
+      return;
+    }
+    const body = roleUpdateSchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Cargo inválido — verifique nome, cor e permissões.' });
+      return;
+    }
+    if (body.data.name) {
+      const duplicate = getRoleByName(serverId, body.data.name);
+      if (duplicate && duplicate.id !== existing.id) {
+        response.status(409).json({ error: 'Já existe um cargo com esse nome.' });
+        return;
+      }
+    }
+    const result = updateRole(roleId as string, body.data);
+    if (!result.ok) {
+      response.status(404).json({ error: 'Cargo não encontrado.' });
+      return;
+    }
+    sendToServerMembers(serverId, { type: 'ROLE_UPDATE', serverId, role: result.role });
+    response.json({ role: result.role });
+  },
+);
+
+app.delete(
+  '/api/servers/:serverId/roles/:roleId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_ROLES),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const roleId = request.params.roleId;
+    const existing = typeof roleId === 'string' ? getRoleById(roleId) : undefined;
+    if (!existing || existing.serverId !== serverId) {
+      response.status(404).json({ error: 'Cargo não encontrado.' });
+      return;
+    }
+    const requesterPosition = getUserHighestPosition(currentUser(response).id, serverId);
+    if (existing.position >= requesterPosition) {
+      response.status(403).json({ error: 'Você só pode apagar cargos com posição menor que a sua.' });
+      return;
+    }
+    const result = deleteRole(roleId as string);
+    if (!result.ok) {
+      if (result.reason === 'IMMUTABLE') {
+        response.status(400).json({ error: 'O cargo @everyone não pode ser apagado.' });
+      } else {
+        response.status(404).json({ error: 'Cargo não encontrado.' });
+      }
+      return;
+    }
+    sendToServerMembers(serverId, { type: 'ROLE_DELETE', serverId, roleId: roleId as string });
+    response.status(204).end();
+  },
+);
+
+app.put(
+  '/api/servers/:serverId/roles/:roleId/members/:userId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_ROLES),
+  roleLimiter,
+  (request, response) => {
+    const serverId = currentServerId(response);
     const roleId = request.params.roleId;
     const userId = request.params.userId;
     const role = typeof roleId === 'string' ? getRoleById(roleId) : undefined;
-    const targetUser = typeof userId === 'string' ? getUserById(userId) : undefined;
-    if (!role || !targetUser || roleId === EVERYONE_ROLE_ID) {
+    const targetIsMember = typeof userId === 'string' && isServerMember(serverId, userId);
+    if (!role || role.serverId !== serverId || !targetIsMember || role.isEveryone) {
       response.status(404).json({ error: 'Cargo ou membro não encontrado.' });
       return;
     }
-    const requesterPosition = getUserHighestPosition(currentUser(response).id);
+    const requesterPosition = getUserHighestPosition(currentUser(response).id, serverId);
     if (role.position >= requesterPosition) {
       response.status(403).json({ error: 'Você só pode atribuir cargos com posição menor que a sua.' });
       return;
     }
     assignRole(userId as string, roleId as string);
-    const roleIds = getUserRoleIds(userId as string);
-    broadcast({ type: 'MEMBER_ROLES_UPDATE', userId: userId as string, roleIds });
+    const roleIds = getUserRoleIds(userId as string, serverId);
+    sendToServerMembers(serverId, { type: 'MEMBER_ROLES_UPDATE', serverId, userId: userId as string, roleIds });
     response.status(204).end();
   },
 );
 
 app.delete(
-  '/api/roles/:roleId/members/:userId',
+  '/api/servers/:serverId/roles/:roleId/members/:userId',
   requireSession,
-  requirePermission(Permission.MANAGE_ROLES),
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_ROLES),
   roleLimiter,
   (request, response) => {
+    const serverId = currentServerId(response);
     const roleId = request.params.roleId;
     const userId = request.params.userId;
     const role = typeof roleId === 'string' ? getRoleById(roleId) : undefined;
-    if (!role || roleId === EVERYONE_ROLE_ID) {
+    if (!role || role.serverId !== serverId || role.isEveryone) {
       response.status(404).json({ error: 'Cargo não encontrado.' });
       return;
     }
-    const requesterPosition = getUserHighestPosition(currentUser(response).id);
+    const requesterPosition = getUserHighestPosition(currentUser(response).id, serverId);
     if (role.position >= requesterPosition) {
       response.status(403).json({ error: 'Você só pode remover cargos com posição menor que a sua.' });
       return;
     }
     unassignRole(userId as string, roleId as string);
-    const roleIds = getUserRoleIds(userId as string);
-    broadcast({ type: 'MEMBER_ROLES_UPDATE', userId: userId as string, roleIds });
+    const roleIds = getUserRoleIds(userId as string, serverId);
+    sendToServerMembers(serverId, { type: 'MEMBER_ROLES_UPDATE', serverId, userId: userId as string, roleIds });
     response.status(204).end();
   },
 );
 
-app.get('/api/members', requireSession, (_request, response) => {
-  response.json({ members: listMembers() });
+app.get('/api/servers/:serverId/members', requireSession, requireServerMembership, (_request, response) => {
+  response.json({ members: listServerMembers(currentServerId(response)) });
 });
 
 app.get('/api/friends', requireSession, (_request, response) => {
@@ -1422,7 +1719,9 @@ app.post('/api/dm-channels/:dmChannelId/messages', requireSession, dmMessageLimi
     response.status(400).json({ error: 'A mensagem deve ter entre 1 e 500 caracteres.' });
     return;
   }
-  if (rejectIfTimedOut(user, response)) return;
+  // Sem gate de timeout aqui de propósito: timeout passou a ser por servidor
+  // (ver DISCORD_PARITY_PLAN.md) — silenciar alguém no servidor A não deveria
+  // impedir DM, que é uma conversa fora de qualquer servidor.
   const other = channel.participants.find((participant) => participant.id !== user.id)!;
   if (isBlocked(user.id, other.id)) {
     response.status(403).json({ error: 'Não foi possível enviar a mensagem agora.' });
@@ -1485,23 +1784,25 @@ app.delete('/api/dm-channels/:dmChannelId/messages/:messageId', requireSession, 
 });
 
 app.post(
-  '/api/moderation/timeout',
+  '/api/servers/:serverId/moderation/timeout',
   requireSession,
-  requirePermission(Permission.MODERATE_MEMBERS),
+  requireServerMembership,
+  requireServerPermission(Permission.MODERATE_MEMBERS),
   moderationLimiter,
   async (request, response) => {
+    const serverId = currentServerId(response);
     const body = timeoutSchema.safeParse(request.body);
     if (!body.success) {
       response.status(400).json({ error: 'Informe o membro e a duração do timeout (1 a 10080 minutos).' });
       return;
     }
     const user = currentUser(response);
-    if (!getUserById(body.data.userId)) {
+    if (!isServerMember(serverId, body.data.userId)) {
       response.status(404).json({ error: 'Membro não encontrado.' });
       return;
     }
-    const requesterPosition = getUserHighestPosition(user.id);
-    const targetPosition = getUserHighestPosition(body.data.userId);
+    const requesterPosition = getUserHighestPosition(user.id, serverId);
+    const targetPosition = getUserHighestPosition(body.data.userId, serverId);
     const authorization = authorizeModerationAction(user.id, requesterPosition, body.data.userId, targetPosition);
     if (!authorization.ok) {
       response.status(403).json({
@@ -1512,28 +1813,30 @@ app.post(
       return;
     }
     const timeoutUntil = Date.now() + body.data.minutes * 60_000;
-    setUserTimeout(body.data.userId, timeoutUntil);
+    setServerMemberTimeout(serverId, body.data.userId, timeoutUntil);
     await forceDisconnectFromVoice(body.data.userId);
-    broadcast({ type: 'MEMBER_TIMEOUT_UPDATE', userId: body.data.userId, timeoutUntil });
+    sendToServerMembers(serverId, { type: 'MEMBER_TIMEOUT_UPDATE', serverId, userId: body.data.userId, timeoutUntil });
     response.json({ timeoutUntil });
   },
 );
 
 app.delete(
-  '/api/moderation/timeout/:userId',
+  '/api/servers/:serverId/moderation/timeout/:userId',
   requireSession,
-  requirePermission(Permission.MODERATE_MEMBERS),
+  requireServerMembership,
+  requireServerPermission(Permission.MODERATE_MEMBERS),
   moderationLimiter,
   (request, response) => {
+    const serverId = currentServerId(response);
     const userId = request.params.userId;
-    const targetUser = typeof userId === 'string' ? getUserById(userId) : undefined;
-    if (!targetUser) {
+    if (typeof userId !== 'string' || !isServerMember(serverId, userId)) {
       response.status(404).json({ error: 'Membro não encontrado.' });
       return;
     }
-    const requesterPosition = getUserHighestPosition(currentUser(response).id);
-    const targetPosition = getUserHighestPosition(userId as string);
-    const authorization = authorizeModerationAction(currentUser(response).id, requesterPosition, userId as string, targetPosition);
+    const requesterId = currentUser(response).id;
+    const requesterPosition = getUserHighestPosition(requesterId, serverId);
+    const targetPosition = getUserHighestPosition(userId, serverId);
+    const authorization = authorizeModerationAction(requesterId, requesterPosition, userId, targetPosition);
     if (!authorization.ok) {
       response.status(403).json({
         error: authorization.reason === 'SELF'
@@ -1542,34 +1845,57 @@ app.delete(
       });
       return;
     }
-    setUserTimeout(userId as string, null);
-    broadcast({ type: 'MEMBER_TIMEOUT_UPDATE', userId: userId as string, timeoutUntil: null });
+    setServerMemberTimeout(serverId, userId, null);
+    sendToServerMembers(serverId, { type: 'MEMBER_TIMEOUT_UPDATE', serverId, userId, timeoutUntil: null });
     response.status(204).end();
   },
 );
 
-app.get('/api/moderation/bans', requireSession, requirePermission(Permission.BAN_MEMBERS), (_request, response) => {
+// Ban continua de instância inteira, não por servidor (ver
+// DISCORD_PARITY_PLAN.md — a tabela `bans` não ganhou server_id, "remover de
+// um servidor" é só um DELETE em server_members). Ainda assim, checar a
+// PERMISSÃO de banir e a hierarquia de posições exige um servidor de
+// referência — por isso `serverId` vem no corpo/query em vez de virar um
+// path `/api/servers/:serverId/...` (que sugeriria erroneamente que o ban em
+// si é escopado por servidor).
+app.get('/api/moderation/bans', requireSession, (request, response) => {
+  const serverId = typeof request.query.serverId === 'string' ? request.query.serverId : undefined;
+  if (!serverId || !isServerMember(serverId, currentUser(response).id)) {
+    response.status(404).json({ error: 'Servidor não encontrado.' });
+    return;
+  }
+  if (!hasPermission(getUserPermissionBitfield(currentUser(response).id, serverId), Permission.BAN_MEMBERS)) {
+    response.status(403).json({ error: 'Você não tem permissão para fazer isso.' });
+    return;
+  }
   response.json({ bans: listBans() });
 });
 
 app.post(
   '/api/moderation/bans',
   requireSession,
-  requirePermission(Permission.BAN_MEMBERS),
   moderationLimiter,
   async (request, response) => {
     const body = banSchema.safeParse(request.body);
     if (!body.success) {
-      response.status(400).json({ error: 'Informe o membro a ser banido.' });
+      response.status(400).json({ error: 'Informe o membro e o servidor de referência.' });
       return;
     }
     const user = currentUser(response);
+    if (!isServerMember(body.data.serverId, user.id)) {
+      response.status(404).json({ error: 'Servidor não encontrado.' });
+      return;
+    }
+    if (!hasPermission(getUserPermissionBitfield(user.id, body.data.serverId), Permission.BAN_MEMBERS)) {
+      response.status(403).json({ error: 'Você não tem permissão para fazer isso.' });
+      return;
+    }
     if (!getUserById(body.data.userId)) {
       response.status(404).json({ error: 'Membro não encontrado.' });
       return;
     }
-    const requesterPosition = getUserHighestPosition(user.id);
-    const targetPosition = getUserHighestPosition(body.data.userId);
+    const requesterPosition = getUserHighestPosition(user.id, body.data.serverId);
+    const targetPosition = getUserHighestPosition(body.data.userId, body.data.serverId);
     const authorization = authorizeModerationAction(user.id, requesterPosition, body.data.userId, targetPosition);
     if (!authorization.ok) {
       response.status(403).json({
@@ -1590,10 +1916,18 @@ app.post(
 app.delete(
   '/api/moderation/bans/:userId',
   requireSession,
-  requirePermission(Permission.BAN_MEMBERS),
   moderationLimiter,
   (request, response) => {
     const userId = request.params.userId;
+    const serverId = typeof request.query.serverId === 'string' ? request.query.serverId : undefined;
+    if (!serverId || !isServerMember(serverId, currentUser(response).id)) {
+      response.status(404).json({ error: 'Servidor não encontrado.' });
+      return;
+    }
+    if (!hasPermission(getUserPermissionBitfield(currentUser(response).id, serverId), Permission.BAN_MEMBERS)) {
+      response.status(403).json({ error: 'Você não tem permissão para fazer isso.' });
+      return;
+    }
     if (typeof userId !== 'string' || !isBanned(userId)) {
       response.status(404).json({ error: 'Esse membro não está banido.' });
       return;
@@ -1605,19 +1939,21 @@ app.delete(
 );
 
 app.post(
-  '/api/moderation/voice-kick',
+  '/api/servers/:serverId/moderation/voice-kick',
   requireSession,
-  requirePermission(Permission.KICK_MEMBERS),
+  requireServerMembership,
+  requireServerPermission(Permission.KICK_MEMBERS),
   moderationLimiter,
   async (request, response) => {
+    const serverId = currentServerId(response);
     const body = voiceKickSchema.safeParse(request.body);
     if (!body.success) {
       response.status(400).json({ error: 'Informe o membro a ser expulso.' });
       return;
     }
     const user = currentUser(response);
-    const requesterPosition = getUserHighestPosition(user.id);
-    const targetPosition = getUserHighestPosition(body.data.userId);
+    const requesterPosition = getUserHighestPosition(user.id, serverId);
+    const targetPosition = getUserHighestPosition(body.data.userId, serverId);
     const authorization = authorizeModerationAction(user.id, requesterPosition, body.data.userId, targetPosition);
     if (!authorization.ok) {
       response.status(403).json({
@@ -1660,7 +1996,7 @@ app.post('/api/livekit/webhook', express.raw({ type: '*/*' }), async (request, r
   if (channel && ROOM_STATE_WEBHOOK_EVENTS.has(event.event)) {
     try {
       const room = event.event === 'room_finished' ? { ...channel, participants: [] } : await computeRoomSummary(channel);
-      broadcast({ type: 'ROOM_STATE_UPDATE', room });
+      sendToServerMembers(channel.serverId, { type: 'ROOM_STATE_UPDATE', serverId: channel.serverId, room });
     } catch (error) {
       console.error('Falha ao recalcular estado da sala após webhook:', error);
     }
@@ -1668,13 +2004,18 @@ app.post('/api/livekit/webhook', express.raw({ type: '*/*' }), async (request, r
   response.status(200).end();
 });
 
-app.post('/api/rooms/:roomId/participants/:identity/disconnect', requireSession, async (request, response) => {
+app.post(
+  '/api/servers/:serverId/rooms/:roomId/participants/:identity/disconnect',
+  requireSession,
+  requireServerMembership,
+  async (request, response) => {
+  const serverId = currentServerId(response);
   const parsed = disconnectParticipantSchema.safeParse({
     roomId: request.params.roomId,
     identity: request.params.identity,
   });
   const room = parsed.success ? getVoiceChannelById(parsed.data.roomId) : undefined;
-  if (!parsed.success || !room) {
+  if (!parsed.success || !room || room.serverId !== serverId) {
     response.status(400).json({ error: 'Canal de voz inv\u00e1lido.' });
     return;
   }
@@ -1683,7 +2024,7 @@ app.post('/api/rooms/:roomId/participants/:identity/disconnect', requireSession,
     const participants = await roomService.listParticipants(room.id);
     const authorization = authorizeVoiceDisconnect({
       roomId: room.id,
-      channels: listVoiceChannels(),
+      channels: listVoiceChannels(serverId),
       requesterId: user.id,
       targetIdentity: parsed.data.identity,
       participantIdentities: participants.map(({ identity }) => identity),
@@ -1716,8 +2057,9 @@ app.post('/api/rooms/:roomId/participants/:identity/disconnect', requireSession,
         await roomService.removeParticipant(room.id, target.identity);
       }
       for (const clearedChannelId of deleteMusicBotTextMessagesForVoiceChannel(room.id)) {
-        broadcast({
+        sendToServerMembers(serverId, {
           type: 'TEXT_MESSAGE_DELETE',
+          serverId,
           channelId: clearedChannelId,
           messageId: `music-bot:${clearedChannelId}`,
         });
@@ -1730,17 +2072,23 @@ app.post('/api/rooms/:roomId/participants/:identity/disconnect', requireSession,
     console.error('Falha ao desconectar participante:', error);
     response.status(503).json({ error: 'N\u00e3o foi poss\u00edvel desconectar o participante.' });
   }
-});
+  },
+);
 
-app.post('/api/livekit/token', requireSession, async (request, response) => {
+app.post(
+  '/api/servers/:serverId/livekit/token',
+  requireSession,
+  requireServerMembership,
+  async (request, response) => {
+  const serverId = currentServerId(response);
   const body = tokenSchema.safeParse(request.body);
   const room = body.success ? getVoiceChannelById(body.data.roomId) : undefined;
 
-  if (!body.success || !room) {
+  if (!body.success || !room || room.serverId !== serverId) {
     response.status(400).json({ error: 'Canal inválido.' });
     return;
   }
-  if (rejectIfTimedOut(currentUser(response), response)) return;
+  if (rejectIfTimedOut(serverId, currentUser(response).id, response)) return;
 
   const user = currentUser(response);
   const metadata: HumanParticipantMetadata = {
@@ -1774,16 +2122,23 @@ app.post('/api/livekit/token', requireSession, async (request, response) => {
     url: config.LIVEKIT_PUBLIC_URL,
   };
   response.json(payload);
-});
+  },
+);
 
-app.post('/api/music/command', requireSession, async (request, response) => {
+app.post(
+  '/api/servers/:serverId/music/command',
+  requireSession,
+  requireServerMembership,
+  async (request, response) => {
+  const serverId = currentServerId(response);
   const body = musicCommandSchema.safeParse(request.body);
   if (!body.success) {
     response.status(400).json({ error: 'Comando musical inválido.' });
     return;
   }
 
-  if (body.data.textChannelId && !getTextChannelById(body.data.textChannelId)) {
+  const textChannel = body.data.textChannelId ? getTextChannelById(body.data.textChannelId) : undefined;
+  if (body.data.textChannelId && (!textChannel || textChannel.serverId !== serverId)) {
     response.status(404).json({ error: 'Canal de texto n\u00e3o encontrado.' });
     return;
   }
@@ -1793,7 +2148,7 @@ app.post('/api/music/command', requireSession, async (request, response) => {
     const authorization = await authorizeMusicCommand({
       roomId: body.data.roomId,
       text: body.data.text,
-      channels: listVoiceChannels(),
+      channels: listVoiceChannels(serverId),
       requester: { id: user.id, displayName: user.username },
       listParticipantIdentities: async (roomName) =>
         (await roomService.listParticipants(roomName)).map(({ identity }) => identity),
@@ -1845,10 +2200,11 @@ app.post('/api/music/command', requireSession, async (request, response) => {
           nowPlaying,
         );
         payload.textMessage = message;
-        broadcast({ type: 'TEXT_MESSAGE_UPSERT', channelId: body.data.textChannelId, message });
+        sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_UPSERT', serverId, channelId: body.data.textChannelId, message });
         for (const clearedChannelId of clearedChannelIds) {
-          broadcast({
+          sendToServerMembers(serverId, {
             type: 'TEXT_MESSAGE_DELETE',
+            serverId,
             channelId: clearedChannelId,
             messageId: `music-bot:${clearedChannelId}`,
           });
@@ -1862,8 +2218,9 @@ app.post('/api/music/command', requireSession, async (request, response) => {
         const removed = deleteMusicBotTextMessagesForVoiceChannel(authorization.command.channelId);
         if (removed.length > 0) payload.removeTextMessage = true;
         for (const clearedChannelId of removed) {
-          broadcast({
+          sendToServerMembers(serverId, {
             type: 'TEXT_MESSAGE_DELETE',
+            serverId,
             channelId: clearedChannelId,
             messageId: `music-bot:${clearedChannelId}`,
           });
@@ -1876,7 +2233,8 @@ app.post('/api/music/command', requireSession, async (request, response) => {
     response.status(503).json({ error: 'O SausiMusic está indisponível.' });
     return;
   }
-});
+  },
+);
 
 app.use((_request, response) => {
   response.status(404).json({ error: 'Rota não encontrada.' });

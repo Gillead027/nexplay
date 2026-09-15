@@ -152,19 +152,39 @@ type FriendsTab = 'all' | 'pending' | 'blocked' | 'add';
 function AddFriendTab({
   state,
   ownId,
+  serverIds,
   onOpenProfile,
 }: {
   state: FriendsState;
   ownId: string;
+  serverIds: string[];
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
 }) {
   const [members, setMembers] = useState<MemberSummary[]>([]);
   const [search, setSearch] = useState('');
   const [feedback, setFeedback] = useState<Record<string, string>>({});
 
+  // "Adicionar amigo" reaproveita a lista de membros dos servidores do
+  // próprio usuário (não existe mais um único "todo mundo registrado" desde
+  // que múltiplos servidores existem — ver DISCORD_PARITY_PLAN.md) — junta e
+  // deduplica por id pra cobrir quem você conhece de qualquer servidor seu.
   useEffect(() => {
-    void api.getMembers().then(({ members }) => setMembers(members)).catch(() => {});
-  }, []);
+    let active = true;
+    void Promise.all(serverIds.map((serverId) => api.getMembers(serverId).catch(() => ({ members: [] as MemberSummary[] })))).then(
+      (results) => {
+        if (!active) return;
+        const merged = new Map<string, MemberSummary>();
+        for (const { members: serverMembers } of results) {
+          for (const candidate of serverMembers) merged.set(candidate.id, candidate);
+        }
+        setMembers([...merged.values()]);
+      },
+    );
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverIds.join(',')]);
 
   async function addFriend(userId: string) {
     setFeedback((current) => ({ ...current, [userId]: '' }));
@@ -218,12 +238,14 @@ function AddFriendTab({
 export function FriendsHome({
   state,
   ownId,
+  serverIds,
   onOpenProfile,
   onOpenDm,
   onRefresh,
 }: {
   state: FriendsState;
   ownId: string;
+  serverIds: string[];
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
   onOpenDm: (userId: string) => void;
   onRefresh: () => void;
@@ -367,7 +389,7 @@ export function FriendsHome({
         </div>
       )}
 
-      {tab === 'add' && <AddFriendTab state={state} ownId={ownId} onOpenProfile={onOpenProfile} />}
+      {tab === 'add' && <AddFriendTab state={state} ownId={ownId} serverIds={serverIds} onOpenProfile={onOpenProfile} />}
     </div>
   );
 }

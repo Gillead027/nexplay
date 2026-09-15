@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { DEFAULT_EVERYONE_PERMISSIONS, EVERYONE_ROLE_ID, Permission } from '@sausixudos/shared';
+import { DEFAULT_EVERYONE_PERMISSIONS, Permission } from '@sausixudos/shared';
 import { config } from './config.js';
 
 mkdirSync(dirname(config.DB_PATH), { recursive: true });
@@ -175,6 +175,44 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_dm_messages_channel_created
     ON dm_messages(dm_channel_id, created_at DESC);
+
+  -- owner_id fica nullable (não "quem excluiu perde o servidor" — só não há
+  -- ninguém ainda pra ser dono num banco recém-criado, antes do primeiro
+  -- registro). ON DELETE SET NULL, não CASCADE: excluir uma conta não deveria
+  -- apagar um servidor inteiro (mesmo padrão de text_channels.created_by).
+  CREATE TABLE IF NOT EXISTS servers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    icon_data_url TEXT NOT NULL DEFAULT '',
+    owner_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS server_members (
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    joined_at INTEGER NOT NULL,
+    timeout_until INTEGER,
+    PRIMARY KEY (server_id, user_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_server_members_user ON server_members(user_id);
+
+  -- code é a própria PK (um único convite regenerável por servidor nesta
+  -- rodada — ver DISCORD_PARITY_PLAN.md). max_uses/expires_at ficam sempre
+  -- NULL por enquanto, mas o schema já suporta os dois sem nova migração.
+  CREATE TABLE IF NOT EXISTS invites (
+    code TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    max_uses INTEGER,
+    uses INTEGER NOT NULL DEFAULT 0,
+    expires_at INTEGER,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_invites_server ON invites(server_id);
 `);
 
 // O SausiMusic mantém um único player persistente por canal de texto. Limpa
@@ -244,35 +282,181 @@ if (voiceChannelCount === 0) {
   });
 }
 
-// Cargos não existiam antes — semeia só na primeira vez que este código roda
-// contra um banco existente (tabela `roles` vazia), preservando qualquer
-// atribuição futura feita pela própria aplicação. O cargo "@everyone" recebe
-// exatamente as permissões que todo mundo já tinha antes de cargos existirem
-// (ver DEFAULT_EVERYONE_PERMISSIONS em packages/shared), então nenhum
-// usuário perde capacidade nenhuma com esta migração. A conta mais antiga
-// (menor created_at) vira Administrador automaticamente — sem isso o sistema
-// de permissões nasceria sem ninguém capaz de gerenciar cargos/moderação.
-const roleCount = (db.prepare('SELECT COUNT(*) AS count FROM roles').get() as { count: number }).count;
-if (roleCount === 0) {
+// Fundação de múltiplos servidores: server_id nullable no ALTER (SQLite não
+// aceita NOT NULL sem default numa tabela não vazia), preenchido no bloco de
+// migração logo abaixo antes de qualquer leitura assumir que já é NOT NULL.
+ensureColumns('text_channels', [['server_id', 'TEXT REFERENCES servers(id) ON DELETE CASCADE']]);
+ensureColumns('voice_channels', [['server_id', 'TEXT REFERENCES servers(id) ON DELETE CASCADE']]);
+ensureColumns('roles', [['server_id', 'TEXT REFERENCES servers(id) ON DELETE CASCADE']]);
+ensureColumns('soundboard_sounds', [['server_id', 'TEXT REFERENCES servers(id) ON DELETE CASCADE']]);
+
+// Cria o cargo @everyone (mesmas permissões que todo mundo já tinha antes de
+// cargos existirem) + promove `ownerId` a Administrador com permissão total.
+// Reaproveitada tanto pela migração do servidor padrão (abaixo) quanto por
+// createServer() em servers.ts pra todo servidor novo — um único caminho de
+// código pra "cargos iniciais de um servidor". Ids sempre gerados via
+// randomUUID(): roles.id é chave primária global (não composta por
+// servidor), então dois servidores nunca podem compartilhar o mesmo id de
+// cargo.
+export function bootstrapServerRoles(
+  serverId: string,
+  memberUserIds: readonly string[],
+  ownerId: string | null,
+): void {
+  const everyoneRoleId = randomUUID();
   const seededAt = Date.now();
   db.prepare(
-    'INSERT INTO roles (id, name, color, position, hoist, permissions, created_at) VALUES (?, ?, ?, 0, 0, ?, ?)',
-  ).run(EVERYONE_ROLE_ID, '@everyone', '#8a91a6', DEFAULT_EVERYONE_PERMISSIONS, seededAt);
+    'INSERT INTO roles (id, server_id, name, color, position, hoist, permissions, created_at) VALUES (?, ?, ?, ?, 0, 0, ?, ?)',
+  ).run(everyoneRoleId, serverId, '@everyone', '#8a91a6', DEFAULT_EVERYONE_PERMISSIONS, seededAt);
 
   const insertUserRole = db.prepare(
     'INSERT OR IGNORE INTO user_roles (user_id, role_id, created_at) VALUES (?, ?, ?)',
   );
-  const allUsers = db.prepare('SELECT id, created_at FROM users').all() as { id: string; created_at: number }[];
-  for (const user of allUsers) {
-    insertUserRole.run(user.id, EVERYONE_ROLE_ID, seededAt);
+  for (const userId of memberUserIds) {
+    insertUserRole.run(userId, everyoneRoleId, seededAt);
   }
 
-  if (allUsers.length > 0) {
-    const owner = allUsers.reduce((oldest, user) => (user.created_at < oldest.created_at ? user : oldest));
+  if (ownerId) {
     const adminRoleId = randomUUID();
     db.prepare(
-      'INSERT INTO roles (id, name, color, position, hoist, permissions, created_at) VALUES (?, ?, ?, 100, 1, ?, ?)',
-    ).run(adminRoleId, 'Administrador', '#ee7798', Permission.ADMINISTRATOR, seededAt);
-    insertUserRole.run(owner.id, adminRoleId, seededAt);
+      'INSERT INTO roles (id, server_id, name, color, position, hoist, permissions, created_at) VALUES (?, ?, ?, ?, 100, 1, ?, ?)',
+    ).run(adminRoleId, serverId, 'Administrador', '#ee7798', Permission.ADMINISTRATOR, seededAt);
+    insertUserRole.run(ownerId, adminRoleId, seededAt);
   }
 }
+
+// Migração pra fundação de múltiplos servidores: se `servers` ainda está
+// vazia, este é o primeiro boot depois da migração — cria o servidor padrão
+// ("Lobby dos amigos", dono = conta mais antiga) e migra todo mundo/tudo pra
+// ele, preservando o comportamento atual pixel a pixel (nenhum usuário,
+// canal, cargo ou timeout ativo é perdido). Servidores criados depois disso
+// nunca passam por este bloco de novo (é condicional só a `servers` vazia).
+const serverCount = (db.prepare('SELECT COUNT(*) AS count FROM servers').get() as { count: number }).count;
+let defaultServerId: string;
+if (serverCount === 0) {
+  const seededAt = Date.now();
+  const allUsers = db.prepare('SELECT id, created_at, timeout_until FROM users').all() as {
+    id: string;
+    created_at: number;
+    timeout_until: number | null;
+  }[];
+  const owner = allUsers.length
+    ? allUsers.reduce((oldest, user) => (user.created_at < oldest.created_at ? user : oldest))
+    : null;
+
+  defaultServerId = randomUUID();
+  db.prepare(
+    'INSERT INTO servers (id, name, description, icon_data_url, owner_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+  ).run(
+    defaultServerId,
+    'Lobby dos amigos',
+    'Um lugar para conversar, jogar e compartilhar bons momentos.',
+    '',
+    owner?.id ?? null,
+    seededAt,
+  );
+
+  const insertMember = db.prepare(
+    'INSERT OR IGNORE INTO server_members (server_id, user_id, joined_at, timeout_until) VALUES (?, ?, ?, ?)',
+  );
+  for (const user of allUsers) {
+    insertMember.run(defaultServerId, user.id, seededAt, user.timeout_until);
+  }
+
+  db.prepare('UPDATE text_channels SET server_id = ? WHERE server_id IS NULL').run(defaultServerId);
+  db.prepare('UPDATE voice_channels SET server_id = ? WHERE server_id IS NULL').run(defaultServerId);
+  db.prepare('UPDATE soundboard_sounds SET server_id = ? WHERE server_id IS NULL').run(defaultServerId);
+
+  // Cargos não existiam antes desta seção do código já ter rodado uma vez
+  // (tabela `roles` vazia, banco recém-criado) — reaproveita bootstrapServerRoles.
+  // Se `roles` já tinha linhas (o caso real de produção: banco que já
+  // rodava antes desta migração existir), só faltava mesmo o server_id —
+  // backfilled acima, sem recriar nenhum cargo.
+  const roleCount = (db.prepare('SELECT COUNT(*) AS count FROM roles').get() as { count: number }).count;
+  if (roleCount === 0) {
+    bootstrapServerRoles(defaultServerId, allUsers.map((user) => user.id), owner?.id ?? null);
+  } else {
+    db.prepare('UPDATE roles SET server_id = ? WHERE server_id IS NULL').run(defaultServerId);
+  }
+} else {
+  defaultServerId = (db.prepare('SELECT id FROM servers ORDER BY created_at ASC LIMIT 1').get() as { id: string }).id;
+}
+
+// O servidor mais antigo da instância — é a ele que uma conta nova se junta
+// automaticamente ao se registrar com INVITE_TOKEN (ver index.ts), exatamente
+// como "criar uma conta" já significava "entrar no único servidor" antes de
+// múltiplos servidores existirem. Servidores criados depois exigem convite
+// próprio (ver invites.ts) — só este, o migrado, tem entrada automática.
+export function getDefaultServerId(): string {
+  return defaultServerId;
+}
+
+// text_channels.name e roles.name eram UNIQUE globais (antes de múltiplos
+// servidores existirem) — sem corrigir isso, o primeiro servidor novo que
+// tentasse ter um canal/cargo com o mesmo nome de outro servidor (ex.: o
+// canal padrão "geral") tomaria um 409 falso. SQLite não tem
+// `ALTER TABLE DROP CONSTRAINT`, então a única forma de trocar pra
+// UNIQUE(server_id, name) é reconstruir a tabela inteira. Roda só uma vez
+// (guardado por hasLegacyGlobalUniqueName, que some assim que a constraint
+// nova existe) e sempre depois do backfill de server_id acima, pra que a
+// constraint nova já nasça satisfeita.
+function hasLegacyGlobalUniqueName(table: string): boolean {
+  const indexes = db.prepare(`PRAGMA index_list(${table})`).all() as { name: string; unique: number }[];
+  return indexes.some((index) => {
+    if (!index.unique) return false;
+    const columns = db.prepare(`PRAGMA index_info(${index.name})`).all() as { name: string }[];
+    return columns.length === 1 && columns[0]?.name === 'name';
+  });
+}
+
+function rebuildWithServerScopedUniqueName(table: string, createNewTableSql: string, columns: string): void {
+  if (!hasLegacyGlobalUniqueName(table)) return;
+  db.exec('PRAGMA foreign_keys = OFF');
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.exec(createNewTableSql);
+    db.exec(`INSERT INTO ${table}_new (${columns}) SELECT ${columns} FROM ${table}`);
+    db.exec(`DROP TABLE ${table}`);
+    db.exec(`ALTER TABLE ${table}_new RENAME TO ${table}`);
+    const problems = db.prepare('PRAGMA foreign_key_check').all();
+    if (problems.length > 0) {
+      throw new Error(`PRAGMA foreign_key_check falhou reconstruindo ${table}: ${JSON.stringify(problems)}`);
+    }
+    db.exec('COMMIT');
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  } finally {
+    db.exec('PRAGMA foreign_keys = ON');
+  }
+}
+
+rebuildWithServerScopedUniqueName(
+  'text_channels',
+  `CREATE TABLE text_channels_new (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL COLLATE NOCASE,
+    description TEXT NOT NULL DEFAULT '',
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE (server_id, name COLLATE NOCASE)
+  )`,
+  'id, server_id, name, description, created_by, created_at',
+);
+
+rebuildWithServerScopedUniqueName(
+  'roles',
+  `CREATE TABLE roles_new (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL COLLATE NOCASE,
+    color TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    hoist INTEGER NOT NULL DEFAULT 0,
+    permissions INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    UNIQUE (server_id, name COLLATE NOCASE)
+  )`,
+  'id, server_id, name, color, position, hoist, permissions, created_at',
+);

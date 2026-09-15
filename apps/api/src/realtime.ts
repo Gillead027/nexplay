@@ -4,6 +4,7 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import type { RealtimeEvent } from '@sausixudos/shared';
 import { config } from './config.js';
 import { isBanned } from './moderation.js';
+import { listMemberUserIdsForServer } from './serverMembers.js';
 import { getSessionFromCookieHeader } from './session.js';
 import { getUserById } from './users.js';
 
@@ -15,18 +16,33 @@ interface TrackedSocket extends WebSocket {
   userId?: string;
 }
 
-// Todo mundo autenticado vê o mesmo servidor/canais (não existe conceito de
-// múltiplos servidores ainda — ver DISCORD_PARITY_PLAN.md), então broadcast()
-// continua correto pra eventos de servidor. DMs/amizade, porém, precisam de
-// envio direcionado (ver sendToUsers abaixo) — cada socket já carrega
-// `userId` desde o handshake, então um Set simples com filtro linear resolve
-// isso sem precisar de um Map indexado (escala de um grupo de amigos).
+// Cada socket já carrega `userId` desde o handshake, então um Set simples
+// com filtro linear resolve tanto envio por usuário quanto por servidor sem
+// precisar de um Map indexado ou de "salas" — escala de um grupo de amigos.
 const clients = new Set<TrackedSocket>();
 
+// Só pra eventos genuinamente de instância inteira (hoje: MEMBER_BANNED/
+// MEMBER_UNBANNED, já que ban continua global — ver moderation.ts). Todo
+// evento ligado a um servidor específico (canais, cargos, membros,
+// mensagens, soundboard) deve usar sendToServerMembers, não isto.
 export function broadcast(event: RealtimeEvent): void {
   const payload = JSON.stringify(event);
   for (const client of clients) {
     if (client.readyState === client.OPEN) client.send(payload);
+  }
+}
+
+// Manda um evento só pros membros de um servidor específico — resolve a
+// lista na hora via consulta direta a server_members (sem cache/rooms,
+// mesmo pragmatismo de sendToUsers), então nunca fica desatualizada mesmo
+// que a filiação mude com frequência.
+export function sendToServerMembers(serverId: string, event: RealtimeEvent): void {
+  const memberIds = new Set(listMemberUserIdsForServer(serverId));
+  const payload = JSON.stringify(event);
+  for (const client of clients) {
+    if (client.userId && memberIds.has(client.userId) && client.readyState === client.OPEN) {
+      client.send(payload);
+    }
   }
 }
 

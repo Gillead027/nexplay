@@ -1,20 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  EVERYONE_ROLE_ID,
   hasPermission,
   PERMISSION_DEFINITIONS,
   Permission,
   ROLE_NAME_MAX_LENGTH,
+  SERVER_DESCRIPTION_MAX_LENGTH,
+  SERVER_NAME_MAX_LENGTH,
   type BanRecord,
+  type Invite,
   type MemberSummary,
   type Role,
-  type UserSession,
+  type Server,
+  type ServerMember,
 } from '@sausixudos/shared';
 import { api } from '../api';
 import { onRealtimeEvent } from '../realtime';
-import { CloseIcon, PlusIcon, SearchIcon, SettingsIcon, TrashIcon, UserIcon } from './Icons';
+import { CloseIcon, CopyIcon, PlusIcon, SearchIcon, SettingsIcon, TrashIcon, UserIcon } from './Icons';
 
-type ServerSettingsSection = 'profile' | 'roles' | 'members';
+type ServerSettingsSection = 'profile' | 'roles' | 'members' | 'invites';
 
 const ROLE_COLOR_SWATCHES = ['#7c6ff2', '#4fc6ad', '#ee7798', '#f2ad5c', '#4f8edc', '#a76de0', '#68708b', '#8a91a6'];
 
@@ -35,8 +38,21 @@ function formatTimeoutUntil(timestamp: number): string {
   return new Date(timestamp).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
-export function ServerSettings({ open, onClose, session }: { open: boolean; onClose: () => void; session: UserSession }) {
+export function ServerSettings({
+  open,
+  onClose,
+  server,
+  member,
+  onServerUpdated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  server: Server;
+  member: ServerMember;
+  onServerUpdated: (server: Server) => void;
+}) {
   const [section, setSection] = useState<ServerSettingsSection>('profile');
+  const canManageServer = hasPermission(member.permissions, Permission.MANAGE_SERVER);
 
   useEffect(() => {
     if (!open) return;
@@ -53,8 +69,8 @@ export function ServerSettings({ open, onClose, session }: { open: boolean; onCl
     <section className="server-settings-shell" aria-label="Configurações do servidor">
       <nav className="server-settings-nav">
         <div className="server-settings-heading">
-          <span className="server-settings-avatar">S</span>
-          <div><strong>Lobby dos amigos</strong><span>Configurações do servidor</span></div>
+          <span className="server-settings-avatar">{server.name.charAt(0).toUpperCase()}</span>
+          <div><strong>{server.name}</strong><span>Configurações do servidor</span></div>
         </div>
         <span className="settings-nav-group">Servidor</span>
         <button type="button" className={section === 'profile' ? 'active' : ''} onClick={() => setSection('profile')}>
@@ -69,7 +85,9 @@ export function ServerSettings({ open, onClose, session }: { open: boolean; onCl
         <button type="button" className={section === 'members' ? 'active' : ''} onClick={() => setSection('members')}>
           <span className="nav-glyph">♙</span> Membros
         </button>
-        <button type="button"><span className="nav-glyph">⌘</span> Convites</button>
+        <button type="button" className={section === 'invites' ? 'active' : ''} onClick={() => setSection('invites')}>
+          <span className="nav-glyph">⌘</span> Convites
+        </button>
         <span className="settings-nav-group">Moderação</span>
         <button type="button"><span className="nav-glyph">◇</span> Segurança</button>
         <button type="button"><span className="nav-glyph">▤</span> Registro de auditoria</button>
@@ -81,9 +99,10 @@ export function ServerSettings({ open, onClose, session }: { open: boolean; onCl
       </nav>
 
       <div className="server-settings-content">
-        {section === 'profile' && <ServerProfilePane />}
-        {section === 'roles' && <RolesPane session={session} />}
-        {section === 'members' && <MembersPane session={session} />}
+        {section === 'profile' && <ServerProfilePane server={server} canManageServer={canManageServer} onServerUpdated={onServerUpdated} />}
+        {section === 'roles' && <RolesPane serverId={server.id} member={member} />}
+        {section === 'members' && <MembersPane serverId={server.id} member={member} />}
+        {section === 'invites' && <InvitesPane serverId={server.id} canManageServer={canManageServer} />}
       </div>
       <button type="button" className="server-settings-close" onClick={onClose} aria-label="Fechar configurações do servidor">
         <CloseIcon size={20} /><span>ESC</span>
@@ -92,52 +111,96 @@ export function ServerSettings({ open, onClose, session }: { open: boolean; onCl
   );
 }
 
-function ServerProfilePane() {
+function ServerProfilePane({
+  server,
+  canManageServer,
+  onServerUpdated,
+}: {
+  server: Server;
+  canManageServer: boolean;
+  onServerUpdated: (server: Server) => void;
+}) {
+  const [name, setName] = useState(server.name);
+  const [description, setDescription] = useState(server.description);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    setName(server.name);
+    setDescription(server.description);
+  }, [server.id, server.name, server.description]);
+
+  const dirty = name.trim() !== server.name || description !== server.description;
+
+  async function save() {
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      const { server: updated } = await api.updateServer(server.id, { name: name.trim(), description });
+      onServerUpdated(updated);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível salvar as alterações.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function discard() {
+    setName(server.name);
+    setDescription(server.description);
+    setError('');
+  }
+
   return (
     <div className="server-profile-page">
       <div className="server-page-title">
         <div><h1>Perfil do servidor</h1><p>Personalize a aparência e a identidade do seu servidor.</p></div>
-        <button type="button" className="secondary-pill">Pré-visualizar</button>
       </div>
       <div className="server-profile-columns">
         <div className="server-profile-form">
-          <section className="server-settings-card server-banner-card">
-            <span className="field-eyebrow">Banner do servidor</span>
-            <div className="server-banner-preview">
-              <div className="server-banner-art"><i /><i /><i /></div>
-              <button type="button" className="banner-edit-button">✎</button>
-            </div>
-            <p>Recomendado: 1920 × 480. PNG, JPG ou WEBP.</p>
-          </section>
           <section className="server-settings-card server-identity-card">
-            <div className="server-icon-large">S<span>✎</span></div>
+            <div className="server-icon-large">{name.charAt(0).toUpperCase() || 'S'}</div>
             <div className="server-name-fields">
-              <label>Nome do servidor<input readOnly value="Lobby dos amigos" /></label>
-              <label>Descrição<textarea readOnly rows={3} value="Um lugar para conversar, jogar e compartilhar bons momentos." /></label>
+              <label>
+                Nome do servidor
+                <input
+                  value={name}
+                  maxLength={SERVER_NAME_MAX_LENGTH}
+                  disabled={!canManageServer}
+                  onChange={(event) => setName(event.target.value)}
+                />
+              </label>
+              <label>
+                Descrição
+                <textarea
+                  rows={3}
+                  value={description}
+                  maxLength={SERVER_DESCRIPTION_MAX_LENGTH}
+                  disabled={!canManageServer}
+                  onChange={(event) => setDescription(event.target.value)}
+                />
+              </label>
             </div>
           </section>
-          <section className="server-settings-card">
-            <label>Cor de destaque</label>
-            <div className="static-swatches" aria-label="Cores de destaque">
-              {['#7c6ff2', '#4fc6ad', '#ee7798', '#f2ad5c', '#4f8edc', '#a76de0', '#68708b'].map((color, index) => (
-                <button key={color} type="button" className={index === 0 ? 'selected' : ''} style={{ background: color }} aria-label={`Cor ${index + 1}`} />
-              ))}
+          {error && <p className="form-error" role="alert">{error}</p>}
+          {canManageServer && (
+            <div className="server-form-actions">
+              <button type="button" className="secondary-pill" onClick={discard} disabled={!dirty || saving}>Descartar</button>
+              <button type="button" className="violet-primary" onClick={() => void save()} disabled={!dirty || saving || !name.trim()}>
+                {saving ? 'Salvando…' : 'Salvar alterações'}
+              </button>
             </div>
-          </section>
-          <div className="server-form-actions">
-            <button type="button" className="secondary-pill">Descartar</button>
-            <button type="button" className="violet-primary">Salvar alterações</button>
-          </div>
+          )}
         </div>
         <aside className="server-live-preview">
           <span className="field-eyebrow">Pré-visualização</span>
           <div className="server-preview-card">
             <div className="server-preview-banner"><i /><i /><i /></div>
             <div className="server-preview-body">
-              <span className="server-icon-large">S</span>
-              <h2>Lobby dos amigos</h2>
-              <p>Um lugar para conversar, jogar e compartilhar bons momentos.</p>
-              <div><span>● 5 online</span><span>9 membros</span></div>
+              <span className="server-icon-large">{name.charAt(0).toUpperCase() || 'S'}</span>
+              <h2>{name || server.name}</h2>
+              <p>{description}</p>
             </div>
           </div>
         </aside>
@@ -146,9 +209,85 @@ function ServerProfilePane() {
   );
 }
 
+function InvitesPane({ serverId, canManageServer }: { serverId: string; canManageServer: boolean }) {
+  const [invite, setInvite] = useState<Invite | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!canManageServer) {
+      setLoading(false);
+      return;
+    }
+    let active = true;
+    void api.getServerInvite(serverId).then(({ invite }) => { if (active) setInvite(invite); })
+      .catch((requestError) => {
+        if (active) setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar o convite.');
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [serverId, canManageServer]);
+
+  async function regenerate() {
+    if (!window.confirm('Gerar um novo código invalida o código atual. Continuar?')) return;
+    setError('');
+    try {
+      const { invite: next } = await api.regenerateServerInvite(serverId);
+      setInvite(next);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível gerar um novo código.');
+    }
+  }
+
+  function copyCode() {
+    if (!invite) return;
+    void navigator.clipboard.writeText(invite.code).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2_000);
+    });
+  }
+
+  if (!canManageServer) {
+    return (
+      <div className="invites-page">
+        <div className="server-page-title">
+          <div><h1>Convites</h1><p>Só quem gerencia o servidor pode ver e gerar convites.</p></div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="invites-page">
+      <div className="server-page-title">
+        <div><h1>Convites</h1><p>Compartilhe este código para que outras pessoas entrem no servidor.</p></div>
+      </div>
+      {error && <p className="form-error" role="alert">{error}</p>}
+      {loading ? (
+        <p>Carregando…</p>
+      ) : invite ? (
+        <section className="server-settings-card invite-code-card">
+          <span className="field-eyebrow">Código de convite</span>
+          <div className="invite-code-row">
+            <code>{invite.code}</code>
+            <button type="button" className="secondary-pill" onClick={copyCode}>
+              <CopyIcon size={14} /> {copied ? 'Copiado!' : 'Copiar'}
+            </button>
+          </div>
+          <p>Usado {invite.uses} {invite.uses === 1 ? 'vez' : 'vezes'} — sem limite de usos nem expiração por enquanto.</p>
+          <button type="button" className="secondary-pill" onClick={() => void regenerate()}>Gerar novo código</button>
+        </section>
+      ) : (
+        <p>Não foi possível carregar o convite.</p>
+      )}
+    </div>
+  );
+}
+
 type RoleTab = 'display' | 'permissions' | 'members';
 
-function RolesPane({ session }: { session: UserSession }) {
+function RolesPane({ serverId, member }: { serverId: string; member: ServerMember }) {
   const [roles, setRoles] = useState<Role[]>([]);
   const [members, setMembers] = useState<MemberSummary[]>([]);
   const [selectedRoleId, setSelectedRoleId] = useState<string | null>(null);
@@ -160,23 +299,23 @@ function RolesPane({ session }: { session: UserSession }) {
 
   useEffect(() => {
     let active = true;
-    void Promise.all([api.getRoles(), api.getMembers()]).then(([rolesResult, membersResult]) => {
+    void Promise.all([api.getRoles(serverId), api.getMembers(serverId)]).then(([rolesResult, membersResult]) => {
       if (!active) return;
       setRoles(rolesResult.roles);
       setMembers(membersResult.members);
       setSelectedRoleId((current) => current ?? rolesResult.roles[0]?.id ?? null);
     });
     const unsubscribe = onRealtimeEvent((event) => {
-      if (event.type === 'ROLE_CREATE') {
+      if (event.type === 'ROLE_CREATE' && event.serverId === serverId) {
         setRoles((current) => [...current, event.role].sort((left, right) => right.position - left.position));
-      } else if (event.type === 'ROLE_UPDATE') {
+      } else if (event.type === 'ROLE_UPDATE' && event.serverId === serverId) {
         setRoles((current) => current.map((role) => (role.id === event.role.id ? event.role : role)));
-      } else if (event.type === 'ROLE_DELETE') {
+      } else if (event.type === 'ROLE_DELETE' && event.serverId === serverId) {
         setRoles((current) => current.filter((role) => role.id !== event.roleId));
         setSelectedRoleId((current) => (current === event.roleId ? null : current));
-      } else if (event.type === 'MEMBER_ROLES_UPDATE') {
+      } else if (event.type === 'MEMBER_ROLES_UPDATE' && event.serverId === serverId) {
         setMembers((current) =>
-          current.map((member) => (member.id === event.userId ? { ...member, roleIds: event.roleIds } : member)),
+          current.map((candidate) => (candidate.id === event.userId ? { ...candidate, roleIds: event.roleIds } : candidate)),
         );
       }
     });
@@ -184,10 +323,10 @@ function RolesPane({ session }: { session: UserSession }) {
       active = false;
       unsubscribe();
     };
-  }, []);
+  }, [serverId]);
 
-  const ownPosition = useMemo(() => highestPosition(session.roleIds, roles), [session.roleIds, roles]);
-  const canManageRoles = hasPermission(session.permissions, Permission.MANAGE_ROLES);
+  const ownPosition = useMemo(() => highestPosition(member.roleIds, roles), [member.roleIds, roles]);
+  const canManageRoles = hasPermission(member.permissions, Permission.MANAGE_ROLES);
   const selectedRole = roles.find((role) => role.id === selectedRoleId) ?? null;
   const canEditSelected = Boolean(selectedRole) && canManageRoles && selectedRole!.position < ownPosition;
 
@@ -196,6 +335,7 @@ function RolesPane({ session }: { session: UserSession }) {
     setError('');
     try {
       const { role } = await api.createRole(
+        serverId,
         newRoleName.trim(),
         ROLE_COLOR_SWATCHES[roles.length % ROLE_COLOR_SWATCHES.length] ?? '#7c6ff2',
         0,
@@ -215,7 +355,7 @@ function RolesPane({ session }: { session: UserSession }) {
     if (!selectedRole) return;
     setError('');
     try {
-      const { role } = await api.updateRole(selectedRole.id, patch);
+      const { role } = await api.updateRole(serverId, selectedRole.id, patch);
       setRoles((current) => current.map((candidate) => (candidate.id === role.id ? role : candidate)));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível atualizar o cargo.');
@@ -223,10 +363,10 @@ function RolesPane({ session }: { session: UserSession }) {
   }
 
   async function removeSelectedRole() {
-    if (!selectedRole || selectedRole.id === EVERYONE_ROLE_ID) return;
+    if (!selectedRole || selectedRole.isEveryone) return;
     if (!window.confirm(`Apagar o cargo "${selectedRole.name}"? Essa ação não pode ser desfeita.`)) return;
     try {
-      await api.deleteRole(selectedRole.id);
+      await api.deleteRole(serverId, selectedRole.id);
       setRoles((current) => current.filter((role) => role.id !== selectedRole.id));
       setSelectedRoleId(null);
     } catch (requestError) {
@@ -238,16 +378,16 @@ function RolesPane({ session }: { session: UserSession }) {
     if (!selectedRole) return;
     try {
       if (hasRole) {
-        await api.unassignRole(selectedRole.id, userId);
+        await api.unassignRole(serverId, selectedRole.id, userId);
         setMembers((current) =>
-          current.map((member) =>
-            member.id === userId ? { ...member, roleIds: member.roleIds.filter((id) => id !== selectedRole.id) } : member,
+          current.map((candidate) =>
+            candidate.id === userId ? { ...candidate, roleIds: candidate.roleIds.filter((id) => id !== selectedRole.id) } : candidate,
           ),
         );
       } else {
-        await api.assignRole(selectedRole.id, userId);
+        await api.assignRole(serverId, selectedRole.id, userId);
         setMembers((current) =>
-          current.map((member) => (member.id === userId ? { ...member, roleIds: [...member.roleIds, selectedRole.id] } : member)),
+          current.map((candidate) => (candidate.id === userId ? { ...candidate, roleIds: [...candidate.roleIds, selectedRole.id] } : candidate)),
         );
       }
     } catch (requestError) {
@@ -265,7 +405,7 @@ function RolesPane({ session }: { session: UserSession }) {
     return [...groups.entries()];
   }, []);
 
-  const filteredMembers = members.filter((member) => member.displayName.toLowerCase().includes(memberSearch.trim().toLowerCase()));
+  const filteredMembers = members.filter((candidate) => candidate.displayName.toLowerCase().includes(memberSearch.trim().toLowerCase()));
 
   return (
     <div className="roles-page">
@@ -295,7 +435,7 @@ function RolesPane({ session }: { session: UserSession }) {
           <label className="roles-search"><SearchIcon size={14} /><input readOnly placeholder="Buscar cargos" /></label>
           <span className="field-eyebrow">Cargos — {roles.length}</span>
           {roles.map((role) => {
-            const memberCount = members.filter((member) => member.roleIds.includes(role.id)).length;
+            const memberCount = members.filter((candidate) => candidate.roleIds.includes(role.id)).length;
             return (
               <button
                 type="button"
@@ -318,9 +458,9 @@ function RolesPane({ session }: { session: UserSession }) {
               <div>
                 <span className="role-color-dot" style={{ background: selectedRole.color }} />
                 <h2>{selectedRole.name}</h2>
-                <small>{members.filter((member) => member.roleIds.includes(selectedRole.id)).length} membros</small>
+                <small>{members.filter((candidate) => candidate.roleIds.includes(selectedRole.id)).length} membros</small>
               </div>
-              {canEditSelected && selectedRole.id !== EVERYONE_ROLE_ID && (
+              {canEditSelected && !selectedRole.isEveryone && (
                 <button type="button" onClick={() => void removeSelectedRole()} aria-label="Apagar cargo">
                   <TrashIcon size={14} />
                 </button>
@@ -339,7 +479,7 @@ function RolesPane({ session }: { session: UserSession }) {
                     Nome do cargo
                     <input
                       value={selectedRole.name}
-                      disabled={!canEditSelected || selectedRole.id === EVERYONE_ROLE_ID}
+                      disabled={!canEditSelected || selectedRole.isEveryone}
                       maxLength={ROLE_NAME_MAX_LENGTH}
                       onChange={(event) => setRoles((current) => current.map((role) => (role.id === selectedRole.id ? { ...role, name: event.target.value } : role)))}
                       onBlur={(event) => void patchSelectedRole({ name: event.target.value.trim() || selectedRole.name })}
@@ -362,7 +502,7 @@ function RolesPane({ session }: { session: UserSession }) {
                     </div>
                   </label>
                 </div>
-                {selectedRole.id !== EVERYONE_ROLE_ID && (
+                {!selectedRole.isEveryone && (
                   <div className="role-static-toggle">
                     <div><strong>Exibir membros do cargo separadamente</strong><span>Mostra este cargo como um grupo próprio na lista de membros.</span></div>
                     <button
@@ -418,20 +558,20 @@ function RolesPane({ session }: { session: UserSession }) {
                     <input placeholder="Buscar membro" value={memberSearch} onChange={(event) => setMemberSearch(event.target.value)} />
                   </label>
                 </div>
-                {selectedRole.id === EVERYONE_ROLE_ID ? (
+                {selectedRole.isEveryone ? (
                   <p className="role-admin-note">Todo mundo tem @everyone automaticamente — não dá pra atribuir ou remover manualmente.</p>
                 ) : (
                   <div className="role-member-list">
-                    {filteredMembers.map((member) => {
-                      const hasRole = member.roleIds.includes(selectedRole.id);
+                    {filteredMembers.map((candidate) => {
+                      const hasRole = candidate.roleIds.includes(selectedRole.id);
                       return (
-                        <div className="permission-row" key={member.id}>
-                          <span>{member.displayName}</span>
+                        <div className="permission-row" key={candidate.id}>
+                          <span>{candidate.displayName}</span>
                           <button
                             type="button"
                             disabled={!canEditSelected}
                             className={`static-switch${hasRole ? ' on' : ''}`}
-                            onClick={() => void toggleMemberInRole(member.id, hasRole)}
+                            onClick={() => void toggleMemberInRole(candidate.id, hasRole)}
                           />
                         </div>
                       );
@@ -459,7 +599,7 @@ const TIMEOUT_PRESETS = [
   { label: '7 dias', minutes: 60 * 24 * 7 },
 ];
 
-function MembersPane({ session }: { session: UserSession }) {
+function MembersPane({ serverId, member }: { serverId: string; member: ServerMember }) {
   const [members, setMembers] = useState<MemberSummary[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [bans, setBans] = useState<BanRecord[]>([]);
@@ -468,33 +608,37 @@ function MembersPane({ session }: { session: UserSession }) {
   const [banReason, setBanReason] = useState('');
   const [feedback, setFeedback] = useState('');
 
-  const canKick = hasPermission(session.permissions, Permission.KICK_MEMBERS);
-  const canBan = hasPermission(session.permissions, Permission.BAN_MEMBERS);
-  const canTimeout = hasPermission(session.permissions, Permission.MODERATE_MEMBERS);
-  const ownPosition = useMemo(() => highestPosition(session.roleIds, roles), [session.roleIds, roles]);
+  const canKick = hasPermission(member.permissions, Permission.KICK_MEMBERS);
+  const canBan = hasPermission(member.permissions, Permission.BAN_MEMBERS);
+  const canTimeout = hasPermission(member.permissions, Permission.MODERATE_MEMBERS);
+  const ownPosition = useMemo(() => highestPosition(member.roleIds, roles), [member.roleIds, roles]);
 
   useEffect(() => {
     let active = true;
-    void Promise.all([api.getMembers(), api.getRoles()]).then(([membersResult, rolesResult]) => {
+    void Promise.all([api.getMembers(serverId), api.getRoles(serverId)]).then(([membersResult, rolesResult]) => {
       if (!active) return;
       setMembers(membersResult.members);
       setRoles(rolesResult.roles);
     });
-    if (canBan) void api.getBans().then((result) => active && setBans(result.bans));
+    if (canBan) void api.getBans(serverId).then((result) => active && setBans(result.bans));
     const unsubscribe = onRealtimeEvent((event) => {
-      if (event.type === 'MEMBER_ROLES_UPDATE') {
-        setMembers((current) => current.map((member) => (member.id === event.userId ? { ...member, roleIds: event.roleIds } : member)));
-      } else if (event.type === 'MEMBER_TIMEOUT_UPDATE') {
+      if (event.type === 'MEMBER_ROLES_UPDATE' && event.serverId === serverId) {
+        setMembers((current) => current.map((candidate) => (candidate.id === event.userId ? { ...candidate, roleIds: event.roleIds } : candidate)));
+      } else if (event.type === 'MEMBER_TIMEOUT_UPDATE' && event.serverId === serverId) {
         setMembers((current) =>
-          current.map((member) => (member.id === event.userId ? { ...member, timeoutUntil: event.timeoutUntil } : member)),
+          current.map((candidate) => (candidate.id === event.userId ? { ...candidate, timeoutUntil: event.timeoutUntil } : candidate)),
         );
       } else if (event.type === 'MEMBER_BANNED') {
-        setMembers((current) => current.filter((member) => member.id !== event.userId));
-      } else if (event.type === 'ROLE_CREATE') {
+        setMembers((current) => current.filter((candidate) => candidate.id !== event.userId));
+      } else if (event.type === 'MEMBER_LEAVE' && event.serverId === serverId) {
+        setMembers((current) => current.filter((candidate) => candidate.id !== event.userId));
+      } else if (event.type === 'MEMBER_JOIN' && event.serverId === serverId) {
+        setMembers((current) => (current.some((candidate) => candidate.id === event.member.id) ? current : [...current, event.member]));
+      } else if (event.type === 'ROLE_CREATE' && event.serverId === serverId) {
         setRoles((current) => [...current, event.role]);
-      } else if (event.type === 'ROLE_UPDATE') {
+      } else if (event.type === 'ROLE_UPDATE' && event.serverId === serverId) {
         setRoles((current) => current.map((role) => (role.id === event.role.id ? event.role : role)));
-      } else if (event.type === 'ROLE_DELETE') {
+      } else if (event.type === 'ROLE_DELETE' && event.serverId === serverId) {
         setRoles((current) => current.filter((role) => role.id !== event.roleId));
       }
     });
@@ -502,14 +646,14 @@ function MembersPane({ session }: { session: UserSession }) {
       active = false;
       unsubscribe();
     };
-  }, [canBan]);
+  }, [serverId, canBan]);
 
-  function targetPosition(member: MemberSummary): number {
-    return highestPosition(member.roleIds, roles);
+  function targetPosition(candidate: MemberSummary): number {
+    return highestPosition(candidate.roleIds, roles);
   }
 
-  function canModerate(member: MemberSummary): boolean {
-    return member.id !== session.id && targetPosition(member) < ownPosition;
+  function canModerate(candidate: MemberSummary): boolean {
+    return candidate.id !== member.userId && targetPosition(candidate) < ownPosition;
   }
 
   async function runAction(promise: Promise<unknown>, successMessage: string) {
@@ -522,7 +666,7 @@ function MembersPane({ session }: { session: UserSession }) {
     }
   }
 
-  const filtered = members.filter((member) => member.displayName.toLowerCase().includes(search.trim().toLowerCase()));
+  const filtered = members.filter((candidate) => candidate.displayName.toLowerCase().includes(search.trim().toLowerCase()));
 
   return (
     <div className="members-page">
@@ -535,36 +679,36 @@ function MembersPane({ session }: { session: UserSession }) {
       </label>
       {feedback && <p className="form-error" role="status">{feedback}</p>}
       <div className="member-roster">
-        {filtered.map((member) => {
-          const isTimedOut = Boolean(member.timeoutUntil && member.timeoutUntil > Date.now());
-          const memberRoles = roles.filter((role) => role.id !== EVERYONE_ROLE_ID && member.roleIds.includes(role.id));
-          const showMenu = menu?.userId === member.id;
+        {filtered.map((candidate) => {
+          const isTimedOut = Boolean(candidate.timeoutUntil && candidate.timeoutUntil > Date.now());
+          const memberRoles = roles.filter((role) => !role.isEveryone && candidate.roleIds.includes(role.id));
+          const showMenu = menu?.userId === candidate.id;
           return (
-            <div className="member-roster-row" key={member.id}>
+            <div className="member-roster-row" key={candidate.id}>
               <div className="member-roster-identity">
-                <span className="member-roster-name">{member.displayName}</span>
+                <span className="member-roster-name">{candidate.displayName}</span>
                 <div className="member-roster-roles">
                   {memberRoles.map((role) => (
                     <span key={role.id} className="role-chip" style={{ borderColor: role.color, color: role.color }}>{role.name}</span>
                   ))}
-                  {isTimedOut && member.timeoutUntil && (
-                    <span className="role-chip role-chip-timeout">Silenciado até {formatTimeoutUntil(member.timeoutUntil)}</span>
+                  {isTimedOut && candidate.timeoutUntil && (
+                    <span className="role-chip role-chip-timeout">Silenciado até {formatTimeoutUntil(candidate.timeoutUntil)}</span>
                   )}
                 </div>
               </div>
-              {canModerate(member) && (canKick || canBan || canTimeout) && (
+              {canModerate(candidate) && (canKick || canBan || canTimeout) && (
                 <div className="member-roster-actions">
                   {canKick && (
                     <button
                       type="button"
                       className="secondary-pill"
-                      onClick={() => void runAction(api.voiceKickMember(member.id), `${member.displayName} foi expulso da chamada de voz.`)}
+                      onClick={() => void runAction(api.voiceKickMember(serverId, candidate.id), `${candidate.displayName} foi expulso da chamada de voz.`)}
                     >
                       Expulsar da voz
                     </button>
                   )}
                   {canTimeout && !isTimedOut && (
-                    <button type="button" className="secondary-pill" onClick={() => setMenu({ userId: member.id, mode: 'timeout' })}>
+                    <button type="button" className="secondary-pill" onClick={() => setMenu({ userId: candidate.id, mode: 'timeout' })}>
                       Timeout
                     </button>
                   )}
@@ -572,13 +716,13 @@ function MembersPane({ session }: { session: UserSession }) {
                     <button
                       type="button"
                       className="secondary-pill"
-                      onClick={() => void runAction(api.clearMemberTimeout(member.id), `Timeout de ${member.displayName} removido.`)}
+                      onClick={() => void runAction(api.clearMemberTimeout(serverId, candidate.id), `Timeout de ${candidate.displayName} removido.`)}
                     >
                       Remover timeout
                     </button>
                   )}
                   {canBan && (
-                    <button type="button" className="secondary-pill danger-pill" onClick={() => setMenu({ userId: member.id, mode: 'ban' })}>
+                    <button type="button" className="secondary-pill danger-pill" onClick={() => setMenu({ userId: candidate.id, mode: 'ban' })}>
                       Banir
                     </button>
                   )}
@@ -592,7 +736,7 @@ function MembersPane({ session }: { session: UserSession }) {
                       type="button"
                       className="secondary-pill"
                       onClick={() => {
-                        void runAction(api.timeoutMember(member.id, preset.minutes), `${member.displayName} está em timeout por ${preset.label}.`);
+                        void runAction(api.timeoutMember(serverId, candidate.id, preset.minutes), `${candidate.displayName} está em timeout por ${preset.label}.`);
                         setMenu(null);
                       }}
                     >
@@ -613,7 +757,7 @@ function MembersPane({ session }: { session: UserSession }) {
                     type="button"
                     className="violet-primary danger-pill"
                     onClick={() => {
-                      void runAction(api.banMember(member.id, banReason), `${member.displayName} foi banido.`);
+                      void runAction(api.banMember(serverId, candidate.id, banReason), `${candidate.displayName} foi banido.`);
                       setMenu(null);
                       setBanReason('');
                     }}
@@ -645,7 +789,7 @@ function MembersPane({ session }: { session: UserSession }) {
                   type="button"
                   className="secondary-pill"
                   onClick={() => {
-                    void runAction(api.unbanMember(ban.userId), `${ban.displayName} foi desbanido.`);
+                    void runAction(api.unbanMember(serverId, ban.userId), `${ban.displayName} foi desbanido.`);
                     setBans((current) => current.filter((entry) => entry.userId !== ban.userId));
                   }}
                 >

@@ -45,7 +45,7 @@ async function decodeAudioFile(file: File): Promise<DecodedAudio> {
   }
 }
 
-function UploadSoundForm({ onCreated }: { onCreated: (sound: SoundboardSound) => void }) {
+function UploadSoundForm({ serverId, onCreated }: { serverId: string; onCreated: (sound: SoundboardSound) => void }) {
   const [name, setName] = useState('');
   const [emoji, setEmoji] = useState('🔔');
   const [fileName, setFileName] = useState('');
@@ -73,7 +73,7 @@ function UploadSoundForm({ onCreated }: { onCreated: (sound: SoundboardSound) =>
     setSaving(true);
     setError('');
     try {
-      const { sound } = await api.createSoundboardSound(name.trim(), emoji.trim() || '🔔', decoded.dataUrl, decoded.durationMs);
+      const { sound } = await api.createSoundboardSound(serverId, name.trim(), emoji.trim() || '🔔', decoded.dataUrl, decoded.durationMs);
       onCreated(sound);
       setName('');
       setFileName('');
@@ -125,6 +125,7 @@ function UploadSoundForm({ onCreated }: { onCreated: (sound: SoundboardSound) =>
 
 export function SoundboardPanel({
   open,
+  serverId,
   onClose,
   sounds,
   ownUserId,
@@ -133,6 +134,7 @@ export function SoundboardPanel({
   onDeleted,
 }: {
   open: boolean;
+  serverId: string;
   onClose: () => void;
   sounds: SoundboardSound[];
   ownUserId: string;
@@ -167,7 +169,7 @@ export function SoundboardPanel({
     if (deletingId) return;
     setDeletingId(soundId);
     try {
-      await api.deleteSoundboardSound(soundId);
+      await api.deleteSoundboardSound(serverId, soundId);
       onDeleted(soundId);
     } catch {
       // Se a exclusão falhar (ex.: não é o dono), o evento de WebSocket
@@ -227,6 +229,7 @@ export function SoundboardPanel({
       <div className="soundboard-panel-footer">
         {showUpload ? (
           <UploadSoundForm
+            serverId={serverId}
             onCreated={(sound) => {
               onCreated(sound);
               setShowUpload(false);

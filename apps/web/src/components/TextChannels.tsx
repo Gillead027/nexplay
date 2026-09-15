@@ -13,6 +13,7 @@ import {
   type MessageAttachment,
   type MusicCommandResponse,
   type ReactionEmoji,
+  type ServerMember,
   type TextChannel,
   type TextMessage,
   type UserSession,
@@ -308,6 +309,7 @@ function HumanTextMessageRow({
   message,
   continued,
   session,
+  canManageMessages,
   onOpenProfile,
   isEditing,
   onStartEdit,
@@ -323,6 +325,7 @@ function HumanTextMessageRow({
   message: TextMessage;
   continued: boolean;
   session: UserSession;
+  canManageMessages: boolean;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
   isEditing: boolean;
   onStartEdit: () => void;
@@ -338,7 +341,6 @@ function HumanTextMessageRow({
   const avatarUrl = useTextAvatar(message.senderId, session);
   const initial = message.senderName.trim().charAt(0).toUpperCase() || '?';
   const isOwn = message.senderId === session.id;
-  const canManageMessages = hasPermission(session.permissions, Permission.MANAGE_MESSAGES);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
   return (
     <article id={`message-${message.id}`} className={`message text-message ${continued ? 'continued' : ''} ${message.pinnedAt ? 'pinned' : ''}`}>
@@ -431,6 +433,7 @@ function TextMessageRow(props: {
   message: TextMessage;
   continued: boolean;
   session: UserSession;
+  canManageMessages: boolean;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
   onMusicCommand: (command: string) => Promise<MusicCommandResponse>;
   isEditing: boolean;
@@ -451,6 +454,7 @@ function TextMessageRow(props: {
         message={props.message}
         continued={props.continued}
         session={props.session}
+        canManageMessages={props.canManageMessages}
         onOpenProfile={props.onOpenProfile}
         isEditing={props.isEditing}
         onStartEdit={props.onStartEdit}
@@ -504,10 +508,12 @@ function PinnedMessagesPanel({
 }
 
 function MessageSearchPanel({
+  serverId,
   channelId,
   onJump,
   loadedMessageIds,
 }: {
+  serverId: string;
   channelId: string;
   onJump: (messageId: string) => void;
   loadedMessageIds: Set<string>;
@@ -523,7 +529,7 @@ function MessageSearchPanel({
     if (trimmed.length < MESSAGE_SEARCH_QUERY_MIN_LENGTH || searching) return;
     setSearching(true);
     try {
-      const { messages } = await api.searchMessages(channelId, trimmed);
+      const { messages } = await api.searchMessages(serverId, channelId, trimmed);
       setResults(messages);
       setSearched(true);
     } catch {
@@ -581,12 +587,14 @@ function MessageSearchPanel({
 export function TextChannelView({
   channel,
   session,
+  member,
   messageStyle,
   voiceChannelId,
   onOpenProfile,
 }: {
   channel: TextChannel;
   session: UserSession;
+  member: ServerMember | null;
   messageStyle: MessageStyle;
   voiceChannelId: string | null;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
@@ -608,8 +616,8 @@ export function TextChannelView({
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const isTimedOut = Boolean(session.timeoutUntil && session.timeoutUntil > Date.now());
-  const canManageMessages = hasPermission(session.permissions, Permission.MANAGE_MESSAGES);
+  const isTimedOut = Boolean(member?.timeoutUntil && member.timeoutUntil > Date.now());
+  const canManageMessages = hasPermission(member?.permissions ?? 0, Permission.MANAGE_MESSAGES);
 
   async function handleFilesSelected(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -629,7 +637,7 @@ export function TextChannelView({
           continue;
         }
         try {
-          const { attachment } = await api.uploadAttachment(channel.id, file);
+          const { attachment } = await api.uploadAttachment(channel.serverId, channel.id, file);
           setPendingAttachments((current) => [...current, attachment]);
         } catch (uploadError) {
           setAttachmentError(uploadError instanceof Error ? uploadError.message : `Não foi possível enviar "${file.name}".`);
@@ -652,7 +660,7 @@ export function TextChannelView({
 
   async function saveMessageEdit(messageId: string, text: string) {
     try {
-      const { message } = await api.editTextMessage(channel.id, messageId, text);
+      const { message } = await api.editTextMessage(channel.serverId, channel.id, messageId, text);
       setMessages((current) => applyIncomingMessage(current, message));
       setEditingMessageId(null);
     } catch (requestError) {
@@ -663,7 +671,7 @@ export function TextChannelView({
   async function deleteMessage(messageId: string) {
     if (!window.confirm('Apagar esta mensagem? Essa ação não pode ser desfeita.')) return;
     try {
-      await api.deleteTextMessage(channel.id, messageId);
+      await api.deleteTextMessage(channel.serverId, channel.id, messageId);
       setMessages((current) => current.filter(({ id }) => id !== messageId));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível apagar a mensagem.');
@@ -675,8 +683,8 @@ export function TextChannelView({
   async function toggleReaction(messageId: string, emoji: ReactionEmoji, reacted: boolean) {
     setMessages((current) => applyReactionChange(current, messageId, emoji, session.id, reacted ? 'remove' : 'add'));
     try {
-      if (reacted) await api.removeReaction(channel.id, messageId, emoji);
-      else await api.addReaction(channel.id, messageId, emoji);
+      if (reacted) await api.removeReaction(channel.serverId, channel.id, messageId, emoji);
+      else await api.addReaction(channel.serverId, channel.id, messageId, emoji);
     } catch {
       // Reverte o otimismo local — o próximo fetch/reconexão também corrigiria.
       setMessages((current) => applyReactionChange(current, messageId, emoji, session.id, reacted ? 'add' : 'remove'));
@@ -686,12 +694,12 @@ export function TextChannelView({
   async function togglePin(message: TextMessage) {
     try {
       if (message.pinnedAt) {
-        await api.unpinMessage(channel.id, message.id);
+        await api.unpinMessage(channel.serverId, channel.id, message.id);
         const { pinnedAt: _pinnedAt, ...unpinned } = message;
         setMessages((current) => applyIncomingMessage(current, unpinned));
         setPinnedMessages((current) => current.filter(({ id }) => id !== message.id));
       } else {
-        const { message: pinned } = await api.pinMessage(channel.id, message.id);
+        const { message: pinned } = await api.pinMessage(channel.serverId, channel.id, message.id);
         setMessages((current) => applyIncomingMessage(current, pinned));
         setPinnedMessages((current) => [pinned, ...current]);
       }
@@ -701,7 +709,7 @@ export function TextChannelView({
   }
 
   function refreshPinnedMessages() {
-    void api.getPinnedMessages(channel.id).then(({ messages: pinned }) => setPinnedMessages(pinned)).catch(() => {
+    void api.getPinnedMessages(channel.serverId, channel.id).then(({ messages: pinned }) => setPinnedMessages(pinned)).catch(() => {
       // Painel simplesmente mostra a última lista conhecida.
     });
   }
@@ -726,7 +734,7 @@ export function TextChannelView({
       if (requestRunning) return;
       requestRunning = true;
       try {
-        const result = await api.getTextMessages(channel.id);
+        const result = await api.getTextMessages(channel.serverId, channel.id);
         if (active) {
           setMessages(result.messages);
           setError('');
@@ -797,9 +805,10 @@ export function TextChannelView({
         text,
         voiceChannelId,
         textChannelId: channel.id,
-        sendMusicCommand: api.sendMusicCommand,
+        sendMusicCommand: (roomId, commandText, textChannelId) =>
+          api.sendMusicCommand(channel.serverId, roomId, commandText, textChannelId),
         sendTextMessage: async (messageText) =>
-          (await api.sendTextMessage(channel.id, messageText, replyingTo?.id, attachmentIds)).message,
+          (await api.sendTextMessage(channel.serverId, channel.id, messageText, replyingTo?.id, attachmentIds)).message,
       });
       setReplyingTo(null);
       setPendingAttachments([]);
@@ -865,7 +874,7 @@ export function TextChannelView({
           onUnpin={(message) => void togglePin(message)}
         />
       )}
-      {searchOpen && <MessageSearchPanel channelId={channel.id} onJump={jumpToMessage} loadedMessageIds={new Set(messages.map(({ id }) => id))} />}
+      {searchOpen && <MessageSearchPanel serverId={channel.serverId} channelId={channel.id} onJump={jumpToMessage} loadedMessageIds={new Set(messages.map(({ id }) => id))} />}
       {error && <div className="error-banner" role="alert"><span>{error}</span></div>}
       {feedback && <div className="music-command-feedback" role="status"><span>{feedback.message}</span>{feedback.nowPlaying && <MusicCard card={feedback.nowPlaying} />}</div>}
       <div
@@ -895,6 +904,7 @@ export function TextChannelView({
               message={message}
               continued={continued}
               session={session}
+              canManageMessages={canManageMessages}
               onOpenProfile={onOpenProfile}
               isEditing={editingMessageId === message.id}
               onStartEdit={() => setEditingMessageId(message.id)}
@@ -913,7 +923,7 @@ export function TextChannelView({
                 if (!voiceChannelId) {
                   throw new Error('Você precisa estar em um canal de voz para usar os controles do SausiMusic.');
                 }
-                const response = await api.sendMusicCommand(voiceChannelId, commandText, channel.id);
+                const response = await api.sendMusicCommand(channel.serverId, voiceChannelId, commandText, channel.id);
                 if (response.removeTextMessage) {
                   setMessages((current) => current.filter(({ senderType }) => senderType !== 'BOT'));
                 } else if (response.textMessage) {
@@ -935,11 +945,11 @@ export function TextChannelView({
           </button>
         </div>
       )}
-      {isTimedOut && session.timeoutUntil && (
+      {isTimedOut && member?.timeoutUntil && (
         <div className="reply-composer-banner timeout-composer-banner">
           <span>
             Você está em timeout e não pode enviar mensagens até{' '}
-            {new Date(session.timeoutUntil).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.
+            {new Date(member.timeoutUntil).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}.
           </span>
         </div>
       )}
@@ -1022,11 +1032,13 @@ export function TextChannelView({
 
 export function CreateTextChannelDialog({
   open,
+  serverId,
   onClose,
   onCreated,
   returnFocusRef,
 }: {
   open: boolean;
+  serverId: string;
   onClose: () => void;
   onCreated: (channel: TextChannel) => void;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
@@ -1099,7 +1111,7 @@ export function CreateTextChannelDialog({
     setSaving(true);
     setError('');
     try {
-      const { channel } = await api.createTextChannel(name, description);
+      const { channel } = await api.createTextChannel(serverId, name, description);
       setName('');
       setDescription('');
       onCreated(channel);

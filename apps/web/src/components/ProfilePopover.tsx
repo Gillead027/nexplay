@@ -17,7 +17,7 @@ function useUserProfile(userId: string, ownSession: UserSession): UserSession | 
   const [, forceRender] = useState(0);
 
   useEffect(() => {
-    if (isOwn || remoteProfileCache.has(userId)) return;
+    if (!userId || isOwn || remoteProfileCache.has(userId)) return;
     let active = true;
     void api
       .getUserProfile(userId)
