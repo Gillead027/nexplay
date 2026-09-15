@@ -5,6 +5,7 @@ import type {
   Channel,
   DmChannel,
   DmMessage,
+  ForwardDestination,
   FriendRequestSummary,
   FriendSummary,
   Invite,
@@ -173,6 +174,11 @@ export const api = {
       `${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(emoji)}`,
       { method: 'DELETE' },
     ),
+  forwardTextMessage: (serverId: string, channelId: string, messageId: string, destination: ForwardDestination) =>
+    request<{ message: TextMessage | DmMessage }>(
+      `${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/forward`,
+      { method: 'POST', body: JSON.stringify({ destination }) },
+    ),
   getLiveKitToken: (serverId: string, roomId: string) =>
     request<LiveKitTokenResponse>(`${s(serverId)}/livekit/token`, {
       method: 'POST',
@@ -257,4 +263,9 @@ export const api = {
     request<void>(`/api/dm-channels/${encodeURIComponent(dmChannelId)}/messages/${encodeURIComponent(messageId)}`, {
       method: 'DELETE',
     }),
+  forwardDmMessage: (dmChannelId: string, messageId: string, destination: ForwardDestination) =>
+    request<{ message: TextMessage | DmMessage }>(
+      `/api/dm-channels/${encodeURIComponent(dmChannelId)}/messages/${encodeURIComponent(messageId)}/forward`,
+      { method: 'POST', body: JSON.stringify({ destination }) },
+    ),
 };

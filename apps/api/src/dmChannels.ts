@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { AccentColor, DmChannel, DmChannelParticipant, DmMessage } from '@sausixudos/shared';
+import type { AccentColor, DmChannel, DmChannelParticipant, DmMessage, ForwardedFromMeta } from '@sausixudos/shared';
 import { areFriends } from './friendships.js';
 import { db } from './db.js';
 import type { UserRecord } from './users.js';
@@ -26,6 +26,11 @@ interface DmMessageRow {
   text: string;
   created_at: number;
   edited_at: number | null;
+  forwarded_from_author_name: string | null;
+  forwarded_from_message_id: string | null;
+  forwarded_from_server_id: string | null;
+  forwarded_from_channel_id: string | null;
+  forwarded_from_dm_channel_id: string | null;
 }
 
 function canonicalPair(idA: string, idB: string): [string, string] {
@@ -67,12 +72,22 @@ const insertChannelStatement = db.prepare(
 );
 const touchLastMessageStatement = db.prepare('UPDATE dm_channels SET last_message_at = ? WHERE id = ?');
 
-const insertMessageStatement = db.prepare(
-  'INSERT INTO dm_messages (id, dm_channel_id, sender_id, text, created_at) VALUES (?, ?, ?, ?, ?)',
-);
+const insertMessageStatement = db.prepare(`
+  INSERT INTO dm_messages (
+    id, dm_channel_id, sender_id, text, created_at,
+    forwarded_from_author_name, forwarded_from_message_id, forwarded_from_server_id,
+    forwarded_from_channel_id, forwarded_from_dm_channel_id
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+const DM_MESSAGE_SELECT_COLUMNS = `
+  dm_messages.id, dm_messages.dm_channel_id, dm_messages.sender_id, users.username AS sender_name,
+    dm_messages.text, dm_messages.created_at, dm_messages.edited_at,
+    dm_messages.forwarded_from_author_name, dm_messages.forwarded_from_message_id,
+    dm_messages.forwarded_from_server_id, dm_messages.forwarded_from_channel_id,
+    dm_messages.forwarded_from_dm_channel_id
+`;
 const listMessagesStatement = db.prepare(`
-  SELECT dm_messages.id, dm_messages.dm_channel_id, dm_messages.sender_id, users.username AS sender_name,
-    dm_messages.text, dm_messages.created_at, dm_messages.edited_at
+  SELECT ${DM_MESSAGE_SELECT_COLUMNS}
   FROM dm_messages
   INNER JOIN users ON users.id = dm_messages.sender_id
   WHERE dm_messages.dm_channel_id = ?
@@ -80,8 +95,7 @@ const listMessagesStatement = db.prepare(`
   LIMIT ?
 `);
 const selectMessageByIdStatement = db.prepare(`
-  SELECT dm_messages.id, dm_messages.dm_channel_id, dm_messages.sender_id, users.username AS sender_name,
-    dm_messages.text, dm_messages.created_at, dm_messages.edited_at
+  SELECT ${DM_MESSAGE_SELECT_COLUMNS}
   FROM dm_messages
   INNER JOIN users ON users.id = dm_messages.sender_id
   WHERE dm_messages.id = ? AND dm_messages.dm_channel_id = ?
@@ -114,6 +128,18 @@ function toMessage(row: DmMessageRow): DmMessage {
     text: row.text,
     sentAt: row.created_at,
     ...(row.edited_at !== null ? { editedAt: row.edited_at } : {}),
+    ...(row.forwarded_from_author_name !== null
+      ? {
+          forwardedFromAuthorName: row.forwarded_from_author_name,
+          forwardedFromMessageId: row.forwarded_from_message_id!,
+          ...(row.forwarded_from_server_id !== null && row.forwarded_from_channel_id !== null
+            ? { forwardedFromServerId: row.forwarded_from_server_id, forwardedFromChannelId: row.forwarded_from_channel_id }
+            : {}),
+          ...(row.forwarded_from_dm_channel_id !== null
+            ? { forwardedFromDmChannelId: row.forwarded_from_dm_channel_id }
+            : {}),
+        }
+      : {}),
   };
 }
 
@@ -158,7 +184,7 @@ export function getDmMessageById(dmChannelId: string, messageId: string): DmMess
 export function createDmMessage(dmChannelId: string, text: string, sender: UserRecord): DmMessage {
   const id = randomUUID();
   const createdAt = Date.now();
-  insertMessageStatement.run(id, dmChannelId, sender.id, text, createdAt);
+  insertMessageStatement.run(id, dmChannelId, sender.id, text, createdAt, null, null, null, null, null);
   touchLastMessageStatement.run(createdAt, dmChannelId);
   return {
     id,
@@ -167,6 +193,47 @@ export function createDmMessage(dmChannelId: string, text: string, sender: UserR
     senderName: sender.username,
     text,
     sentAt: createdAt,
+  };
+}
+
+// Mesma regra de createForwardedTextMessage: nunca anexo, nunca junto de um
+// reply (DM não tem reply pra começo — ver escopo reduzido de DM no
+// DISCORD_PARITY_PLAN.md). Precisa chamar touchLastMessageStatement igual
+// createDmMessage, senão a conversa não sobe na lista ordenada por atividade.
+export function createForwardedDmMessage(
+  dmChannelId: string,
+  text: string,
+  sender: UserRecord,
+  forwardedFrom: ForwardedFromMeta,
+): DmMessage {
+  const id = randomUUID();
+  const createdAt = Date.now();
+  insertMessageStatement.run(
+    id,
+    dmChannelId,
+    sender.id,
+    text,
+    createdAt,
+    forwardedFrom.authorName,
+    forwardedFrom.messageId,
+    forwardedFrom.serverId ?? null,
+    forwardedFrom.channelId ?? null,
+    forwardedFrom.dmChannelId ?? null,
+  );
+  touchLastMessageStatement.run(createdAt, dmChannelId);
+  return {
+    id,
+    dmChannelId,
+    senderId: sender.id,
+    senderName: sender.username,
+    text,
+    sentAt: createdAt,
+    forwardedFromAuthorName: forwardedFrom.authorName,
+    forwardedFromMessageId: forwardedFrom.messageId,
+    ...(forwardedFrom.serverId && forwardedFrom.channelId
+      ? { forwardedFromServerId: forwardedFrom.serverId, forwardedFromChannelId: forwardedFrom.channelId }
+      : {}),
+    ...(forwardedFrom.dmChannelId ? { forwardedFromDmChannelId: forwardedFrom.dmChannelId } : {}),
   };
 }
 

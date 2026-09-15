@@ -38,6 +38,7 @@ import {
   TEXT_CHANNEL_NAME_MAX_LENGTH,
   TIMEOUT_MAX_MINUTES,
   type Channel,
+  type ForwardedFromMeta,
   type LiveKitTokenResponse,
   parseParticipantMetadata,
   type HumanParticipantMetadata,
@@ -65,6 +66,7 @@ import {
   type UserRecord,
 } from './users.js';
 import {
+  createForwardedTextMessage,
   deleteMusicBotTextMessage,
   deleteMusicBotTextMessagesForVoiceChannel,
   deleteTextMessage,
@@ -84,6 +86,7 @@ import {
   searchTextMessages,
   unpinTextMessage,
 } from './textChannels.js';
+import { resolveForwardDestination } from './forwardDestination.js';
 import { addReaction, isValidReactionEmoji, removeReaction } from './reactions.js';
 import { authorizeMusicCommand } from './musicCommands.js';
 import { fetchMusicThumbnail } from './musicThumbnails.js';
@@ -144,6 +147,7 @@ import {
 import { blockUser, isBlocked, listBlockedUsers, unblockUser } from './blocks.js';
 import {
   createDmMessage,
+  createForwardedDmMessage,
   deleteDmMessage,
   editDmMessage,
   getDmChannelForParticipant,
@@ -376,6 +380,12 @@ const reactionSchema = z.object({
 const dmMessageSchema = z.object({
   text: z.string().trim().min(1).max(CHAT_MESSAGE_MAX_LENGTH),
 });
+
+const forwardDestinationSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('channel'), serverId: z.string().min(1), channelId: z.string().min(1) }),
+  z.object({ kind: z.literal('dm'), dmChannelId: z.string().min(1) }),
+]);
+const forwardMessageSchema = z.object({ destination: forwardDestinationSchema });
 
 const ALL_PERMISSIONS_MASK = Object.values(Permission).reduce((mask, flag) => mask | flag, 0);
 const permissionsBitfieldSchema = z.number().int().min(0).max(ALL_PERMISSIONS_MASK);
@@ -1184,6 +1194,72 @@ app.delete(
   },
 );
 
+// Origem = mensagem de canal de texto. O path (:serverId/:channelId) já é o
+// mesmo usado por editar/apagar/pin — requireServerMembership já garante que
+// quem está pedindo o forward pode mesmo ler essa origem, sem precisar
+// reimplementar essa checagem aqui. O destino (corpo da requisição) é
+// resolvido do zero por resolveForwardDestination, nunca confiando em nada
+// que o cliente afirme sobre a origem alem dos ids já autorizados pelo path.
+app.post(
+  '/api/servers/:serverId/text-channels/:channelId/messages/:messageId/forward',
+  requireSession,
+  requireServerMembership,
+  textMessageLimiter,
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const channelId = request.params.channelId;
+    const messageId = request.params.messageId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== serverId || typeof messageId !== 'string') {
+      response.status(404).json({ error: 'Canal de texto não encontrado.' });
+      return;
+    }
+    const source = getTextMessageById(channelId as string, messageId);
+    if (!source) {
+      response.status(404).json({ error: 'Mensagem não encontrada.' });
+      return;
+    }
+    // Forward nunca copia anexo (ver DISCORD_PARITY_PLAN.md), então uma
+    // mensagem só-de-anexo (texto vazio, válido ao criar) resultaria numa
+    // mensagem vazia se deixássemos passar.
+    if (!source.text.trim()) {
+      response.status(400).json({ error: 'Não é possível encaminhar uma mensagem sem texto.' });
+      return;
+    }
+    const body = forwardMessageSchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Escolha um destino válido.' });
+      return;
+    }
+    const user = currentUser(response);
+    const resolved = resolveForwardDestination(body.data.destination, user.id);
+    if (!resolved.ok) {
+      response.status(resolved.status).json({ error: resolved.error });
+      return;
+    }
+    const forwardedFrom: ForwardedFromMeta = {
+      authorName: source.senderName,
+      messageId: source.id,
+      serverId,
+      channelId: channelId as string,
+    };
+    if (resolved.kind === 'channel') {
+      if (rejectIfTimedOut(resolved.serverId, user.id, response)) return;
+      const message = createForwardedTextMessage(resolved.channelId, source.text, user, forwardedFrom);
+      sendToServerMembers(resolved.serverId, { type: 'TEXT_MESSAGE_CREATE', serverId: resolved.serverId, channelId: resolved.channelId, message });
+      response.status(201).json({ message });
+      return;
+    }
+    if (isBlocked(user.id, resolved.otherUserId)) {
+      response.status(403).json({ error: 'Não foi possível enviar a mensagem agora.' });
+      return;
+    }
+    const message = createForwardedDmMessage(resolved.dmChannelId, source.text, user, forwardedFrom);
+    sendToUsers([user.id, resolved.otherUserId], { type: 'DM_MESSAGE_CREATE', dmChannelId: resolved.dmChannelId, message });
+    response.status(201).json({ message });
+  },
+);
+
 app.post(
   '/api/servers/:serverId/text-channels/:channelId/messages/:messageId/reactions',
   requireSession,
@@ -1781,6 +1857,54 @@ app.delete('/api/dm-channels/:dmChannelId/messages/:messageId', requireSession, 
   const other = channel.participants.find((participant) => participant.id !== user.id)!;
   sendToUsers([user.id, other.id], { type: 'DM_MESSAGE_DELETE', dmChannelId: channel.id, messageId });
   response.status(204).end();
+});
+
+// Origem = mensagem de DM. getDmChannelForParticipant já resolve existência
+// + participação da origem num único 404 genérico, igual toda outra rota de
+// mensagem de DM — o destino é resolvido do zero, igual a rota A acima.
+app.post('/api/dm-channels/:dmChannelId/messages/:messageId/forward', requireSession, dmMessageLimiter, (request, response) => {
+  const dmChannelId = request.params.dmChannelId;
+  const messageId = request.params.messageId;
+  const user = currentUser(response);
+  const channel = typeof dmChannelId === 'string' ? getDmChannelForParticipant(dmChannelId, user.id) : undefined;
+  if (!channel || typeof messageId !== 'string') {
+    response.status(404).json({ error: 'Conversa não encontrada.' });
+    return;
+  }
+  const source = getDmMessageById(channel.id, messageId);
+  if (!source) {
+    response.status(404).json({ error: 'Mensagem não encontrada.' });
+    return;
+  }
+  if (!source.text.trim()) {
+    response.status(400).json({ error: 'Não é possível encaminhar uma mensagem sem texto.' });
+    return;
+  }
+  const body = forwardMessageSchema.safeParse(request.body);
+  if (!body.success) {
+    response.status(400).json({ error: 'Escolha um destino válido.' });
+    return;
+  }
+  const resolved = resolveForwardDestination(body.data.destination, user.id);
+  if (!resolved.ok) {
+    response.status(resolved.status).json({ error: resolved.error });
+    return;
+  }
+  const forwardedFrom: ForwardedFromMeta = { authorName: source.senderName, messageId: source.id, dmChannelId: channel.id };
+  if (resolved.kind === 'channel') {
+    if (rejectIfTimedOut(resolved.serverId, user.id, response)) return;
+    const message = createForwardedTextMessage(resolved.channelId, source.text, user, forwardedFrom);
+    sendToServerMembers(resolved.serverId, { type: 'TEXT_MESSAGE_CREATE', serverId: resolved.serverId, channelId: resolved.channelId, message });
+    response.status(201).json({ message });
+    return;
+  }
+  if (isBlocked(user.id, resolved.otherUserId)) {
+    response.status(403).json({ error: 'Não foi possível enviar a mensagem agora.' });
+    return;
+  }
+  const message = createForwardedDmMessage(resolved.dmChannelId, source.text, user, forwardedFrom);
+  sendToUsers([user.id, resolved.otherUserId], { type: 'DM_MESSAGE_CREATE', dmChannelId: resolved.dmChannelId, message });
+  response.status(201).json({ message });
 });
 
 app.post(

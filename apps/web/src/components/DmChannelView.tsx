@@ -4,7 +4,7 @@ import { api } from '../api';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { MarkdownText } from './Markdown';
 import { Avatar } from './Workspace';
-import { CopyIcon, EditIcon, TrashIcon } from './Icons';
+import { CopyIcon, EditIcon, ForwardIcon, TrashIcon } from './Icons';
 
 // Mesma ideia de applyIncomingMessage em TextChannels.tsx, só que essa cópia
 // pequena é deliberada (ver plano) — DM não precisa de reação/pin/anexo, e
@@ -75,11 +75,13 @@ export function DmChannelView({
   session,
   isBlockedByMe,
   onOpenProfile,
+  onForward,
 }: {
   channel: DmChannel;
   session: UserSession;
   isBlockedByMe: boolean;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
+  onForward: (message: DmMessage) => void;
 }) {
   const other = channel.participants.find((participant) => participant.id !== session.id) ?? channel.participants[0]!;
   const [messages, setMessages] = useState<DmMessage[]>([]);
@@ -215,6 +217,9 @@ export function DmChannelView({
                     </time>
                     {message.editedAt && <span className="message-edited-mark" title="Mensagem editada">(editado)</span>}
                   </header>
+                  {message.forwardedFromAuthorName && (
+                    <p className="message-forwarded-mark"><ForwardIcon size={11} /> Encaminhada de {message.forwardedFromAuthorName}</p>
+                  )}
                   {editingMessageId === message.id ? (
                     <DmMessageEditForm initialText={message.text} onSave={(text) => saveEdit(message.id, text)} onCancel={() => setEditingMessageId(null)} />
                   ) : (
@@ -224,6 +229,9 @@ export function DmChannelView({
                 <div className="message-hover-actions" role="toolbar" aria-label="Ações da mensagem">
                   <button type="button" title="Copiar texto" aria-label="Copiar texto" onClick={() => void navigator.clipboard.writeText(message.text)}>
                     <CopyIcon size={14} />
+                  </button>
+                  <button type="button" title="Encaminhar" aria-label="Encaminhar" onClick={() => onForward(message)}>
+                    <ForwardIcon size={14} />
                   </button>
                   {isOwn && (
                     <>

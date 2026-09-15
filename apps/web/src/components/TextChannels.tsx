@@ -29,6 +29,7 @@ import {
   CopyIcon,
   EditIcon,
   FileIcon,
+  ForwardIcon,
   MessageIcon,
   PinIcon,
   ReplyIcon,
@@ -318,6 +319,7 @@ function HumanTextMessageRow({
   onDelete,
   onToggleReaction,
   onReply,
+  onForward,
   replyTarget,
   onJumpToMessage,
   onTogglePin,
@@ -334,6 +336,7 @@ function HumanTextMessageRow({
   onDelete: () => void;
   onToggleReaction: (emoji: ReactionEmoji, reacted: boolean) => void;
   onReply: () => void;
+  onForward: () => void;
   replyTarget: TextMessage | undefined;
   onJumpToMessage: (messageId: string) => void;
   onTogglePin: () => void;
@@ -373,6 +376,9 @@ function HumanTextMessageRow({
           {message.editedAt && <span className="message-edited-mark" title="Mensagem editada">(editado)</span>}
           {message.pinnedAt && <span className="message-pinned-mark" title="Mensagem fixada"><PinIcon size={11} /> fixada</span>}
         </header>
+        {message.forwardedFromAuthorName && (
+          <p className="message-forwarded-mark"><ForwardIcon size={11} /> Encaminhada de {message.forwardedFromAuthorName}</p>
+        )}
         {isEditing ? (
           <MessageEditForm initialText={message.text} onSave={onSaveEdit} onCancel={onCancelEdit} />
         ) : (
@@ -385,6 +391,9 @@ function HumanTextMessageRow({
         <div className="message-hover-actions" role="toolbar" aria-label="Ações da mensagem">
           <button type="button" title="Responder" aria-label="Responder" onClick={onReply}>
             <ReplyIcon size={14} />
+          </button>
+          <button type="button" title="Encaminhar" aria-label="Encaminhar" onClick={onForward}>
+            <ForwardIcon size={14} />
           </button>
           <button type="button" title="Copiar texto" aria-label="Copiar texto" onClick={() => void navigator.clipboard.writeText(message.text)}>
             <CopyIcon size={14} />
@@ -443,6 +452,7 @@ function TextMessageRow(props: {
   onDelete: () => void;
   onToggleReaction: (emoji: ReactionEmoji, reacted: boolean) => void;
   onReply: () => void;
+  onForward: () => void;
   replyTarget: TextMessage | undefined;
   onJumpToMessage: (messageId: string) => void;
   onTogglePin: () => void;
@@ -463,6 +473,7 @@ function TextMessageRow(props: {
         onDelete={props.onDelete}
         onToggleReaction={props.onToggleReaction}
         onReply={props.onReply}
+        onForward={props.onForward}
         replyTarget={props.replyTarget}
         onJumpToMessage={props.onJumpToMessage}
         onTogglePin={props.onTogglePin}
@@ -591,6 +602,7 @@ export function TextChannelView({
   messageStyle,
   voiceChannelId,
   onOpenProfile,
+  onForward,
 }: {
   channel: TextChannel;
   session: UserSession;
@@ -598,6 +610,7 @@ export function TextChannelView({
   messageStyle: MessageStyle;
   voiceChannelId: string | null;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
+  onForward: (message: TextMessage) => void;
 }) {
   const [messages, setMessages] = useState<TextMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -916,6 +929,7 @@ export function TextChannelView({
                 setReplyingTo(message);
                 inputRef.current?.focus();
               }}
+              onForward={() => onForward(message)}
               replyTarget={message.replyToMessageId ? messages.find(({ id }) => id === message.replyToMessageId) : undefined}
               onJumpToMessage={jumpToMessage}
               onTogglePin={() => void togglePin(message)}

@@ -78,6 +78,7 @@ import { FriendsHome, FriendsSidebar, isBlockedByMe as computeIsBlockedByMe, rel
 import { ProfilePopover, type ProfilePopoverTarget } from './ProfilePopover';
 import { RemoteAudioSink } from './RemoteAudioSink';
 import { ScreenStage } from './ScreenStage';
+import { ForwardMessageModal, type ForwardSource } from './ForwardMessage';
 import { AddServerModal, useActiveServerMember, useServersState } from './Servers';
 import { ServerSettings } from './ServerSettings';
 import { SoundboardPanel, SoundboardToast } from './Soundboard';
@@ -1696,6 +1697,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const member = useActiveServerMember(activeServerId, session);
   const canManageChannels = hasPermission(member?.permissions ?? 0, Permission.MANAGE_CHANNELS);
   const [addServerOpen, setAddServerOpen] = useState(false);
+  const [forwardingMessage, setForwardingMessage] = useState<ForwardSource | null>(null);
   const addServerButtonRef = useRef<HTMLButtonElement>(null);
   const [createTextChannelOpen, setCreateTextChannelOpen] = useState(false);
   const [createVoiceChannelOpen, setCreateVoiceChannelOpen] = useState(false);
@@ -2164,6 +2166,12 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         }}
         returnFocusRef={addServerButtonRef}
       />
+      <ForwardMessageModal
+        source={forwardingMessage}
+        onClose={() => setForwardingMessage(null)}
+        servers={serversState.servers}
+        friends={friendsState.friends}
+      />
       {voice.connected && (
         <VoiceAudioSinks
           participants={typedParticipants}
@@ -2426,6 +2434,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                 friendsState,
               )}
               onOpenProfile={openUserProfile}
+              onForward={(message) => setForwardingMessage({ kind: 'dm', dmChannelId: selectedDmChannel.id, messageId: message.id })}
             />
           ) : (
             <FriendsHome
@@ -2475,6 +2484,9 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
             messageStyle={messageStyle}
             voiceChannelId={voice.currentChannel?.id ?? null}
             onOpenProfile={openUserProfile}
+            onForward={(message) =>
+              setForwardingMessage({ kind: 'channel', serverId: activeTextChannel.serverId, channelId: activeTextChannel.id, messageId: message.id })
+            }
           />
         ) : (
         <>

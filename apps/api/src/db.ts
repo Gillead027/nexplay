@@ -265,6 +265,23 @@ db.exec(`
     ON text_messages(channel_id, pinned_at DESC);
 `);
 
+// Encaminhar mensagem: sem FK aqui de propósito, mesmo motivo do comentário
+// de reply_to_message_id acima — a origem pode estar em outro canal/
+// servidor/DM que o usuário atual nem tem mais acesso (ou que foi apagado),
+// e não existe (ainda) nenhuma UI de "ir para a mensagem original" que
+// precisaria resolver isso ao vivo. Exatamente um entre (server_id +
+// channel_id) ou dm_channel_id fica preenchido, nunca os dois — depende de a
+// origem ter sido uma mensagem de canal ou de DM.
+const FORWARD_COLUMNS: readonly (readonly [string, string])[] = [
+  ['forwarded_from_author_name', 'TEXT'],
+  ['forwarded_from_message_id', 'TEXT'],
+  ['forwarded_from_server_id', 'TEXT'],
+  ['forwarded_from_channel_id', 'TEXT'],
+  ['forwarded_from_dm_channel_id', 'TEXT'],
+];
+ensureColumns('text_messages', FORWARD_COLUMNS);
+ensureColumns('dm_messages', FORWARD_COLUMNS);
+
 // Canais de voz eram só o env var VOICE_CHANNELS, parseado no boot (ver
 // config.ts) — agora viram linhas reais, mas sem perder o que já estava
 // configurado em produção: só semeia se a tabela ainda estiver vazia (ou

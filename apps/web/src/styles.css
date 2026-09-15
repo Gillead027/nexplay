@@ -523,6 +523,7 @@ button:disabled { cursor: default; opacity: .45; }
 .message-edited-mark { color: var(--text-muted); font-size: 9px; }
 .message-pinned-mark { display: inline-flex; align-items: center; gap: 3px; color: #d9a441; font-size: 9px; }
 .message.pinned { background: rgba(217, 164, 65, .05); }
+.message-forwarded-mark { display: flex; align-items: center; gap: 4px; margin: 3px 0 0; color: var(--text-muted); font-size: 10px; font-style: italic; }
 
 /* Barra de ações rápidas ao passar o mouse sobre uma mensagem (editar/apagar/copiar) */
 .message-hover-actions {
@@ -1101,6 +1102,16 @@ body { letter-spacing: -.01em; }
 .channel-access-list i { color: #5acbb4; font-style: normal; }
 .channel-dialog footer { position: sticky; bottom: 0; margin: 24px -30px 0; padding: 17px 30px; border-top: 1px solid #2a3243; border-radius: 0 0 22px 22px; background: #10151f; }
 .channel-dialog .primary-button { border: 0; border-radius: 9px; background: #7468ec; }
+
+/* Modal de encaminhar mensagem */
+.forward-message-dialog { max-height: min(560px, calc(100vh - 82px)); display: flex; flex-direction: column; }
+.forward-search { margin: 4px 0 12px; }
+.forward-destination-list { flex: 1; min-height: 0; overflow-y: auto; margin: 0 -8px; padding: 0 8px 6px; }
+.forward-destination-group { margin-bottom: 14px; }
+.forward-destination-group:last-child { margin-bottom: 0; }
+.forward-destination-row { margin-bottom: 2px; }
+.forward-destination-row.active { color: var(--text-primary); background: rgba(116, 104, 236, .18); }
+.forward-message-dialog .primary-button { display: inline-flex; align-items: center; gap: 6px; }
 
 /* Configurações de usuário */
 .settings-overlay { inset: 48px 0 0; background: #0b0f17; }

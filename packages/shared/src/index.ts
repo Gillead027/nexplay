@@ -606,7 +606,38 @@ export interface MessageReactionGroup {
   userIds: string[];
 }
 
-export interface TextMessage {
+// Encaminhamento (forward): ao contrário de replyToMessageId (só id, resolve
+// contra mensagens já carregadas), o autor do forward normalmente NÃO tem
+// acesso ao canal/servidor/DM de origem — por isso forwardedFromAuthorName é
+// um snapshot congelado no momento do envio, nunca atualizado depois. Os ids
+// (forwardedFromMessageId + um entre forwardedFromChannelId/serverId OU
+// forwardedFromDmChannelId) são só de melhor esforço, sem FK, sem UI de "ir
+// pra mensagem original" ainda — podem apontar pra algo apagado/inacessível.
+export interface ForwardedFromFields {
+  forwardedFromAuthorName?: string;
+  forwardedFromMessageId?: string;
+  forwardedFromServerId?: string; // só se a origem era mensagem de canal
+  forwardedFromChannelId?: string; // só se a origem era mensagem de canal
+  forwardedFromDmChannelId?: string; // só se a origem era mensagem de DM
+}
+
+// Corpo de POST .../forward — resolvido no backend por
+// resolveForwardDestination (apps/api/src/forwardDestination.ts).
+export type ForwardDestination =
+  | { kind: 'channel'; serverId: string; channelId: string }
+  | { kind: 'dm'; dmChannelId: string };
+
+// Metadado de origem já resolvido pela rota antes de criar a mensagem nova —
+// não é um tipo de mensagem em si, vira ForwardedFromFields ao gravar.
+export interface ForwardedFromMeta {
+  authorName: string;
+  messageId: string;
+  serverId?: string;
+  channelId?: string;
+  dmChannelId?: string;
+}
+
+export interface TextMessage extends ForwardedFromFields {
   id: string;
   channelId: string;
   senderId: string;
@@ -675,7 +706,7 @@ export interface DmChannel {
   lastMessageAt: number | null;
 }
 
-export interface DmMessage {
+export interface DmMessage extends ForwardedFromFields {
   id: string;
   dmChannelId: string;
   senderId: string;

@@ -3,6 +3,7 @@ import {
   MUSIC_BOT_DISPLAY_NAME,
   MUSIC_BOT_IDENTITY,
   PINNED_MESSAGES_MAX_PER_CHANNEL,
+  type ForwardedFromMeta,
   type MusicNowPlayingCard,
   type TextChannel,
   type TextMessage,
@@ -32,6 +33,11 @@ interface TextMessageRow {
   edited_at: number | null;
   reply_to_message_id: string | null;
   pinned_at: number | null;
+  forwarded_from_author_name: string | null;
+  forwarded_from_message_id: string | null;
+  forwarded_from_server_id: string | null;
+  forwarded_from_channel_id: string | null;
+  forwarded_from_dm_channel_id: string | null;
 }
 
 interface TextBotMessageRow {
@@ -53,11 +59,16 @@ const selectChannelByNameStatement = db.prepare(
 const insertChannelStatement = db.prepare(
   'INSERT INTO text_channels (id, server_id, name, description, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)',
 );
-const insertMessageStatement = db.prepare(
-  'INSERT INTO text_messages (id, channel_id, sender_id, text, created_at, reply_to_message_id) VALUES (?, ?, ?, ?, ?, ?)',
-);
-const listMessagesStatement = db.prepare(`
-  SELECT
+const insertMessageStatement = db.prepare(`
+  INSERT INTO text_messages (
+    id, channel_id, sender_id, text, created_at, reply_to_message_id,
+    forwarded_from_author_name, forwarded_from_message_id, forwarded_from_server_id,
+    forwarded_from_channel_id, forwarded_from_dm_channel_id
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+`);
+// Reaproveitada nas 4 SELECTs abaixo pra nunca esquecer de adicionar uma
+// coluna nova numa delas e ter busca/pins silenciosamente sem o dado.
+const TEXT_MESSAGE_SELECT_COLUMNS = `
     messages.id,
     messages.channel_id,
     messages.sender_id,
@@ -66,7 +77,15 @@ const listMessagesStatement = db.prepare(`
     messages.created_at,
     messages.edited_at,
     messages.reply_to_message_id,
-    messages.pinned_at
+    messages.pinned_at,
+    messages.forwarded_from_author_name,
+    messages.forwarded_from_message_id,
+    messages.forwarded_from_server_id,
+    messages.forwarded_from_channel_id,
+    messages.forwarded_from_dm_channel_id
+`;
+const listMessagesStatement = db.prepare(`
+  SELECT ${TEXT_MESSAGE_SELECT_COLUMNS}
   FROM text_messages AS messages
   INNER JOIN users ON users.id = messages.sender_id
   WHERE messages.channel_id = ?
@@ -74,16 +93,7 @@ const listMessagesStatement = db.prepare(`
   LIMIT ?
 `);
 const selectMessageByIdStatement = db.prepare(`
-  SELECT
-    messages.id,
-    messages.channel_id,
-    messages.sender_id,
-    users.username AS sender_name,
-    messages.text,
-    messages.created_at,
-    messages.edited_at,
-    messages.reply_to_message_id,
-    messages.pinned_at
+  SELECT ${TEXT_MESSAGE_SELECT_COLUMNS}
   FROM text_messages AS messages
   INNER JOIN users ON users.id = messages.sender_id
   WHERE messages.id = ? AND messages.channel_id = ?
@@ -102,16 +112,7 @@ const countPinnedStatement = db.prepare(
   'SELECT COUNT(*) AS count FROM text_messages WHERE channel_id = ? AND pinned_at IS NOT NULL',
 );
 const listPinnedStatement = db.prepare(`
-  SELECT
-    messages.id,
-    messages.channel_id,
-    messages.sender_id,
-    users.username AS sender_name,
-    messages.text,
-    messages.created_at,
-    messages.edited_at,
-    messages.reply_to_message_id,
-    messages.pinned_at
+  SELECT ${TEXT_MESSAGE_SELECT_COLUMNS}
   FROM text_messages AS messages
   INNER JOIN users ON users.id = messages.sender_id
   WHERE messages.channel_id = ? AND messages.pinned_at IS NOT NULL
@@ -121,16 +122,7 @@ const listPinnedStatement = db.prepare(`
 // usuário procurando literalmente por "50%" ou "a_b" teria esses caracteres
 // tratados como curinga do LIKE em vez de texto literal.
 const searchMessagesStatement = db.prepare(`
-  SELECT
-    messages.id,
-    messages.channel_id,
-    messages.sender_id,
-    users.username AS sender_name,
-    messages.text,
-    messages.created_at,
-    messages.edited_at,
-    messages.reply_to_message_id,
-    messages.pinned_at
+  SELECT ${TEXT_MESSAGE_SELECT_COLUMNS}
   FROM text_messages AS messages
   INNER JOIN users ON users.id = messages.sender_id
   WHERE messages.channel_id = ? AND messages.text LIKE ? ESCAPE '\\' COLLATE NOCASE
@@ -184,6 +176,20 @@ function toMessage(row: TextMessageRow): TextMessage {
     ...(row.edited_at !== null ? { editedAt: row.edited_at } : {}),
     ...(row.reply_to_message_id !== null ? { replyToMessageId: row.reply_to_message_id } : {}),
     ...(row.pinned_at !== null ? { pinnedAt: row.pinned_at } : {}),
+    // forwarded_from_author_name dobra como "isto é um forward" — os dois
+    // sempre são gravados juntos (ver createForwardedTextMessage).
+    ...(row.forwarded_from_author_name !== null
+      ? {
+          forwardedFromAuthorName: row.forwarded_from_author_name,
+          forwardedFromMessageId: row.forwarded_from_message_id!,
+          ...(row.forwarded_from_server_id !== null && row.forwarded_from_channel_id !== null
+            ? { forwardedFromServerId: row.forwarded_from_server_id, forwardedFromChannelId: row.forwarded_from_channel_id }
+            : {}),
+          ...(row.forwarded_from_dm_channel_id !== null
+            ? { forwardedFromDmChannelId: row.forwarded_from_dm_channel_id }
+            : {}),
+        }
+      : {}),
   };
 }
 
@@ -296,11 +302,57 @@ export function createTextMessage(
     message.text,
     message.sentAt,
     replyToMessageId ?? null,
+    null,
+    null,
+    null,
+    null,
+    null,
   );
   if (attachmentIds?.length) {
     const attachments = attachToMessage(attachmentIds, message.id, channelId, sender.id);
     if (attachments.length) message.attachments = attachments;
   }
+  return message;
+}
+
+// Encaminhamento: nunca copia anexo (ver DISCORD_PARITY_PLAN.md — o
+// object_key do MinIO não suporta referência compartilhada de forma segura
+// hoje) e nunca é resposta a outra mensagem ao mesmo tempo (reply_to_message_id
+// sempre NULL aqui) — as duas coisas são mutuamente exclusivas de propósito.
+export function createForwardedTextMessage(
+  channelId: string,
+  text: string,
+  sender: UserRecord,
+  forwardedFrom: ForwardedFromMeta,
+): TextMessage {
+  const message: TextMessage = {
+    id: randomUUID(),
+    channelId,
+    senderId: sender.id,
+    senderName: sender.username,
+    senderType: 'HUMAN',
+    text,
+    sentAt: Date.now(),
+    forwardedFromAuthorName: forwardedFrom.authorName,
+    forwardedFromMessageId: forwardedFrom.messageId,
+    ...(forwardedFrom.serverId && forwardedFrom.channelId
+      ? { forwardedFromServerId: forwardedFrom.serverId, forwardedFromChannelId: forwardedFrom.channelId }
+      : {}),
+    ...(forwardedFrom.dmChannelId ? { forwardedFromDmChannelId: forwardedFrom.dmChannelId } : {}),
+  };
+  insertMessageStatement.run(
+    message.id,
+    message.channelId,
+    message.senderId,
+    message.text,
+    message.sentAt,
+    null,
+    forwardedFrom.authorName,
+    forwardedFrom.messageId,
+    forwardedFrom.serverId ?? null,
+    forwardedFrom.channelId ?? null,
+    forwardedFrom.dmChannelId ?? null,
+  );
   return message;
 }
 
