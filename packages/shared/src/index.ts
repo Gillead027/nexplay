@@ -1,3 +1,5 @@
+export * from './emoji-data.js';
+
 export const DISPLAY_NAME_MIN_LENGTH = 2;
 export const DISPLAY_NAME_MAX_LENGTH = 24;
 export const CHAT_MESSAGE_MAX_LENGTH = 500;
@@ -595,14 +597,8 @@ export interface TextChannel {
   createdAt: number;
 }
 
-// Emoji unicode curados pra reação — ainda não existe um picker completo de
-// busca/categorias (ver DISCORD_PARITY_PLAN.md), então tanto o cliente
-// quanto o servidor validam contra esta mesma lista fechada por enquanto.
-export const REACTION_EMOJI = ['👍', '❤️', '😂', '😮', '😢', '🎉', '👀', '🔥'] as const;
-export type ReactionEmoji = (typeof REACTION_EMOJI)[number];
-
 export interface MessageReactionGroup {
-  emoji: ReactionEmoji;
+  emoji: string;
   userIds: string[];
 }
 
@@ -730,8 +726,8 @@ export type RealtimeEvent =
   | { type: 'VOICE_CHANNEL_UPDATE'; serverId: string; channel: VoiceChannel }
   | { type: 'VOICE_CHANNEL_DELETE'; serverId: string; channelId: string }
   | { type: 'ROOM_STATE_UPDATE'; serverId: string; room: RoomSummary }
-  | { type: 'TEXT_MESSAGE_REACTION_ADD'; serverId: string; channelId: string; messageId: string; emoji: ReactionEmoji; userId: string }
-  | { type: 'TEXT_MESSAGE_REACTION_REMOVE'; serverId: string; channelId: string; messageId: string; emoji: ReactionEmoji; userId: string }
+  | { type: 'TEXT_MESSAGE_REACTION_ADD'; serverId: string; channelId: string; messageId: string; emoji: string; userId: string }
+  | { type: 'TEXT_MESSAGE_REACTION_REMOVE'; serverId: string; channelId: string; messageId: string; emoji: string; userId: string }
   | { type: 'SOUNDBOARD_SOUND_CREATE'; serverId: string; sound: SoundboardSound }
   | { type: 'SOUNDBOARD_SOUND_DELETE'; serverId: string; soundId: string }
   | { type: 'ROLE_CREATE'; serverId: string; role: Role }

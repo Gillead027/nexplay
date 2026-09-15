@@ -14,7 +14,6 @@ import type {
   MessageAttachment,
   MusicCommandResponse,
   PublicConfig,
-  ReactionEmoji,
   Role,
   RoomSummary,
   Server,
@@ -169,12 +168,12 @@ export const api = {
     request<{ messages: TextMessage[] }>(
       `${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/search?q=${encodeURIComponent(query)}`,
     ),
-  addReaction: (serverId: string, channelId: string, messageId: string, emoji: ReactionEmoji) =>
+  addReaction: (serverId: string, channelId: string, messageId: string, emoji: string) =>
     request<void>(
       `${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/reactions`,
       { method: 'POST', body: JSON.stringify({ emoji }) },
     ),
-  removeReaction: (serverId: string, channelId: string, messageId: string, emoji: ReactionEmoji) =>
+  removeReaction: (serverId: string, channelId: string, messageId: string, emoji: string) =>
     request<void>(
       `${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(emoji)}`,
       { method: 'DELETE' },

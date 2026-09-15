@@ -1,4 +1,4 @@
-import { type ChangeEvent, type FormEvent, type RefObject, useCallback, useEffect, useId, useRef, useState } from 'react';
+import { lazy, Suspense, type ChangeEvent, type FormEvent, type RefObject, useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   ATTACHMENT_INLINE_IMAGE_TYPES,
   ATTACHMENT_MAX_PER_MESSAGE,
@@ -7,12 +7,10 @@ import {
   hasPermission,
   MESSAGE_SEARCH_QUERY_MIN_LENGTH,
   Permission,
-  REACTION_EMOJI,
   TEXT_CHANNEL_DESCRIPTION_MAX_LENGTH,
   TEXT_CHANNEL_NAME_MAX_LENGTH,
   type MessageAttachment,
   type MusicCommandResponse,
-  type ReactionEmoji,
   type ServerMember,
   type TextChannel,
   type TextMessage,
@@ -39,6 +37,10 @@ import {
   VoiceIcon,
 } from './Icons';
 
+const EmojiPicker = lazy(() =>
+  import('./EmojiPicker').then((module) => ({ default: module.EmojiPicker })),
+);
+
 type MessageStyle = 'default' | 'compact' | 'grouped';
 
 // Único ponto de mescla de uma mensagem nova/atualizada no array local —
@@ -59,7 +61,7 @@ function applyIncomingMessage(current: TextMessage[], incoming: TextMessage): Te
 function applyReactionChange(
   current: TextMessage[],
   messageId: string,
-  emoji: ReactionEmoji,
+  emoji: string,
   userId: string,
   action: 'add' | 'remove',
 ): TextMessage[] {
@@ -196,27 +198,6 @@ function MessageEditForm({
   );
 }
 
-// Sem picker de emoji completo ainda (busca/categorias — ver
-// DISCORD_PARITY_PLAN.md): paleta curada fixa, igual servidor e cliente
-// validam contra a mesma lista em REACTION_EMOJI.
-function ReactionPicker({ onSelect, onClose }: { onSelect: (emoji: ReactionEmoji) => void; onClose: () => void }) {
-  useEffect(() => {
-    const handlePointerDown = () => onClose();
-    window.addEventListener('mousedown', handlePointerDown);
-    return () => window.removeEventListener('mousedown', handlePointerDown);
-  }, [onClose]);
-
-  return (
-    <div className="reaction-picker" onMouseDown={(event) => event.stopPropagation()} role="menu" aria-label="Escolher reação">
-      {REACTION_EMOJI.map((emoji) => (
-        <button key={emoji} type="button" role="menuitem" onClick={() => onSelect(emoji)}>
-          {emoji}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function ReactionBar({
   message,
   ownUserId,
@@ -224,7 +205,7 @@ function ReactionBar({
 }: {
   message: TextMessage;
   ownUserId: string;
-  onToggle: (emoji: ReactionEmoji, reacted: boolean) => void;
+  onToggle: (emoji: string, reacted: boolean) => void;
 }) {
   if (!message.reactions?.length) return null;
   return (
@@ -334,7 +315,7 @@ function HumanTextMessageRow({
   onCancelEdit: () => void;
   onSaveEdit: (text: string) => Promise<void>;
   onDelete: () => void;
-  onToggleReaction: (emoji: ReactionEmoji, reacted: boolean) => void;
+  onToggleReaction: (emoji: string, reacted: boolean) => void;
   onReply: () => void;
   onForward: () => void;
   replyTarget: TextMessage | undefined;
@@ -344,7 +325,7 @@ function HumanTextMessageRow({
   const avatarUrl = useTextAvatar(message.senderId, session);
   const initial = message.senderName.trim().charAt(0).toUpperCase() || '?';
   const isOwn = message.senderId === session.id;
-  const [showReactionPicker, setShowReactionPicker] = useState(false);
+  const [reactionPickerAnchor, setReactionPickerAnchor] = useState<DOMRect | null>(null);
   return (
     <article id={`message-${message.id}`} className={`message text-message ${continued ? 'continued' : ''} ${message.pinnedAt ? 'pinned' : ''}`}>
       <button
@@ -399,17 +380,28 @@ function HumanTextMessageRow({
             <CopyIcon size={14} />
           </button>
           <div className="reaction-picker-anchor">
-            <button type="button" title="Adicionar reação" aria-label="Adicionar reação" onClick={() => setShowReactionPicker((open) => !open)}>
+            <button
+              type="button"
+              title="Adicionar reação"
+              aria-label="Adicionar reação"
+              onClick={(event) => {
+                const rect = event.currentTarget.getBoundingClientRect();
+                setReactionPickerAnchor((current) => (current ? null : rect));
+              }}
+            >
               <SmileIcon size={14} />
             </button>
-            {showReactionPicker && (
-              <ReactionPicker
-                onSelect={(emoji) => {
-                  setShowReactionPicker(false);
-                  onToggleReaction(emoji, false);
-                }}
-                onClose={() => setShowReactionPicker(false)}
-              />
+            {reactionPickerAnchor && (
+              <Suspense fallback={null}>
+                <EmojiPicker
+                  anchorRect={reactionPickerAnchor}
+                  onSelect={(emoji) => {
+                    setReactionPickerAnchor(null);
+                    onToggleReaction(emoji, false);
+                  }}
+                  onClose={() => setReactionPickerAnchor(null)}
+                />
+              </Suspense>
             )}
           </div>
           {canManageMessages && (
@@ -450,7 +442,7 @@ function TextMessageRow(props: {
   onCancelEdit: () => void;
   onSaveEdit: (text: string) => Promise<void>;
   onDelete: () => void;
-  onToggleReaction: (emoji: ReactionEmoji, reacted: boolean) => void;
+  onToggleReaction: (emoji: string, reacted: boolean) => void;
   onReply: () => void;
   onForward: () => void;
   replyTarget: TextMessage | undefined;
@@ -693,7 +685,7 @@ export function TextChannelView({
 
   // Aplica localmente na hora (sem esperar o eco do próprio WebSocket) pra
   // parecer instantâneo; o eco chega de qualquer forma e é idempotente.
-  async function toggleReaction(messageId: string, emoji: ReactionEmoji, reacted: boolean) {
+  async function toggleReaction(messageId: string, emoji: string, reacted: boolean) {
     setMessages((current) => applyReactionChange(current, messageId, emoji, session.id, reacted ? 'remove' : 'add'));
     try {
       if (reacted) await api.removeReaction(channel.serverId, channel.id, messageId, emoji);

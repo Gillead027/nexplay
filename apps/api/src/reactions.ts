@@ -1,5 +1,7 @@
-import { REACTION_EMOJI, type MessageReactionGroup, type ReactionEmoji } from '@sausixudos/shared';
+import { EMOJI_DATA, type MessageReactionGroup } from '@sausixudos/shared';
 import { db } from './db.js';
+
+const KNOWN_EMOJI = new Set(EMOJI_DATA.map((entry) => entry.emoji));
 
 interface ReactionRow {
   message_id: string;
@@ -25,17 +27,17 @@ const listReactionsForChannelStatement = db.prepare(`
   WHERE text_messages.channel_id = ?
 `);
 
-export function isValidReactionEmoji(value: unknown): value is ReactionEmoji {
-  return typeof value === 'string' && (REACTION_EMOJI as readonly string[]).includes(value);
+export function isValidReactionEmoji(value: unknown): value is string {
+  return typeof value === 'string' && KNOWN_EMOJI.has(value);
 }
 
 // Idempotente: reagir de novo com o mesmo emoji não duplica (chave primária
 // composta), então não precisa checar existência antes.
-export function addReaction(messageId: string, emoji: ReactionEmoji, userId: string): void {
+export function addReaction(messageId: string, emoji: string, userId: string): void {
   insertReactionStatement.run(messageId, emoji, userId, Date.now());
 }
 
-export function removeReaction(messageId: string, emoji: ReactionEmoji, userId: string): void {
+export function removeReaction(messageId: string, emoji: string, userId: string): void {
   deleteReactionStatement.run(messageId, emoji, userId);
 }
 
@@ -49,7 +51,7 @@ function groupByEmoji(rows: ReactionRow[]): MessageReactionGroup[] {
     }
     userIds.push(row.user_id);
   }
-  return Array.from(byEmoji, ([emoji, userIds]) => ({ emoji: emoji as ReactionEmoji, userIds }));
+  return Array.from(byEmoji, ([emoji, userIds]) => ({ emoji, userIds }));
 }
 
 export function getReactionsForMessage(messageId: string): MessageReactionGroup[] {
