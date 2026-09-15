@@ -74,6 +74,7 @@ import {
   getTextMessageById,
   upsertMusicBotTextMessage,
   createTextChannel,
+  renameTextChannel,
   createTextMessage,
   getMusicBotTextMessage,
   getTextChannelById,
@@ -94,6 +95,7 @@ import { authorizeVoiceDisconnect } from './voiceModeration.js';
 import { attachRealtime, broadcast, disconnectUser, sendToServerMembers, sendToUser, sendToUsers } from './realtime.js';
 import {
   createVoiceChannel,
+  renameVoiceChannel,
   deleteVoiceChannel,
   getVoiceChannelById,
   getVoiceChannelByName,
@@ -834,6 +836,36 @@ app.get('/api/servers/:serverId/text-channels', requireSession, requireServerMem
   response.json({ channels: listTextChannels(currentServerId(response)) });
 });
 
+app.patch(
+  '/api/servers/:serverId/text-channels/:channelId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_CHANNELS),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const channelId = request.params.channelId;
+    const existing = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!existing || existing.serverId !== serverId) {
+      response.status(404).json({ error: 'Canal não encontrado.' });
+      return;
+    }
+    const body = channelSchema.pick({ name: true }).safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Informe um nome de canal válido.' });
+      return;
+    }
+    const name = body.data.name.replace(/\s+/g, ' ');
+    const duplicate = getTextChannelByName(serverId, name);
+    if (duplicate && duplicate.id !== existing.id) {
+      response.status(409).json({ error: 'Já existe um canal com esse nome.' });
+      return;
+    }
+    const channel = renameTextChannel(serverId, existing.id, name)!;
+    sendToServerMembers(serverId, { type: 'TEXT_CHANNEL_UPDATE', serverId, channel });
+    response.json({ channel });
+  },
+);
+
 app.post(
   '/api/servers/:serverId/text-channels',
   requireSession,
@@ -1369,6 +1401,36 @@ app.get('/api/servers/:serverId/rooms', requireSession, requireServerMembership,
     });
   }
 });
+
+app.patch(
+  '/api/servers/:serverId/voice-channels/:channelId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_CHANNELS),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const channelId = request.params.channelId;
+    const existing = typeof channelId === 'string' ? getVoiceChannelById(channelId) : undefined;
+    if (!existing || existing.serverId !== serverId) {
+      response.status(404).json({ error: 'Canal não encontrado.' });
+      return;
+    }
+    const body = channelSchema.pick({ name: true }).safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Informe um nome de canal válido.' });
+      return;
+    }
+    const name = body.data.name.replace(/\s+/g, ' ');
+    const duplicate = getVoiceChannelByName(serverId, name);
+    if (duplicate && duplicate.id !== existing.id) {
+      response.status(409).json({ error: 'Já existe um canal com esse nome.' });
+      return;
+    }
+    const channel = renameVoiceChannel(serverId, existing.id, name)!;
+    sendToServerMembers(serverId, { type: 'VOICE_CHANNEL_UPDATE', serverId, channel });
+    response.json({ channel });
+  },
+);
 
 app.post(
   '/api/servers/:serverId/voice-channels',

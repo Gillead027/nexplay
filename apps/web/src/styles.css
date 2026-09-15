@@ -1469,3 +1469,26 @@ body { letter-spacing: -.01em; }
   box-shadow: 0 8px 24px rgba(0,0,0,.35);
 }
 .friend-action-toast button { border: 0; background: none; color: inherit; font-size: 15px; line-height: 1; cursor: pointer; }
+
+.text-channel-row { display: flex; align-items: center; }
+.text-channel-row .text-channel-button { min-width: 0; flex: 1; }
+.rename-channel-button { flex-shrink: 0; width: 28px; height: 32px; display: grid; place-items: center; color: var(--text-muted); border-radius: var(--radius-sm); cursor: pointer; }
+.rename-channel-button:hover, .rename-channel-button:focus-visible { color: var(--text-primary); background: var(--hover); }
+.channel-row-renamable { padding-right: 28px; }
+.channel-row-renamable > .rename-channel-button { position: absolute; right: 0; top: 4px; }
+.channel-row-renamable > .channel-chat-toggle { right: 30px; }
+.rename-channel-dialog { margin: auto; border: 1px solid var(--border-light); color: var(--text-primary); }
+.rename-channel-dialog::backdrop { background: rgb(0 0 0 / 65%); }
+.rename-channel-dialog form { display: flex; flex-direction: column; gap: 14px; }
+
+.rename-channel-dialog label { color: var(--text-secondary); font-size: 12px; }
+.rename-channel-dialog input { width: 100%; height: 45px; padding: 0 11px; border: 1px solid var(--border-light); border-radius: 10px; color: var(--text-primary); background: var(--input-bg, #0e131d); }
+
+/* Mostra as ações do canal ao passar o mouse ou navegar por teclado. */
+.rename-channel-button { opacity: 0; pointer-events: none; }
+.text-channel-row:hover > .rename-channel-button,
+.channel-row-renamable:hover > .rename-channel-button,
+.rename-channel-button:focus-visible { opacity: 1; pointer-events: auto; }
+@media (hover: none) {
+  .rename-channel-button { opacity: 1; pointer-events: auto; }
+}

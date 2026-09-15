@@ -725,7 +725,9 @@ export type RealtimeEvent =
   | { type: 'TEXT_MESSAGE_UPSERT'; serverId: string; channelId: string; message: TextMessage }
   | { type: 'TEXT_MESSAGE_DELETE'; serverId: string; channelId: string; messageId: string }
   | { type: 'TEXT_CHANNEL_CREATE'; serverId: string; channel: TextChannel }
+  | { type: 'TEXT_CHANNEL_UPDATE'; serverId: string; channel: TextChannel }
   | { type: 'VOICE_CHANNEL_CREATE'; serverId: string; channel: VoiceChannel }
+  | { type: 'VOICE_CHANNEL_UPDATE'; serverId: string; channel: VoiceChannel }
   | { type: 'VOICE_CHANNEL_DELETE'; serverId: string; channelId: string }
   | { type: 'ROOM_STATE_UPDATE'; serverId: string; room: RoomSummary }
   | { type: 'TEXT_MESSAGE_REACTION_ADD'; serverId: string; channelId: string; messageId: string; emoji: ReactionEmoji; userId: string }

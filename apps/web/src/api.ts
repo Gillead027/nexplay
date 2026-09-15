@@ -114,6 +114,11 @@ export const api = {
     request<void>(`${s(serverId)}/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(identity)}/disconnect`, {
       method: 'POST',
     }),
+  renameChannel: (serverId: string, kind: 'text' | 'voice', channelId: string, name: string) =>
+    request<{ channel: TextChannel | VoiceChannel }>(`${s(serverId)}/${kind}-channels/${encodeURIComponent(channelId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ name }),
+    }),
   getTextChannels: (serverId: string) => request<{ channels: TextChannel[] }>(`${s(serverId)}/text-channels`),
   createTextChannel: (serverId: string, name: string, description: string) =>
     request<{ channel: TextChannel }>(`${s(serverId)}/text-channels`, {

@@ -1,3 +1,4 @@
+import { onRealtimeEvent } from '../realtime';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ConnectionState,
@@ -290,6 +291,12 @@ export function useVoiceRoom() {
       }),
   );
   const [currentChannel, setCurrentChannel] = useState<VoiceChannel | null>(null);
+  useEffect(() => onRealtimeEvent((event) => {
+    if (event.type === 'VOICE_CHANNEL_UPDATE') {
+      setCurrentChannel((current) => current?.id === event.channel.id && current.serverId === event.serverId ? event.channel : current);
+    }
+  }), []);
+
   const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.Disconnected);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [speakers, setSpeakers] = useState<Set<string>>(new Set());

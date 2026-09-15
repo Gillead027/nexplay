@@ -1,3 +1,4 @@
+import { RenameChannel } from './RenameChannel';
 import { type FormEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
@@ -429,6 +430,7 @@ function ChannelButton({
   speakingIds,
   onDisconnectParticipant,
   disconnectingIdentity,
+  onRename,
 }: {
   channel: VoiceChannel;
   summary: RoomSummary | undefined;
@@ -446,10 +448,11 @@ function ChannelButton({
   speakingIds: Set<string>;
   onDisconnectParticipant: (identity: string, name: string) => void;
   disconnectingIdentity: string | null;
+  onRename: ((channel: VoiceChannel) => void) | undefined;
 }) {
   return (
     <div className="channel-block">
-      <div className="channel-row">
+      <div className={`channel-row ${onRename ? 'channel-row-renamable' : ''}`}>
         <button
           type="button"
           className={`channel-button ${active ? 'active' : ''}`}
@@ -462,6 +465,7 @@ function ChannelButton({
           <span>{channel.name}</span>
           <small>{loading ? '...' : summary?.participants.length || ''}</small>
         </button>
+        {onRename && <RenameChannel channel={channel} kind="voice" onRenamed={onRename} />}
         {active && (
           <button
             type="button"
@@ -1839,6 +1843,9 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
             ? current
             : [...current, { ...event.channel, participants: [] }],
         );
+      } else if (event.type === 'VOICE_CHANNEL_UPDATE') {
+        if (event.serverId !== activeServerId) return;
+        setRooms((current) => current.map((room) => room.id === event.channel.id ? { ...room, ...event.channel } : room));
       } else if (event.type === 'VOICE_CHANNEL_DELETE') {
         if (event.serverId !== activeServerId) return;
         setRooms((current) => current.filter((room) => room.id !== event.channelId));
@@ -1880,6 +1887,10 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     refresh();
     const unsubscribeConnect = onRealtimeConnect(refresh);
     const unsubscribeEvent = onRealtimeEvent((event) => {
+      if (event.type === 'TEXT_CHANNEL_UPDATE' && event.serverId === activeServerId) {
+        setTextChannels((current) => current.map((channel) => channel.id === event.channel.id ? event.channel : channel));
+        return;
+      }
       if (event.type !== 'TEXT_CHANNEL_CREATE' || event.serverId !== activeServerId) return;
       setTextChannels((current) => (current.some(({ id }) => id === event.channel.id) ? current : [...current, event.channel]));
     });
@@ -2264,8 +2275,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                 {textChannels.map((channel) => {
                   const selected = channel.id === selectedTextChannelId;
                   return (
+                    <div className="text-channel-row" key={channel.id}>
                     <button
-                      key={channel.id}
                       type="button"
                       className={`text-channel-button ${selected ? 'active' : ''}`}
                       onClick={() => setSelectedTextChannelId(channel.id)}
@@ -2275,6 +2286,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                       <span className="channel-hash" aria-hidden="true">#</span>
                       <span>{channel.name}</span>
                     </button>
+                    {canManageChannels && <RenameChannel channel={channel} kind="text" onRenamed={(updated) => setTextChannels((current) => current.map((item) => item.id === updated.id ? updated : item))} />}
+                    </div>
                   );
                 })}
               </div>
@@ -2299,6 +2312,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                 <ChannelButton
                   key={room.id}
                   channel={room}
+                  onRename={canManageChannels ? (updated) => setRooms((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item)) : undefined}
                   summary={room}
                   active={voice.currentChannel?.id === room.id && voice.connected}
                   loading={joiningId === room.id}

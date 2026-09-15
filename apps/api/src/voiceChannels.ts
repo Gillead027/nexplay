@@ -93,3 +93,8 @@ export function createVoiceChannel(serverId: string, name: string, description: 
 export function deleteVoiceChannel(id: string): boolean {
   return deleteChannelStatement.run(id).changes > 0;
 }
+
+export function renameVoiceChannel(serverId: string, id: string, name: string): VoiceChannel | undefined {
+  db.prepare('UPDATE voice_channels SET name = ? WHERE id = ? AND server_id = ?').run(name, id, serverId);
+  return getVoiceChannelById(id);
+}

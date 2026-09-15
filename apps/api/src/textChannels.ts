@@ -530,3 +530,8 @@ export function upsertMusicBotTextMessage(
   );
   return { message, clearedChannelIds };
 }
+
+export function renameTextChannel(serverId: string, id: string, name: string): TextChannel | undefined {
+  db.prepare('UPDATE text_channels SET name = ? WHERE id = ? AND server_id = ?').run(name, id, serverId);
+  return getTextChannelById(id);
+}
