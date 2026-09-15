@@ -6,7 +6,7 @@ import path from 'node:path';
 const desktopDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const environment = {
   ...process.env,
-  SAUSIXUDOS_APP_URL: 'http://localhost:5173',
+  NEXPLAY_APP_URL: 'http://localhost:5173',
 };
 
 // Alguns terminais de automação definem esta variável para executar Electron

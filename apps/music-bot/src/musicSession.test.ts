@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { parseMusicCommand, type MusicBotCommandRequest } from '@sausixudos/shared';
+import { parseMusicCommand, type MusicBotCommandRequest } from '@nexplay/shared';
 import type {
   MusicPlaybackHandle,
   MusicVoiceParticipant,

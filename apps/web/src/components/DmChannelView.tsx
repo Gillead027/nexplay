@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
-import { CHAT_MESSAGE_MAX_LENGTH, type DmChannel, type DmMessage, type UserSession } from '@sausixudos/shared';
+import { CHAT_MESSAGE_MAX_LENGTH, type DmChannel, type DmMessage, type UserSession } from '@nexplay/shared';
 import { api } from '../api';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { MarkdownText } from './Markdown';

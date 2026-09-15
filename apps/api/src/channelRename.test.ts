@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { once } from 'node:events';
 import { createServer } from 'node:net';
 import { test } from 'node:test';
-import { ACCENT_COLORS } from '@sausixudos/shared';
+import { ACCENT_COLORS } from '@nexplay/shared';
 
 test('rename channels: persistence, validation, permissions and server isolation', async () => {
   const probe = createServer();

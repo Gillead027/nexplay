@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ATTACHMENT_FILENAME_MAX_LENGTH, type MessageAttachment } from '@sausixudos/shared';
+import { ATTACHMENT_FILENAME_MAX_LENGTH, type MessageAttachment } from '@nexplay/shared';
 import { db } from './db.js';
 
 interface AttachmentRow {

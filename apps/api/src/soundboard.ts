@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { SoundboardSound } from '@sausixudos/shared';
+import type { SoundboardSound } from '@nexplay/shared';
 import { db } from './db.js';
 import type { UserRecord } from './users.js';
 

@@ -1,4 +1,4 @@
-import type { VoiceChannel } from '@sausixudos/shared';
+import type { VoiceChannel } from '@nexplay/shared';
 
 export type VoiceDisconnectAuthorization =
   | { ok: true }

@@ -1331,40 +1331,40 @@ body { letter-spacing: -.01em; }
 }
 .music-command-feedback > span { display: block; }
 
-/* SausiMusic - mensagem de bot + player inspirado no card de referencia */
-.sausimusic-message {
+/* NexMusic - mensagem de bot + player inspirado no card de referencia */
+.nexmusic-message {
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 10px;
   max-width: 690px;
   margin: 2px 0 18px;
   align-items: start;
 }
-.sausimusic-bot-avatar {
+.nexmusic-bot-avatar {
   width: 40px; height: 40px; display: grid; place-items: center;
   border-radius: 50%; color: #fff;
   background: radial-gradient(circle at 35% 30%, #a79cff 0 16%, #7c6ff0 42%, #5d52cf 100%);
   box-shadow: inset 0 0 0 2px rgba(255,255,255,.14), 0 3px 11px rgba(80,63,170,.28);
   font-size: 20px; font-weight: 800;
 }
-.sausimusic-avatar-bars, .sausimusic-cover-bars { display: flex; align-items: center; justify-content: center; gap: 2px; }
-.sausimusic-avatar-bars i, .sausimusic-cover-bars i { display: block; width: 3px; border-radius: 999px; background: currentColor; }
-.sausimusic-avatar-bars i:nth-child(1) { height: 10px; }
-.sausimusic-avatar-bars i:nth-child(2) { height: 18px; }
-.sausimusic-avatar-bars i:nth-child(3) { height: 13px; }
-.sausimusic-message-content { min-width: 0; width: min(100%, 610px); }
-.sausimusic-message-header { min-height: 22px; display: flex !important; align-items: center !important; gap: 6px !important; margin-bottom: 1px; }
-.sausimusic-message-header strong { color: #c76cff !important; font-size: 13px !important; font-weight: 650 !important; }
-.sausimusic-app-badge {
+.nexmusic-avatar-bars, .nexmusic-cover-bars { display: flex; align-items: center; justify-content: center; gap: 2px; }
+.nexmusic-avatar-bars i, .nexmusic-cover-bars i { display: block; width: 3px; border-radius: 999px; background: currentColor; }
+.nexmusic-avatar-bars i:nth-child(1) { height: 10px; }
+.nexmusic-avatar-bars i:nth-child(2) { height: 18px; }
+.nexmusic-avatar-bars i:nth-child(3) { height: 13px; }
+.nexmusic-message-content { min-width: 0; width: min(100%, 610px); }
+.nexmusic-message-header { min-height: 22px; display: flex !important; align-items: center !important; gap: 6px !important; margin-bottom: 1px; }
+.nexmusic-message-header strong { color: #c76cff !important; font-size: 13px !important; font-weight: 650 !important; }
+.nexmusic-app-badge {
   display: inline-flex; align-items: center; gap: 2px; height: 15px; padding: 0 4px;
   border-radius: 3px; color: #fff; background: #5865f2;
   font-size: 8px; font-weight: 800; letter-spacing: .25px;
 }
-.sausimusic-app-badge::before { content: '\2713'; font-size: 8px; font-weight: 900; }
-.sausimusic-message-header time { color: #777a82 !important; font-size: 9px !important; }
-.sausimusic-sleep-mark { margin-left: 2px; color: #70737b; font-size: 12px; transform: rotate(-12deg); }
+.nexmusic-app-badge::before { content: '\2713'; font-size: 8px; font-weight: 900; }
+.nexmusic-message-header time { color: #777a82 !important; font-size: 9px !important; }
+.nexmusic-sleep-mark { margin-left: 2px; color: #70737b; font-size: 12px; transform: rotate(-12deg); }
 
-.sausimusic-player-shell { width: min(100%, 554px); margin-top: 1px; }
-.sausimusic-embed {
+.nexmusic-player-shell { width: min(100%, 554px); margin-top: 1px; }
+.nexmusic-embed {
   position: relative;
   padding: 14px 16px 21px 12px;
   overflow: hidden;
@@ -1375,66 +1375,66 @@ body { letter-spacing: -.01em; }
   background: #0c0d10;
   box-shadow: 0 1px 0 rgba(255,255,255,.02), 0 5px 16px rgba(0,0,0,.18);
 }
-.sausimusic-embed-title { color: #299cff; font-size: 14px; font-weight: 700; line-height: 1.35; }
-.sausimusic-divider { height: 1px; margin: 10px 0 9px; background: #2a2c31; }
-.sausimusic-track-row { display: block; min-height: 61px; padding-right: 105px; }
-.sausimusic-track-copy { min-width: 0; padding-top: 1px; }
-.sausimusic-track-title {
+.nexmusic-embed-title { color: #299cff; font-size: 14px; font-weight: 700; line-height: 1.35; }
+.nexmusic-divider { height: 1px; margin: 10px 0 9px; background: #2a2c31; }
+.nexmusic-track-row { display: block; min-height: 61px; padding-right: 105px; }
+.nexmusic-track-copy { min-width: 0; padding-top: 1px; }
+.nexmusic-track-title {
   display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   color: #29a0ff; font-size: 13px; font-weight: 700; text-decoration: none;
 }
-.sausimusic-track-title:hover { text-decoration: underline; }
-.sausimusic-track-author { margin-top: 2px; color: #9da0a8; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.sausimusic-detail-line { display: flex; align-items: center; gap: 6px; min-height: 20px; color: #d3d5dc; font-size: 12px; }
-.sausimusic-detail-line:first-of-type { margin-top: 3px; }
-.sausimusic-bullet { width: 4px; height: 4px; flex: 0 0 auto; border-radius: 50%; background: #f0f1f2; }
-.sausimusic-detail-line b { padding: 0 3px; border-radius: 3px; color: #aeb7ff; background: rgba(92,102,242,.25); font-weight: 600; }
-.sausimusic-voice-pill { display: inline-flex; align-items: center; gap: 3px; padding: 1px 4px; border-radius: 3px; color: #b8bcff; background: rgba(88,101,242,.22); font-size: 10px; }
-.sausimusic-art-column { position: absolute; top: 53px; right: 16px; display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
-.sausimusic-cover { width: 86px; height: 86px; display: block; object-fit: cover; border-radius: 8px; background: #15171b; }
-.sausimusic-cover-placeholder { display: grid; place-items: center; color: #c8c0ff; background: radial-gradient(circle at 50% 45%, #32305c, #171821 70%); }
-.sausimusic-cover-bars i { width: 5px; }
-.sausimusic-cover-bars i:nth-child(1) { height: 20px; }
-.sausimusic-cover-bars i:nth-child(2) { height: 34px; }
-.sausimusic-cover-bars i:nth-child(3) { height: 25px; }
-.sausimusic-like {
+.nexmusic-track-title:hover { text-decoration: underline; }
+.nexmusic-track-author { margin-top: 2px; color: #9da0a8; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nexmusic-detail-line { display: flex; align-items: center; gap: 6px; min-height: 20px; color: #d3d5dc; font-size: 12px; }
+.nexmusic-detail-line:first-of-type { margin-top: 3px; }
+.nexmusic-bullet { width: 4px; height: 4px; flex: 0 0 auto; border-radius: 50%; background: #f0f1f2; }
+.nexmusic-detail-line b { padding: 0 3px; border-radius: 3px; color: #aeb7ff; background: rgba(92,102,242,.25); font-weight: 600; }
+.nexmusic-voice-pill { display: inline-flex; align-items: center; gap: 3px; padding: 1px 4px; border-radius: 3px; color: #b8bcff; background: rgba(88,101,242,.22); font-size: 10px; }
+.nexmusic-art-column { position: absolute; top: 53px; right: 16px; display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.nexmusic-cover { width: 86px; height: 86px; display: block; object-fit: cover; border-radius: 8px; background: #15171b; }
+.nexmusic-cover-placeholder { display: grid; place-items: center; color: #c8c0ff; background: radial-gradient(circle at 50% 45%, #32305c, #171821 70%); }
+.nexmusic-cover-bars i { width: 5px; }
+.nexmusic-cover-bars i:nth-child(1) { height: 20px; }
+.nexmusic-cover-bars i:nth-child(2) { height: 34px; }
+.nexmusic-cover-bars i:nth-child(3) { height: 25px; }
+.nexmusic-like {
   height: 32px; border: 1px solid #34363c; border-radius: 7px; color: #e0e1e5; background: #1b1d21;
   display: flex; align-items: center; justify-content: center; gap: 5px;
   cursor: pointer; font-size: 11px; font-weight: 600;
 }
-.sausimusic-like:hover, .sausimusic-like.active { background: #27292e; }
-.sausimusic-like.active { color: #ff8ba4; }
+.nexmusic-like:hover, .nexmusic-like.active { background: #27292e; }
+.nexmusic-like.active { color: #ff8ba4; }
 
-.sausimusic-stats { margin-top: 32px; padding-right: 102px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; color: #c6c8cf; font-size: 12px; line-height: 1.4; }
-.sausimusic-stats > span { color: #7d8088; margin: 0 1px; }
-.sausimusic-stats code { padding: 1px 3px; border-radius: 3px; color: #cfd1d8; background: #202228; font: inherit; font-size: 11px; }
-.sausimusic-progress { position: relative; height: 6px; margin: 29px 0 6px; border-radius: 999px; background: #3f4146; }
-.sausimusic-progress > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: #7f6bf3; }
-.sausimusic-progress > i {
+.nexmusic-stats { margin-top: 32px; padding-right: 102px; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; color: #c6c8cf; font-size: 12px; line-height: 1.4; }
+.nexmusic-stats > span { color: #7d8088; margin: 0 1px; }
+.nexmusic-stats code { padding: 1px 3px; border-radius: 3px; color: #cfd1d8; background: #202228; font: inherit; font-size: 11px; }
+.nexmusic-progress { position: relative; height: 6px; margin: 29px 0 6px; border-radius: 999px; background: #3f4146; }
+.nexmusic-progress > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: #7f6bf3; }
+.nexmusic-progress > i {
   position: absolute; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%);
   border: 3px solid #fff; border-radius: 50%; background: #8e73f5; box-shadow: 0 1px 3px rgba(0,0,0,.45);
 }
-.sausimusic-time-row { display: flex; align-items: center; justify-content: space-between; color: #e1e2e5; font-size: 13px; }
-.sausimusic-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-.sausimusic-controls button, .sausimusic-reactions button {
+.nexmusic-time-row { display: flex; align-items: center; justify-content: space-between; color: #e1e2e5; font-size: 13px; }
+.nexmusic-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.nexmusic-controls button, .nexmusic-reactions button {
   min-height: 32px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 11px; border: 1px solid #34363d; border-radius: 7px;
   color: #dadbe0; background: #1c1e22; cursor: pointer; font-size: 11px; font-weight: 650;
   transition: background-color 100ms, border-color 100ms, color 100ms;
 }
-.sausimusic-controls button:hover:not(:disabled), .sausimusic-reactions button:hover:not(:disabled) { background: #292b30; border-color: #41444c; }
-.sausimusic-controls button:active:not(:disabled), .sausimusic-reactions button:active:not(:disabled) { transform: translateY(1px); }
-.sausimusic-controls button.active { border-color: #6f62d5; color: #dedaff; background: #292544; }
-.sausimusic-control-status { margin-top: 9px; padding-top: 8px; border-top: 1px solid #26282d; color: #9699a2; font-size: 10px; line-height: 1.35; }
-.sausimusic-reactions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-.sausimusic-reactions button { min-height: 31px; }
-.sausimusic-reactions button.active { border-color: #6259b6; color: #d9d4ff; background: #292543; }
+.nexmusic-controls button:hover:not(:disabled), .nexmusic-reactions button:hover:not(:disabled) { background: #292b30; border-color: #41444c; }
+.nexmusic-controls button:active:not(:disabled), .nexmusic-reactions button:active:not(:disabled) { transform: translateY(1px); }
+.nexmusic-controls button.active { border-color: #6f62d5; color: #dedaff; background: #292544; }
+.nexmusic-control-status { margin-top: 9px; padding-top: 8px; border-top: 1px solid #26282d; color: #9699a2; font-size: 10px; line-height: 1.35; }
+.nexmusic-reactions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.nexmusic-reactions button { min-height: 31px; }
+.nexmusic-reactions button.active { border-color: #6259b6; color: #d9d4ff; background: #292543; }
 
-.messages.compact .sausimusic-message { grid-template-columns: 32px minmax(0,1fr); }
-.messages.compact .sausimusic-bot-avatar { width: 30px; height: 30px; font-size: 15px; }
+.messages.compact .nexmusic-message { grid-template-columns: 32px minmax(0,1fr); }
+.messages.compact .nexmusic-bot-avatar { width: 30px; height: 30px; font-size: 15px; }
 @media (max-width: 1180px) {
-  .sausimusic-player-shell { width: min(100%, 520px); }
-  .sausimusic-controls { gap: 6px; }
-  .sausimusic-controls button { padding: 0 9px; }
+  .nexmusic-player-shell { width: min(100%, 520px); }
+  .nexmusic-controls { gap: 6px; }
+  .nexmusic-controls button { padding: 0 9px; }
 }
 
 /* Amigos / Mensagens diretas */

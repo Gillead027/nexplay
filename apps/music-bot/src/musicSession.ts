@@ -4,7 +4,7 @@ import type {
   MusicBotCommandRequest,
   MusicCommandResponse,
   MusicNowPlayingCard,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 import type {
   MusicLog,
   MusicPlaybackHandle,

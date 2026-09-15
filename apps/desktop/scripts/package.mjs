@@ -8,7 +8,7 @@ const desktopDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url
 const rootDirectory = path.resolve(desktopDirectory, '../..');
 
 async function resolveAppUrl() {
-  if (process.env.SAUSIXUDOS_APP_URL) return process.env.SAUSIXUDOS_APP_URL;
+  if (process.env.NEXPLAY_APP_URL) return process.env.NEXPLAY_APP_URL;
 
   try {
     const envFile = await readFile(path.join(rootDirectory, '.env'), 'utf8');
@@ -22,7 +22,7 @@ async function resolveAppUrl() {
     // A mensagem abaixo orienta a configuração quando não há .env.
   }
 
-  throw new Error('Defina SAUSIXUDOS_APP_URL=https://seu-dominio ou APP_DOMAIN no .env da raiz.');
+  throw new Error('Defina NEXPLAY_APP_URL=https://seu-dominio ou APP_DOMAIN no .env da raiz.');
 }
 
 const appUrl = new URL(await resolveAppUrl());

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ACCENT_COLORS, type Activity, type FriendshipStatus, type UserSession } from '@sausixudos/shared';
+import { ACCENT_COLORS, type Activity, type FriendshipStatus, type UserSession } from '@nexplay/shared';
 import { api } from '../api';
 import { Avatar } from './Workspace';
 import { ActivityLine, ListeningActivityCard } from './ActivityDisplay';

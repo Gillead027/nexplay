@@ -1,4 +1,4 @@
-import type { VoiceChannel } from '@sausixudos/shared';
+import type { VoiceChannel } from '@nexplay/shared';
 import { db } from './db.js';
 import { slugify } from './slug.js';
 

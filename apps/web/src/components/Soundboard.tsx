@@ -4,7 +4,7 @@ import {
   SOUNDBOARD_MAX_DURATION_MS,
   SOUNDBOARD_NAME_MAX_LENGTH,
   type SoundboardSound,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 import { api } from '../api';
 import { CloseIcon, SearchIcon, TrashIcon, UploadIcon } from './Icons';
 

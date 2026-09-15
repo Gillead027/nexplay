@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import type { FriendSummary, Server, TextChannel } from '@sausixudos/shared';
+import type { FriendSummary, Server, TextChannel } from '@nexplay/shared';
 import { api } from '../api';
 import { Avatar } from './Workspace';
 import { CloseIcon, ForwardIcon, SearchIcon } from './Icons';

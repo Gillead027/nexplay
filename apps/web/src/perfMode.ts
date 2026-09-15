@@ -1,6 +1,6 @@
 export type PerfMode = 'full' | 'lite';
 
-const KEY = 'gc:perf-mode';
+const KEY = 'np:perf-mode';
 
 export function getPerfMode(): PerfMode {
   return localStorage.getItem(KEY) === 'lite' ? 'lite' : 'full';

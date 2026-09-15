@@ -6,7 +6,7 @@ import {
   shutdown as shutdownMediaSessions,
   type MediaSession,
 } from 'windows-media-sessions';
-import type { Activity } from '@sausixudos/shared';
+import type { Activity } from '@nexplay/shared';
 import { matchKnownGame } from './gameList.js';
 
 const GAME_POLL_INTERVAL_MS = 12_000;

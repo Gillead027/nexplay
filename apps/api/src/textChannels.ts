@@ -7,7 +7,7 @@ import {
   type MusicNowPlayingCard,
   type TextChannel,
   type TextMessage,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 import { attachToMessage, getAttachmentsByChannel, getAttachmentsForMessage } from './attachments.js';
 import { db } from './db.js';
 import { getReactionsByChannel, getReactionsForMessage } from './reactions.js';

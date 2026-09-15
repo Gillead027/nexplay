@@ -16,7 +16,7 @@
   },
   "dependencies": {
     "@livekit/rtc-node": "^0.13.34",
-    "@sausixudos/shared": "0.1.0",
+    "@nexplay/shared": "0.1.0",
     "dotenv": "^17.2.3",
     "livekit-server-sdk": "^2.18.0",
     "zod": "^4.1.12"

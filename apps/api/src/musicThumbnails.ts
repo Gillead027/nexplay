@@ -39,7 +39,7 @@ export async function fetchMusicThumbnail(
     const response = await fetchImpl(url, {
       redirect: 'manual',
       signal: AbortSignal.timeout(10_000),
-      headers: { 'User-Agent': 'Sausixudos/1.0' },
+      headers: { 'User-Agent': 'NexPlay/1.0' },
     });
 
     if (response.status >= 300 && response.status < 400) {

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import type { Invite } from '@sausixudos/shared';
+import type { Invite } from '@nexplay/shared';
 import { db } from './db.js';
 import { assignDefaultRole } from './roles.js';
 import { addServerMember, isServerMember } from './serverMembers.js';

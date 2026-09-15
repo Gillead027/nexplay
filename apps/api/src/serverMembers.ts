@@ -1,4 +1,4 @@
-import type { AccentColor, MemberSummary, ServerMember } from '@sausixudos/shared';
+import type { AccentColor, MemberSummary, ServerMember } from '@nexplay/shared';
 import { db } from './db.js';
 import { getUserPermissionBitfield, getUserRoleIds } from './roles.js';
 

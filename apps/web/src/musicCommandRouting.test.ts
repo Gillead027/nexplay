@@ -13,7 +13,7 @@ describe('roteamento do composer de canal de texto', () => {
       textChannelId: 'musica',
       sendMusicCommand: async (channelId, text, textChannelId) => {
         calls.push(`music:${channelId}:${text}:${textChannelId}`);
-        return { message: 'SausiMusic recebeu o comando.' };
+        return { message: 'NexMusic recebeu o comando.' };
       },
       sendTextMessage: async (text) => {
         calls.push(`text:${text}`);
@@ -51,7 +51,7 @@ describe('roteamento do composer de canal de texto', () => {
       voiceChannelId: 'geral',
       sendMusicCommand: async (_channelId, text) => {
         calls.push(`music:${text}`);
-        return { message: 'SausiMusic recebeu o comando.' };
+        return { message: 'NexMusic recebeu o comando.' };
       },
       sendTextMessage: async (text) => {
         calls.push(`text:${text}`);
@@ -103,7 +103,7 @@ describe('roteamento do composer do chat de voz', () => {
       voiceChannelId: 'geral',
       sendMusicCommand: async (channelId, text) => {
         calls.push(`music:${channelId}:${text}`);
-        return { message: 'SausiMusic recebeu o comando.' };
+        return { message: 'NexMusic recebeu o comando.' };
       },
       publishChatMessage: async (text) => {
         calls.push(`data:${text}`);

@@ -14,7 +14,7 @@ function cookieHeaderFor(id: string, displayName: string): string {
     },
   } as unknown as Response;
   setSessionCookie(fakeResponse, createSession(id, displayName));
-  return `sausixudos_session=${cookieValue}`;
+  return `nexplay_session=${cookieValue}`;
 }
 
 describe('getSessionFromCookieHeader', () => {
@@ -39,6 +39,6 @@ describe('getSessionFromCookieHeader', () => {
   });
 
   it('rejeita um payload corrompido mesmo com o formato certo', () => {
-    assert.equal(getSessionFromCookieHeader('sausixudos_session=YQ.YQ'), null);
+    assert.equal(getSessionFromCookieHeader('nexplay_session=YQ.YQ'), null);
   });
 });

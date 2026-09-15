@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import type { AccentColor } from '@sausixudos/shared';
+import type { AccentColor } from '@nexplay/shared';
 import { db } from './db.js';
 
 export interface UserRecord {

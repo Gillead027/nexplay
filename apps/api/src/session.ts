@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Request, Response } from 'express';
 import { config } from './config.js';
 
-const COOKIE_NAME = 'sausixudos_session';
+const COOKIE_NAME = 'nexplay_session';
 const SESSION_DURATION_SECONDS = 12 * 60 * 60;
 
 export interface SessionIdentity {

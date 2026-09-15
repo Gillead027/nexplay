@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
-import { DEFAULT_EVERYONE_PERMISSIONS, Permission } from '@sausixudos/shared';
+import { DEFAULT_EVERYONE_PERMISSIONS, Permission } from '@nexplay/shared';
 import { config } from './config.js';
 
 mkdirSync(dirname(config.DB_PATH), { recursive: true });
@@ -215,7 +215,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_invites_server ON invites(server_id);
 `);
 
-// O SausiMusic mantém um único player persistente por canal de texto. Limpa
+// O NexMusic mantém um único player persistente por canal de texto. Limpa
 // duplicatas deixadas pela versão anterior antes de aplicar a unicidade.
 db.exec(`
   DELETE FROM text_bot_messages

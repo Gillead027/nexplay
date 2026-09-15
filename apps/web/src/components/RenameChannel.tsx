@@ -1,5 +1,5 @@
 import { useId, useRef, useState, type FormEvent } from 'react';
-import { TEXT_CHANNEL_NAME_MAX_LENGTH, type TextChannel, type VoiceChannel } from '@sausixudos/shared';
+import { TEXT_CHANNEL_NAME_MAX_LENGTH, type TextChannel, type VoiceChannel } from '@nexplay/shared';
 import { api } from '../api';
 import { SettingsIcon } from './Icons';
 

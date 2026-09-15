@@ -3,7 +3,7 @@ import {
   type AuthenticatedUserIdentity,
   type MusicBotCommandRequest,
   type VoiceChannel,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 
 export type MusicCommandAuthorizationFailure =
   | 'INVALID_CHANNEL'

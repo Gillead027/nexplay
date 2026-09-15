@@ -1,6 +1,6 @@
 import { config as loadEnv } from 'dotenv';
 import { z } from 'zod';
-import { parseVoiceChannels } from '@sausixudos/shared';
+import { parseVoiceChannels } from '@nexplay/shared';
 
 loadEnv({ path: new URL('../../../.env', import.meta.url), quiet: true });
 
@@ -19,7 +19,7 @@ const envSchema = z.object({
   LIVEKIT_PUBLIC_URL: z.string().url(),
   LIVEKIT_INTERNAL_URL: z.string().url().default('http://localhost:7880'),
   MUSIC_BOT_INTERNAL_URL: z.string().url().default('http://music-bot:4100'),
-  DB_PATH: z.string().default('./data/gillecord.db'),
+  DB_PATH: z.string().default('./data/nexplay.db'),
   VOICE_CHANNELS: z.string().default(
     'geral:Geral:Conversa livre,jogos:Jogos:Partidas e squads,afk:AFK:Pausa rápida',
   ),
@@ -29,8 +29,12 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
-  MINIO_ACCESS_KEY: z.string().min(1).default('sausixudos'),
-  MINIO_SECRET_KEY: z.string().min(8).default('sausixudos-dev-secret'),
+  MINIO_ACCESS_KEY: z.string().min(1).default('nexplay'),
+  MINIO_SECRET_KEY: z.string().min(8).default('nexplay-dev-secret'),
+  // Nome mantido de propósito (rebrand Sausixudos → NexPlay): é o bucket já
+  // existente em produção com anexos reais. Migrar o conteúdo pra um bucket
+  // novo não traz ganho visível (nunca aparece pro usuário) e só adiciona
+  // risco de anexo quebrado no meio da cópia.
   MINIO_BUCKET: z.string().default('sausixudos-attachments'),
 });
 

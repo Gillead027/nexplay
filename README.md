@@ -1,4 +1,4 @@
-# Sausixudos
+# NexPlay
 
 MVP privado e self-hosted para voz, compartilhamento de tela e chat entre pequenos grupos.
 
@@ -32,9 +32,9 @@ O Caddy preserva `/api/*` para o Express. Em `/livekit/*`, `handle_path` remove 
 - Frontend e API usam o mesmo domínio. O CORS aceita somente `https://APP_DOMAIN`.
 - O convite não é armazenado pelo frontend.
 
-## SausiMusic
+## NexMusic
 
-O SausiMusic vive em `apps/music-bot`, como um processo Node e um container
+O NexMusic vive em `apps/music-bot`, como um processo Node e um container
 separados do cliente Electron. Ele não possui autenticação, cadastro de usuários,
 servidores ou canais próprios. O fluxo de comando é:
 
@@ -45,7 +45,7 @@ web/desktop -> API (sessão + canal + voice state) -> music-bot -> sala LiveKit
 A API é a fronteira autenticada: resolve o usuário da sessão, valida o canal
 compartilhado e confirma no LiveKit que ele está conectado à sala. Somente então
 encaminha ao bot a identidade canônica do solicitante. Mensagens e áudio retornam
-pelo mesmo data channel/WebRTC usado pelo restante do Sausixudos.
+pelo mesmo data channel/WebRTC usado pelo restante do NexPlay.
 
 Os contratos, identidades, tópico do canal de dados e parser de canais ficam em
 `packages/shared`; o bot reutiliza esses artefatos e o protocolo LiveKit existente.
@@ -72,7 +72,7 @@ npm test
 
 ## Cliente Windows
 
-O cliente Electron reutiliza a aplicação React servida pelo Sausixudos. Ele não
+O cliente Electron reutiliza a aplicação React servida pelo NexPlay. Ele não
 contém credenciais do LiveKit: autenticação, token de participante e configuração
 de mídia continuam sendo fornecidos pela API do servidor.
 
@@ -87,22 +87,22 @@ npm run desktop:dev
 O comando pressupõe que o LiveKit local existente esteja acessível em
 `http://localhost:7880`; a conexão pública passa pelo proxy `/livekit` do Vite.
 Resultado esperado: API, Vite e Electron iniciam juntos; uma única janela
-Sausixudos abre `http://localhost:5173`. Fechar a janela encerra os três processos.
+NexPlay abre `http://localhost:5173`. Fechar a janela encerra os três processos.
 
 Para gerar os executáveis de produção, a URL precisa ser uma origem HTTPS. O
 empacotador lê `APP_DOMAIN` do `.env` da raiz ou, quando definido, usa
-`SAUSIXUDOS_APP_URL`:
+`NEXPLAY_APP_URL`:
 
 ```powershell
-$env:SAUSIXUDOS_APP_URL = 'https://DOMINIO_DO_SAUSIXUDOS'
+$env:NEXPLAY_APP_URL = 'https://DOMINIO_DO_NEXPLAY'
 npm run desktop:build
-Remove-Item Env:SAUSIXUDOS_APP_URL
+Remove-Item Env:NEXPLAY_APP_URL
 ```
 
 Resultado esperado:
 
-- instalador: `apps/desktop/release/Sausixudos-Setup.exe`;
-- versão portátil: `apps/desktop/release/Sausixudos.exe`.
+- instalador: `apps/desktop/release/NexPlay-Setup.exe`;
+- versão portátil: `apps/desktop/release/NexPlay.exe`.
 
 O instalador cria atalhos na área de trabalho e no menu Iniciar. O cliente não
 exige Node.js, Docker ou navegador externo no computador de destino. Nesta etapa
@@ -118,7 +118,7 @@ Os comandos abaixo assumem Ubuntu 22.04, 24.04 ou 26.04 de 64 bits e um usuário
 Antes de iniciar o Caddy, crie um registro DNS `A` apontando o domínio para o IPv4 público da VPS. Crie `AAAA` somente se a VPS tiver IPv6 público funcional. Aguarde até:
 
 ```bash
-getent ahosts DOMINIO_DO_SAUSIXUDOS
+getent ahosts DOMINIO_DO_NEXPLAY
 ```
 
 Resultado esperado: o IP público da VPS aparece na saída.
@@ -168,15 +168,15 @@ Permita SSH antes de habilitar o firewall para não perder acesso:
 sudo ufw default deny incoming
 sudo ufw default allow outgoing
 sudo ufw allow OpenSSH
-sudo ufw allow 80/tcp comment 'Sausixudos HTTP ACME'
-sudo ufw allow 443/tcp comment 'Sausixudos HTTPS WSS'
-sudo ufw allow 7881/tcp comment 'Sausixudos LiveKit ICE TCP'
-sudo ufw allow 7882/udp comment 'Sausixudos LiveKit ICE UDP'
+sudo ufw allow 80/tcp comment 'NexPlay HTTP ACME'
+sudo ufw allow 443/tcp comment 'NexPlay HTTPS WSS'
+sudo ufw allow 7881/tcp comment 'NexPlay LiveKit ICE TCP'
+sudo ufw allow 7882/udp comment 'NexPlay LiveKit ICE UDP'
 sudo ufw enable
 sudo ufw status verbose
 ```
 
-Resultado esperado: apenas SSH e as quatro portas do Sausixudos aparecem como permitidas. Se o SSH usa uma porta personalizada, permita essa porta antes de `ufw enable`.
+Resultado esperado: apenas SSH e as quatro portas do NexPlay aparecem como permitidas. Se o SSH usa uma porta personalizada, permita essa porta antes de `ufw enable`.
 
 Docker pode encaminhar portas publicadas antes das regras normais do UFW. Por isso, replique as mesmas quatro permissões no firewall/security group do provedor da VPS. O Compose não publica nenhuma outra porta.
 
@@ -185,25 +185,25 @@ Docker pode encaminhar portas publicadas antes das regras normais do UFW. Por is
 Com repositório Git:
 
 ```bash
-sudo install -d -o "$USER" -g "$USER" /opt/sausixudos
-git clone URL_DO_REPOSITORIO /opt/sausixudos
-cd /opt/sausixudos
+sudo install -d -o "$USER" -g "$USER" /opt/nexplay
+git clone URL_DO_REPOSITORIO /opt/nexplay
+cd /opt/nexplay
 ```
 
 Ou, a partir do computador local, empacote e envie todos os arquivos, incluindo `.env.example`:
 
 ```bash
-tar -C CAMINHO_LOCAL_DO_SAUSIXUDOS -czf sausixudos.tar.gz .
-scp sausixudos.tar.gz usuario@IP_DA_VPS:/tmp/sausixudos.tar.gz
+tar -C CAMINHO_LOCAL_DO_NEXPLAY -czf nexplay.tar.gz .
+scp nexplay.tar.gz usuario@IP_DA_VPS:/tmp/nexplay.tar.gz
 ```
 
 Então, na VPS:
 
 ```bash
 ssh usuario@IP_DA_VPS
-sudo install -d -o "$USER" -g "$USER" /opt/sausixudos
-tar -xzf /tmp/sausixudos.tar.gz -C /opt/sausixudos
-cd /opt/sausixudos
+sudo install -d -o "$USER" -g "$USER" /opt/nexplay
+tar -xzf /tmp/nexplay.tar.gz -C /opt/nexplay
+cd /opt/nexplay
 ```
 
 Resultado esperado:
@@ -215,7 +215,7 @@ test -f docker-compose.yml && test -f infra/Caddyfile && test -f infra/livekit.y
 ### 6. Criar o `.env`
 
 ```bash
-cd /opt/sausixudos
+cd /opt/nexplay
 cp .env.example .env
 
 GC_INVITE_TOKEN="$(openssl rand -hex 24)"
@@ -223,7 +223,7 @@ GC_SESSION_SECRET="$(openssl rand -hex 32)"
 GC_LIVEKIT_KEY="$(openssl rand -hex 16)"
 GC_LIVEKIT_SECRET="$(openssl rand -hex 32)"
 
-sed -i "s|^APP_DOMAIN=.*|APP_DOMAIN=DOMINIO_DO_SAUSIXUDOS|" .env
+sed -i "s|^APP_DOMAIN=.*|APP_DOMAIN=DOMINIO_DO_NEXPLAY|" .env
 sed -i "s|^INVITE_TOKEN=.*|INVITE_TOKEN=$GC_INVITE_TOKEN|" .env
 sed -i "s|^SESSION_SECRET=.*|SESSION_SECRET=$GC_SESSION_SECRET|" .env
 sed -i "s|^LIVEKIT_API_KEY=.*|LIVEKIT_API_KEY=$GC_LIVEKIT_KEY|" .env
@@ -234,7 +234,7 @@ chmod 600 .env
 nano .env
 ```
 
-Substitua `DOMINIO_DO_SAUSIXUDOS` pelo hostname real, sem `https://` e sem `/`. No editor, anote o `INVITE_TOKEN` para fornecer aos dois participantes e confirme os canais.
+Substitua `DOMINIO_DO_NEXPLAY` pelo hostname real, sem `https://` e sem `/`. No editor, anote o `INVITE_TOKEN` para fornecer aos dois participantes e confirme os canais.
 
 Resultado esperado:
 
@@ -248,7 +248,7 @@ O domínio correto deve aparecer e a permissão deve ser `600`.
 ### 7. Validar e subir os containers
 
 ```bash
-cd /opt/sausixudos
+cd /opt/nexplay
 docker compose config --quiet
 docker compose pull
 docker compose up -d --build
@@ -268,8 +268,8 @@ Use `Ctrl+C` quando todos estiverem saudáveis.
 ### 8. Confirmar HTTPS e a API
 
 ```bash
-curl -I https://DOMINIO_DO_SAUSIXUDOS/
-curl -fsS https://DOMINIO_DO_SAUSIXUDOS/api/health
+curl -I https://DOMINIO_DO_NEXPLAY/
+curl -fsS https://DOMINIO_DO_NEXPLAY/api/health
 ```
 
 Resultado esperado: a primeira resposta é HTTP `200` e a segunda imprime `{"status":"ok"}`. O navegador deve mostrar certificado HTTPS válido.
@@ -279,7 +279,7 @@ Resultado esperado: a primeira resposta é HTTP `200` e a segunda imprime `{"sta
 Estado e logs:
 
 ```bash
-cd /opt/sausixudos
+cd /opt/nexplay
 docker compose ps
 docker compose logs --tail=200
 docker compose logs --tail=200 livekit
@@ -321,7 +321,7 @@ Erros comuns:
 1. Deixe estes comandos abertos na VPS:
 
    ```bash
-   cd /opt/sausixudos
+   cd /opt/nexplay
    docker compose logs -f livekit api caddy
    ```
 
@@ -331,7 +331,7 @@ Erros comuns:
    sudo tcpdump -ni any udp port 7882
    ```
 
-2. No computador A, conectado à rede residencial, abra `https://DOMINIO_DO_SAUSIXUDOS` no Chrome/Edge, confirme o certificado, entre com um nome e o convite e selecione o canal **Geral**.
+2. No computador A, conectado à rede residencial, abra `https://DOMINIO_DO_NEXPLAY` no Chrome/Edge, confirme o certificado, entre com um nome e o convite e selecione o canal **Geral**.
 3. No computador B, use outra rede, por exemplo hotspot móvel. Abra a mesma URL, use outro nome e o mesmo convite e entre no mesmo canal.
 4. Aceite a permissão de microfone nos dois computadores. Confirme que ambos aparecem na sala e que o indicador de fala reage.
 5. Fale A -> B e B -> A. Teste mute, deafen e o volume individual.
@@ -341,14 +341,14 @@ Erros comuns:
 9. Para comprovar o fallback TCP, execute como administrador no PowerShell de apenas um dos computadores Windows:
 
    ```powershell
-   New-NetFirewallRule -DisplayName "Sausixudos UDP fallback test" -Direction Outbound -Protocol UDP -RemotePort 7882 -Action Block
+   New-NetFirewallRule -DisplayName "NexPlay UDP fallback test" -Direction Outbound -Protocol UDP -RemotePort 7882 -Action Block
    ```
 
    Saia e entre novamente no canal. Voz e tela devem continuar funcionando; `chrome://webrtc-internals` deve indicar TCP e a VPS deve receber conexão em `7881/TCP`.
 10. Remova imediatamente a regra de teste:
 
    ```powershell
-   Remove-NetFirewallRule -DisplayName "Sausixudos UDP fallback test"
+   Remove-NetFirewallRule -DisplayName "NexPlay UDP fallback test"
    ```
 
 11. O teste está aprovado quando voz bidirecional, controles, tela e áudio de compartilhamento funcionam em UDP, e a reconexão funciona por TCP com UDP bloqueado no cliente.

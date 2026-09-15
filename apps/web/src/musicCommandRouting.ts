@@ -1,4 +1,4 @@
-import { isMusicCommandInput, type MusicCommandResponse } from '@sausixudos/shared';
+import { isMusicCommandInput, type MusicCommandResponse } from '@nexplay/shared';
 
 interface MusicCommandRoute {
   text: string;

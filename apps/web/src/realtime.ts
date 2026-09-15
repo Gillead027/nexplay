@@ -1,4 +1,4 @@
-import type { RealtimeEvent } from '@sausixudos/shared';
+import type { RealtimeEvent } from '@nexplay/shared';
 
 type EventHandler = (event: RealtimeEvent) => void;
 type ConnectHandler = () => void;

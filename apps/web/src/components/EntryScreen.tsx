@@ -1,5 +1,5 @@
 import { type FormEvent, useState } from 'react';
-import { ACCENT_COLORS, type AccentColor, type UserSession } from '@sausixudos/shared';
+import { ACCENT_COLORS, type AccentColor, type UserSession } from '@nexplay/shared';
 import { api } from '../api';
 
 interface EntryScreenProps {
@@ -45,7 +45,7 @@ export function EntryScreen({ onAuthenticated }: EntryScreenProps) {
         <header className="entry-heading">
           <span className="entry-mark" aria-hidden="true">G</span>
           <div>
-            <h1 id="entry-title">Sausixudos</h1>
+            <h1 id="entry-title">NexPlay</h1>
             <p>Servidor privado</p>
           </div>
         </header>

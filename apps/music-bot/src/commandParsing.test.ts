@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { isMusicCommandInput, parseMusicCommand } from '@sausixudos/shared';
+import { isMusicCommandInput, parseMusicCommand } from '@nexplay/shared';
 
 describe('parseMusicCommand', () => {
   for (const [input, name] of [

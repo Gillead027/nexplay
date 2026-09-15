@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Server } from '@sausixudos/shared';
+import type { Server } from '@nexplay/shared';
 import { bootstrapServerRoles, db } from './db.js';
 import { addServerMember } from './serverMembers.js';
 import { createTextChannel } from './textChannels.js';

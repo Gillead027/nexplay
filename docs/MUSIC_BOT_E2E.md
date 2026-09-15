@@ -1,4 +1,4 @@
-# Validação manual E2E do player stateful do SausiMusic
+# Validação manual E2E do player stateful do NexMusic
 
 Este roteiro valida audição, respostas textuais e transições do player em dois
 clientes humanos. As fontes continuam sendo apenas tons determinísticos de seis
@@ -17,7 +17,7 @@ npm run desktop:dev
 ```
 
 O LiveKit deve aparecer como `healthy`. O comando `desktop:dev` inicia API, web,
-SausiMusic e Electron como processos separados. Use o Electron como cliente A e
+NexMusic e Electron como processos separados. Use o Electron como cliente A e
 uma janela anônima em `http://localhost:5173` como cliente B.
 
 ## Cenário obrigatório
@@ -36,14 +36,14 @@ uma janela anônima em `http://localhost:5173` como cliente B.
 9. Envie `/volume 25`; confirme que o tom fica claramente mais baixo nos dois
    clientes. Envie `/volume 100` e confirme o retorno à amplitude normal.
 10. Envie `/skip`; a faixa atual deve encerrar e a próxima começar sem criar um
-    segundo participante SausiMusic.
+    segundo participante NexMusic.
 11. Envie `/np`; confirme a nova faixa atual, posição, estado e volume.
 12. Envie `/clear`; depois `/queue`. A faixa atual deve continuar e a fila futura
     deve aparecer vazia.
 13. Envie `/stop`; o som deve parar, a fila deve ficar vazia e o bot deve continuar
     conectado na room.
 14. Envie `/play-file`; confirme que uma nova faixa começa na mesma sessão.
-15. Envie `/leave`; o áudio deve parar e o SausiMusic deve desaparecer dos dois
+15. Envie `/leave`; o áudio deve parar e o NexMusic deve desaparecer dos dois
     clientes em realtime.
 
 Todos os comandos acima também devem aceitar o prefixo `!`; `/nowplaying` também

@@ -1,4 +1,4 @@
-import type { BanRecord } from '@sausixudos/shared';
+import type { BanRecord } from '@nexplay/shared';
 import { db } from './db.js';
 
 interface BanRow {

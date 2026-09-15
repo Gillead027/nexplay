@@ -1,5 +1,5 @@
 {
-  "name": "@sausixudos/web",
+  "name": "@nexplay/web",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@livekit/krisp-noise-filter": "^0.4.4",
-    "@sausixudos/shared": "0.1.0",
+    "@nexplay/shared": "0.1.0",
     "livekit-client": "^2.22.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

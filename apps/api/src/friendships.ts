@@ -1,4 +1,4 @@
-import type { AccentColor, FriendRequestSummary, FriendSummary, RawFriendshipStatus } from '@sausixudos/shared';
+import type { AccentColor, FriendRequestSummary, FriendSummary, RawFriendshipStatus } from '@nexplay/shared';
 import { isBlocked } from './blocks.js';
 import { db } from './db.js';
 

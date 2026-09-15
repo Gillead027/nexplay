@@ -48,7 +48,7 @@ import {
   type RoomSummary,
   type UserSession,
   type VoiceChannel,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 import { config } from './config.js';
 import {
   clearSessionCookie,
@@ -2239,7 +2239,7 @@ app.post(
       });
       if (!botResponse.ok) {
         // Fallback: força a remoção no LiveKit; o RoomEvent.Disconnected do bot
-        // limpa a sessão interna do SausiMusic.
+        // limpa a sessão interna do NexMusic.
         await roomService.removeParticipant(room.id, target.identity);
       }
       for (const clearedChannelId of deleteMusicBotTextMessagesForVoiceChannel(room.id)) {
@@ -2278,7 +2278,7 @@ app.post(
 
   const user = currentUser(response);
   const metadata: HumanParticipantMetadata = {
-    app: 'sausixudos',
+    app: 'nexplay',
     participantType: 'HUMAN',
     userId: user.id,
     accentColor: user.accentColor,
@@ -2358,13 +2358,13 @@ app.post(
       signal: AbortSignal.timeout(30_000),
     });
     if (!botResponse.ok) {
-      console.error(`SausiMusic rejeitou o comando com status ${botResponse.status}.`);
-      response.status(502).json({ error: 'O SausiMusic não conseguiu processar o comando.' });
+      console.error(`NexMusic rejeitou o comando com status ${botResponse.status}.`);
+      response.status(502).json({ error: 'O NexMusic não conseguiu processar o comando.' });
       return;
     }
     const botResult = (await botResponse.json()) as { message?: unknown; nowPlaying?: unknown };
     if (typeof botResult.message !== 'string') {
-      response.status(502).json({ error: 'O SausiMusic retornou uma resposta inválida.' });
+      response.status(502).json({ error: 'O NexMusic retornou uma resposta inválida.' });
       return;
     }
     let nowPlaying: MusicNowPlayingCard | undefined;
@@ -2415,8 +2415,8 @@ app.post(
     }
     response.json(payload);
   } catch (error) {
-    console.error('Falha ao repassar comando para o SausiMusic:', error);
-    response.status(503).json({ error: 'O SausiMusic está indisponível.' });
+    console.error('Falha ao repassar comando para o NexMusic:', error);
+    response.status(503).json({ error: 'O NexMusic está indisponível.' });
     return;
   }
   },
@@ -2455,7 +2455,7 @@ setInterval(() => {
 }, ORPHANED_ATTACHMENT_SWEEP_INTERVAL_MS);
 
 const server = app.listen(config.PORT, '0.0.0.0', () => {
-  console.log(`Sausixudos API ouvindo na porta ${config.PORT}`);
+  console.log(`NexPlay API ouvindo na porta ${config.PORT}`);
 });
 void ensureAttachmentsBucket();
 attachRealtime(server);

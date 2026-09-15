@@ -15,7 +15,7 @@ import {
   parseMusicCommand,
   parseParticipantMetadata,
   type MusicBotCommandRequest,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 import { authorizeMusicCommand } from '../../api/src/musicCommands.js';
 import { BotVoiceParticipant } from '../src/botVoiceParticipant.js';
 import { config } from '../src/config.js';

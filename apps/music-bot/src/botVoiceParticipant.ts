@@ -19,7 +19,7 @@ import {
   parseParticipantMetadata,
   type BotParticipantMetadata,
   type ChatMessage,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 import { FfmpegAudioSource } from './ffmpegAudioSource.js';
 import { YtDlpAudioSource } from './ytDlpAudioSource.js';
 import type { PlayableMusicSource } from './musicProvider.js';

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { combinePermissions, type Role } from '@sausixudos/shared';
+import { combinePermissions, type Role } from '@nexplay/shared';
 import { db } from './db.js';
 
 interface RoleRow {

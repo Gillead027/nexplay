@@ -1,4 +1,4 @@
-import type { ForwardDestination } from '@sausixudos/shared';
+import type { ForwardDestination } from '@nexplay/shared';
 import { getDmChannelForParticipant } from './dmChannels.js';
 import { getTextChannelById } from './textChannels.js';
 import { isServerMember } from './serverMembers.js';

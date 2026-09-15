@@ -12,7 +12,7 @@ import {
 } from 'electron';
 import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Activity } from '@sausixudos/shared';
+import type { Activity } from '@nexplay/shared';
 import { initAutoUpdater } from './updater.js';
 
 // windows-media-sessions calcula o caminho do próprio backend nativo relativo
@@ -37,7 +37,7 @@ if (app.isPackaged) {
   );
 }
 
-const debugLogPath = path.join(process.env.TEMP || process.env.TMP || '.', 'sausixudos-startup-debug.log');
+const debugLogPath = path.join(process.env.TEMP || process.env.TMP || '.', 'nexplay-startup-debug.log');
 
 function debugLog(line: string): void {
   try {
@@ -45,7 +45,7 @@ function debugLog(line: string): void {
   } catch (error) {
     try {
       appendFileSync(
-        path.join('.', 'sausixudos-startup-debug-fallback.log'),
+        path.join('.', 'nexplay-startup-debug-fallback.log'),
         `[${new Date().toISOString()}] ${line} (primary log failed: ${String(error)})\n`,
         'utf8',
       );
@@ -102,9 +102,9 @@ let currentActivity: Activity | null = null;
 let preArmedCapture: ArmedCapture | null = null;
 
 // Sem isso, o Electron deriva o nome do app do "name" do package.json
-// (@sausixudos/desktop), e usa isso pra montar o caminho de userData —
-// resultando numa pasta "@sausixudos\desktop" em vez de "Sausixudos".
-app.setName('Sausixudos');
+// (@nexplay/desktop), e usa isso pra montar o caminho de userData —
+// resultando numa pasta "@nexplay\desktop" em vez de "NexPlay".
+app.setName('NexPlay');
 debugLog('after setName');
 
 app.enableSandbox();
@@ -118,7 +118,7 @@ if (!hasSingleInstanceLock) {
 }
 
 function readConfiguredUrl(): URL {
-  const developmentUrl = process.env.SAUSIXUDOS_APP_URL;
+  const developmentUrl = process.env.NEXPLAY_APP_URL;
   if (!app.isPackaged && developmentUrl) return new URL(developmentUrl);
 
   const configPath = path.join(process.resourcesPath, 'desktop-config.json');
@@ -260,7 +260,7 @@ async function chooseCaptureSource(sources: DesktopCapturerSource[]): Promise<Ca
       modal: Boolean(mainWindow),
       show: false,
       frame: false,
-      title: 'Compartilhar tela — Sausixudos',
+      title: 'Compartilhar tela — NexPlay',
       backgroundColor: '#111315',
       autoHideMenuBar: true,
       webPreferences: {
@@ -462,7 +462,7 @@ function createMainWindow(appUrl: URL): BrowserWindow {
     minHeight: 720,
     show: false,
     frame: false,
-    title: 'Sausixudos',
+    title: 'NexPlay',
     backgroundColor: '#111315',
     autoHideMenuBar: true,
     webPreferences: {
@@ -516,7 +516,7 @@ function createMainWindow(appUrl: URL): BrowserWindow {
     if (errorCode === -3) return;
     void dialog.showMessageBox(window, {
       type: 'error',
-      title: 'Sausixudos indisponível',
+      title: 'NexPlay indisponível',
       message: 'Não foi possível abrir o servidor.',
       detail: `${appUrl.origin}\n${errorDescription}`,
     });

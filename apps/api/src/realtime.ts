@@ -1,7 +1,7 @@
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { RealtimeEvent } from '@sausixudos/shared';
+import type { RealtimeEvent } from '@nexplay/shared';
 import { config } from './config.js';
 import { isBanned } from './moderation.js';
 import { listMemberUserIdsForServer } from './serverMembers.js';

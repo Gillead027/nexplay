@@ -1,4 +1,4 @@
-import { EMOJI_DATA, type MessageReactionGroup } from '@sausixudos/shared';
+import { EMOJI_DATA, type MessageReactionGroup } from '@nexplay/shared';
 import { db } from './db.js';
 
 const KNOWN_EMOJI = new Set(EMOJI_DATA.map((entry) => entry.emoji));

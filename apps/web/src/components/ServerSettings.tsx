@@ -12,7 +12,7 @@ import {
   type Role,
   type Server,
   type ServerMember,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 import { api } from '../api';
 import { onRealtimeEvent } from '../realtime';
 import { CloseIcon, CopyIcon, PlusIcon, SearchIcon, SettingsIcon, TrashIcon, UserIcon } from './Icons';

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { MusicCommandResponse, MusicNowPlayingCard } from '@sausixudos/shared';
+import type { MusicCommandResponse, MusicNowPlayingCard } from '@nexplay/shared';
 
 function formatTime(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1_000));
@@ -86,48 +86,48 @@ export function MusicCard({ card, onCommand }: MusicCardProps) {
   }
 
   return (
-    <div className="sausimusic-player-shell">
-      <div className="sausimusic-embed">
-        <div className="sausimusic-embed-title">Reproduzindo agora</div>
-        <div className="sausimusic-divider" />
-        <div className="sausimusic-track-row">
-          <div className="sausimusic-track-copy">
+    <div className="nexmusic-player-shell">
+      <div className="nexmusic-embed">
+        <div className="nexmusic-embed-title">Reproduzindo agora</div>
+        <div className="nexmusic-divider" />
+        <div className="nexmusic-track-row">
+          <div className="nexmusic-track-copy">
             {liveCard.webUrl ? (
-              <a className="sausimusic-track-title" href={liveCard.webUrl} target="_blank" rel="noreferrer">{liveCard.title}</a>
-            ) : <strong className="sausimusic-track-title">{liveCard.title}</strong>}
-            <div className="sausimusic-detail-line"><span className="sausimusic-bullet" aria-hidden="true" /><span>Added by <b>@{liveCard.requestedBy}</b></span></div>
-            <div className="sausimusic-detail-line"><span className="sausimusic-bullet" aria-hidden="true" /><span className="sausimusic-voice-pill"><Glyph name="speaker" />{liveCard.voiceChannelId?.toUpperCase() || 'GERAL'}</span></div>
+              <a className="nexmusic-track-title" href={liveCard.webUrl} target="_blank" rel="noreferrer">{liveCard.title}</a>
+            ) : <strong className="nexmusic-track-title">{liveCard.title}</strong>}
+            <div className="nexmusic-detail-line"><span className="nexmusic-bullet" aria-hidden="true" /><span>Added by <b>@{liveCard.requestedBy}</b></span></div>
+            <div className="nexmusic-detail-line"><span className="nexmusic-bullet" aria-hidden="true" /><span className="nexmusic-voice-pill"><Glyph name="speaker" />{liveCard.voiceChannelId?.toUpperCase() || 'GERAL'}</span></div>
           </div>
-          <div className="sausimusic-art-column">
+          <div className="nexmusic-art-column">
             {liveCard.thumbnailUrl && !coverFailed ? (
               <img
-                className="sausimusic-cover"
+                className="nexmusic-cover"
                 src={`/api/music/thumbnail?url=${encodeURIComponent(liveCard.thumbnailUrl)}`}
                 alt={`Capa de ${liveCard.title}`}
                 onError={() => setCoverFailed(true)}
               />
             ) : (
-              <div className="sausimusic-cover sausimusic-cover-placeholder" aria-hidden="true"><span className="sausimusic-cover-bars"><i /><i /><i /></span></div>
+              <div className="nexmusic-cover nexmusic-cover-placeholder" aria-hidden="true"><span className="nexmusic-cover-bars"><i /><i /><i /></span></div>
             )}
-            <button type="button" className={`sausimusic-like ${liked ? 'active' : ''}`} onClick={() => setLiked((value) => !value)}><Glyph name="heart" />Like</button>
+            <button type="button" className={`nexmusic-like ${liked ? 'active' : ''}`} onClick={() => setLiked((value) => !value)}><Glyph name="heart" />Like</button>
           </div>
         </div>
 
-        <div className="sausimusic-stats">Queue Size: <code>{liveCard.queueSize ?? 0}</code><span>&middot;</span>Volume: <code>{liveCard.volume}%</code><span>&middot;</span>Loop: <code>Off</code></div>
-        <div className="sausimusic-progress" aria-label={`Progresso ${formatTime(positionMs)} de ${formatTime(duration)}`}><span style={{ width: `${progress}%` }} /><i style={{ left: `${progress}%` }} /></div>
-        <div className="sausimusic-time-row"><span>{formatTime(positionMs)}</span><span>{duration > 0 ? formatTime(duration) : '--:--'}</span></div>
+        <div className="nexmusic-stats">Queue Size: <code>{liveCard.queueSize ?? 0}</code><span>&middot;</span>Volume: <code>{liveCard.volume}%</code><span>&middot;</span>Loop: <code>Off</code></div>
+        <div className="nexmusic-progress" aria-label={`Progresso ${formatTime(positionMs)} de ${formatTime(duration)}`}><span style={{ width: `${progress}%` }} /><i style={{ left: `${progress}%` }} /></div>
+        <div className="nexmusic-time-row"><span>{formatTime(positionMs)}</span><span>{duration > 0 ? formatTime(duration) : '--:--'}</span></div>
 
-        <div className="sausimusic-controls">
+        <div className="nexmusic-controls">
           <button type="button" disabled={Boolean(busy)} onClick={() => void run(paused ? '/resume' : '/pause')}><Glyph name={paused ? 'play' : 'pause'} />{paused ? 'Resume' : 'Pause'}</button>
           <button type="button" disabled={Boolean(busy)} onClick={() => void run('/skip')}><Glyph name="skip" />Skip</button>
           <button type="button" disabled={Boolean(busy)} onClick={() => void run('/stop')}><Glyph name="stop" />Stop</button>
           <button type="button" className={autoplay ? 'active' : ''} onClick={() => setAutoplay((value) => !value)}><Glyph name="repeat" />AutoPlay</button>
-          <button type="button" onClick={() => setStatus('Dashboard do SausiMusic em breve.')}><Glyph name="grid" />Dashboard</button>
+          <button type="button" onClick={() => setStatus('Dashboard do NexMusic em breve.')}><Glyph name="grid" />Dashboard</button>
         </div>
-        {status && <div className="sausimusic-control-status" role="status">{status}</div>}
+        {status && <div className="nexmusic-control-status" role="status">{status}</div>}
       </div>
 
-      <div className="sausimusic-reactions" aria-label={'Rea\u00e7\u00f5es do player'}>
+      <div className="nexmusic-reactions" aria-label={'Rea\u00e7\u00f5es do player'}>
         <button type="button" className={reaction === 'love' ? 'active' : ''} onClick={() => setReaction(reaction === 'love' ? null : 'love')}><Glyph name="up" />Love this</button>
         <button type="button" className={reaction === 'nope' ? 'active' : ''} onClick={() => setReaction(reaction === 'nope' ? null : 'nope')}><Glyph name="down" />Not for me</button>
         <button type="button" disabled={Boolean(busy)} onClick={() => void run('/queue')}><Glyph name="next" />What's next?</button>

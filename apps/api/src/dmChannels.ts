@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { AccentColor, DmChannel, DmChannelParticipant, DmMessage, ForwardedFromMeta } from '@sausixudos/shared';
+import type { AccentColor, DmChannel, DmChannelParticipant, DmMessage, ForwardedFromMeta } from '@nexplay/shared';
 import { areFriends } from './friendships.js';
 import { db } from './db.js';
 import type { UserRecord } from './users.js';

@@ -7,7 +7,7 @@ import type {
   FriendSummary,
   MemberSummary,
   UserSession,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 import { api } from '../api';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { Avatar } from './Workspace';

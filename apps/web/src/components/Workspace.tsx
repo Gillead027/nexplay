@@ -17,14 +17,14 @@ import {
   type TextChannel,
   type UserSession,
   type VoiceChannel,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 import {
   ConnectionState,
   LocalParticipant,
   RemoteParticipant,
   type TrackPublication,
 } from 'livekit-client';
-import { AVATAR_DATA_URL_MAX_LENGTH, BANNER_DATA_URL_MAX_LENGTH } from '@sausixudos/shared';
+import { AVATAR_DATA_URL_MAX_LENGTH, BANNER_DATA_URL_MAX_LENGTH } from '@nexplay/shared';
 import { api } from '../api';
 import { useDelayedUnmount } from '../hooks/useDelayedUnmount';
 import { type InputMode, type MicProfile, type ShareQuality, useVoiceRoom } from '../livekit/useVoiceRoom';
@@ -87,7 +87,7 @@ import { CreateTextChannelDialog, TextChannelView } from './TextChannels';
 import { MusicCard } from './MusicCard';
 
 type MessageStyle = 'default' | 'compact' | 'grouped';
-const MESSAGE_STYLE_KEY = 'gc:message-style';
+const MESSAGE_STYLE_KEY = 'np:message-style';
 const VALID_MESSAGE_STYLES: MessageStyle[] = ['default', 'compact', 'grouped'];
 
 function loadMessageStyle(): MessageStyle {
@@ -1431,7 +1431,7 @@ function SettingsModal({
             <div className="settings-pane two-column">
               <div className="settings-pane-main">
                 <h2>Aparência</h2>
-                <p className="settings-page-description">Personalize a aparência do Sausixudos no seu dispositivo.</p>
+                <p className="settings-page-description">Personalize a aparência do NexPlay no seu dispositivo.</p>
 
                 <span className="settings-label">Tema</span>
                 <div className="theme-cards" role="group" aria-label="Tema">

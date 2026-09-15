@@ -1,6 +1,6 @@
 import { createServer } from 'node:http';
 import { dispose } from '@livekit/rtc-node';
-import { isMusicBotCommandRequest } from '@sausixudos/shared';
+import { isMusicBotCommandRequest } from '@nexplay/shared';
 import { BotVoiceParticipant, type MusicLog } from './botVoiceParticipant.js';
 import { config } from './config.js';
 import { MusicSessionManager } from './musicSession.js';

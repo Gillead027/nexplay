@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
-import type { PublicConfig, UserSession } from '@sausixudos/shared';
+import type { PublicConfig, UserSession } from '@nexplay/shared';
 import { api } from './api';
 import { EntryScreen } from './components/EntryScreen';
 import { AppFrame } from './components/AppChrome';
@@ -18,7 +18,7 @@ function LoadingWindow({ label }: { label: string }) {
   return (
     <main className="splash" aria-live="polite">
       <div className="boot-window">
-        <div className="boot-title">Sausixudos</div>
+        <div className="boot-title">NexPlay</div>
         <div className="skeleton-line wide" />
         <div className="skeleton-line" />
         <span>{label}</span>

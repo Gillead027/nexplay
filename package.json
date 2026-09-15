@@ -1,5 +1,5 @@
 {
-  "name": "sausixudos",
+  "name": "nexplay",
   "version": "0.1.0",
   "private": true,
   "workspaces": [
@@ -7,13 +7,13 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build -w @sausixudos/shared && npm run build -w @sausixudos/api && npm run build -w @sausixudos/web && npm run build -w @sausixudos/desktop && npm run build -w @sausixudos/music-bot",
-    "typecheck": "npm run build -w @sausixudos/shared && npm run typecheck -w @sausixudos/api && npm run typecheck -w @sausixudos/web && npm run typecheck -w @sausixudos/desktop && npm run typecheck -w @sausixudos/music-bot",
-    "test": "npm run build -w @sausixudos/shared && npm run test -w @sausixudos/api && npm run test -w @sausixudos/web && npm run test -w @sausixudos/music-bot",
-    "dev": "npm run build -w @sausixudos/shared && concurrently -n api,web -c blue,magenta \"npm run dev -w @sausixudos/api\" \"npm run dev -w @sausixudos/web\"",
-    "desktop:dev": "docker compose up -d livekit pot-provider && npm run build -w @sausixudos/shared && concurrently -k -s first -n api,web,music,desktop -c blue,magenta,yellow,green \"cross-env NODE_ENV=development WEB_ORIGIN=http://localhost:5173 COOKIE_SECURE=false LIVEKIT_PUBLIC_URL=ws://localhost:5173/livekit LIVEKIT_INTERNAL_URL=http://localhost:7880 MUSIC_BOT_INTERNAL_URL=http://localhost:4100 npm run dev -w @sausixudos/api\" \"npm run dev -w @sausixudos/web\" \"cross-env LIVEKIT_INTERNAL_URL=http://localhost:7880 npm run dev -w @sausixudos/music-bot\" \"npm run dev -w @sausixudos/desktop\"",
-    "desktop:build": "npm run package -w @sausixudos/desktop",
-    "start": "npm run start -w @sausixudos/api"
+    "build": "npm run build -w @nexplay/shared && npm run build -w @nexplay/api && npm run build -w @nexplay/web && npm run build -w @nexplay/desktop && npm run build -w @sausixudos/music-bot",
+    "typecheck": "npm run build -w @nexplay/shared && npm run typecheck -w @nexplay/api && npm run typecheck -w @nexplay/web && npm run typecheck -w @nexplay/desktop && npm run typecheck -w @sausixudos/music-bot",
+    "test": "npm run build -w @nexplay/shared && npm run test -w @nexplay/api && npm run test -w @nexplay/web && npm run test -w @sausixudos/music-bot",
+    "dev": "npm run build -w @nexplay/shared && concurrently -n api,web -c blue,magenta \"npm run dev -w @nexplay/api\" \"npm run dev -w @nexplay/web\"",
+    "desktop:dev": "docker compose up -d livekit pot-provider && npm run build -w @nexplay/shared && concurrently -k -s first -n api,web,music,desktop -c blue,magenta,yellow,green \"cross-env NODE_ENV=development WEB_ORIGIN=http://localhost:5173 COOKIE_SECURE=false LIVEKIT_PUBLIC_URL=ws://localhost:5173/livekit LIVEKIT_INTERNAL_URL=http://localhost:7880 MUSIC_BOT_INTERNAL_URL=http://localhost:4100 npm run dev -w @nexplay/api\" \"npm run dev -w @nexplay/web\" \"cross-env LIVEKIT_INTERNAL_URL=http://localhost:7880 npm run dev -w @sausixudos/music-bot\" \"npm run dev -w @nexplay/desktop\"",
+    "desktop:build": "npm run package -w @nexplay/desktop",
+    "start": "npm run start -w @nexplay/api"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

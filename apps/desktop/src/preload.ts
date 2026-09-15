@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { Activity } from '@sausixudos/shared';
+import type { Activity } from '@nexplay/shared';
 
 // Repassa exceções e rejeições não tratadas pro console.error, que o main
 // process já captura via webContents 'console-message' — sem isso, um erro

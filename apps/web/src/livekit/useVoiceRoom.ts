@@ -32,7 +32,7 @@ import {
   type SoundboardAnnouncement,
   type SoundboardSound,
   type VoiceChannel,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 import { api } from '../api';
 import { getOutputVolume } from '../appearancePrefs';
 import { describeMediaError } from '../mediaAccess';
@@ -50,15 +50,15 @@ import {
 export type ShareQuality = '720p30' | '720p60' | '1080p60';
 export type InputMode = 'voice' | 'ptt';
 
-const INPUT_MODE_KEY = 'gc:input-mode';
-const PTT_KEY_KEY = 'gc:ptt-key';
+const INPUT_MODE_KEY = 'np:input-mode';
+const PTT_KEY_KEY = 'np:ptt-key';
 const DEFAULT_PTT_KEY = 'ControlRight';
-const NOISE_SUPPRESSION_KEY = 'gc:noise-suppression';
-const ECHO_CANCELLATION_KEY = 'gc:echo-cancellation';
-const AUTO_GAIN_KEY = 'gc:auto-gain';
-const MIC_PROFILE_KEY = 'gc:mic-profile';
-const AUTO_SENSITIVITY_KEY = 'gc:auto-sensitivity';
-const INPUT_SENSITIVITY_KEY = 'gc:input-sensitivity';
+const NOISE_SUPPRESSION_KEY = 'np:noise-suppression';
+const ECHO_CANCELLATION_KEY = 'np:echo-cancellation';
+const AUTO_GAIN_KEY = 'np:auto-gain';
+const MIC_PROFILE_KEY = 'np:mic-profile';
+const AUTO_SENSITIVITY_KEY = 'np:auto-sensitivity';
+const INPUT_SENSITIVITY_KEY = 'np:input-sensitivity';
 
 /**
  * Espelha os 3 perfis do Discord. A supressão de ruído usa o Krisp de
@@ -1068,7 +1068,7 @@ export function useVoiceRoom() {
         setError(
           commandError instanceof Error
             ? commandError.message
-            : 'Não foi possível encaminhar o comando ao SausiMusic.',
+            : 'Não foi possível encaminhar o comando ao NexMusic.',
         );
         throw commandError;
       }

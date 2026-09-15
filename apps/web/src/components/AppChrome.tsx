@@ -5,7 +5,7 @@ export function AppChrome() {
     <header className="app-chrome">
       <div className="app-chrome-brand">
         <span className="brand-mark" aria-hidden="true"><i /><i /></span>
-        <strong>Sausixudos</strong>
+        <strong>NexPlay</strong>
         <span className="beta-badge">BETA</span>
       </div>
       <div className="app-chrome-drag" />

@@ -1,4 +1,4 @@
-# Auditoria do pipeline de voz para o SausiMusic
+# Auditoria do pipeline de voz para o NexMusic
 
 ## Escopo e arquitetura encontrada
 
@@ -26,9 +26,9 @@ JWT curto com `roomJoin`, `canPublish`, `canSubscribe` e `canPublishData`. A
 identity LiveKit do humano é o ID persistido do usuário. A metadata contém
 `participantType: HUMAN` e o `userId` canônico.
 
-O SausiMusic cria seu JWT apenas no processo server-side, usando a chave e o
+O NexMusic cria seu JWT apenas no processo server-side, usando a chave e o
 secret LiveKit que nunca chegam ao navegador ou Electron. Sua identity é
-`music-bot`, seu nome é `SausiMusic`, e sua metadata contém
+`music-bot`, seu nome é `NexMusic`, e sua metadata contém
 `participantType: BOT` e `botId: music-bot`. A UI usa metadata/ID canônico, não
 o nome visual, para mostrar o badge `BOT`.
 
@@ -59,10 +59,10 @@ não transporta PCM pelo WebSocket da aplicação.
 
 O SFU distribui as tracks aos demais participantes. `RemoteAudioSink` percorre
 as publicações remotas de microfone e tela, anexa cada `RemoteAudioTrack` a um
-elemento de áudio e aplica o volume local já existente. A track do SausiMusic
+elemento de áudio e aplica o volume local já existente. A track do NexMusic
 segue exatamente o mesmo caminho de uma track de microfone remota.
 
-## Publicação do SausiMusic
+## Publicação do NexMusic
 
 Os comandos musicais com prefixo `/` ou `!` são normalizados pelo parser compartilhado.
 A API valida sessão, comando, channel e voice state, então encaminha pela rede
@@ -94,7 +94,7 @@ participantes, mensagens e speakers são limpos. O SDK LiveKit gerencia tentativ
 de reconnect da conexão durante interrupções transitórias e emite os estados
 `Reconnecting`/`Reconnected`; a UI expõe `ConnectionState.Reconnecting`.
 
-No SausiMusic, `/stop` aborta a geração, limpa o buffer, unpublishes a track e
+No NexMusic, `/stop` aborta a geração, limpa o buffer, unpublishes a track e
 mantém o participante/sessão. `/leave` também desconecta o participante e remove
 a sessão. O mesmo cleanup ocorre quando o último humano sai, quando a conexão do
 bot é encerrada inesperadamente ou quando o worker recebe `SIGINT`/`SIGTERM`.
@@ -103,7 +103,7 @@ Erros de captura/publicação levam a sessão para `ERROR` e liberam a track.
 ## Chat e comandos
 
 O chat de voz usa data packets confiáveis do próprio LiveKit no tópico
-`sausixudos-chat`. Ele não é o transporte de áudio. Mensagens comuns continuam
+`nexplay-chat`. Ele não é o transporte de áudio. Mensagens comuns continuam
 nesse data channel; comandos musicais são command-only e seguem somente para a
 API HTTP, que devolve feedback textual. O parser reconhece `play-file`, `pause`,
 `resume`, `skip`, `stop`, `leave`, `queue`, `nowplaying`/`np`, `volume` e `clear`.

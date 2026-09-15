@@ -1,6 +1,6 @@
 export type ThemeMode = 'claro' | 'ash' | 'escuro' | 'onyx' | 'sistema';
 
-const KEY = 'gc:theme';
+const KEY = 'np:theme';
 const VALID: ThemeMode[] = ['claro', 'ash', 'escuro', 'onyx', 'sistema'];
 
 export function getTheme(): ThemeMode {

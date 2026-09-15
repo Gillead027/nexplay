@@ -35,7 +35,7 @@ export function initAutoUpdater(): void {
       .showMessageBox({
         type: 'info',
         title: 'Atualização disponível',
-        message: `Uma nova versão do Sausixudos (${info.version}) está pronta.`,
+        message: `Uma nova versão do NexPlay (${info.version}) está pronta.`,
         detail: 'Deseja reiniciar agora para aplicar a atualização?',
         buttons: ['Atualizar e reiniciar', 'Depois'],
         defaultId: 0,

@@ -1,4 +1,4 @@
-import type { AccentColor, BlockedUserSummary } from '@sausixudos/shared';
+import type { AccentColor, BlockedUserSummary } from '@nexplay/shared';
 import { db } from './db.js';
 import { removeFriendship } from './friendships.js';
 

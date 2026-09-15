@@ -1,6 +1,6 @@
 export type Density = 'compacta' | 'padrao' | 'confortavel';
 
-const KEY = 'gc:density';
+const KEY = 'np:density';
 const VALID: Density[] = ['compacta', 'padrao', 'confortavel'];
 
 export function getDensity(): Density {

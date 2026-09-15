@@ -14,11 +14,11 @@ export const BIO_MAX_LENGTH = 300;
 export const PRONOUNS_MAX_LENGTH = 30;
 export const AVATAR_DATA_URL_MAX_LENGTH = 400_000;
 export const BANNER_DATA_URL_MAX_LENGTH = 1_100_000;
-export const VOICE_CHAT_TOPIC = 'sausixudos-chat';
-export const SOUNDBOARD_ANNOUNCE_TOPIC = 'sausixudos-soundboard';
+export const VOICE_CHAT_TOPIC = 'nexplay-chat';
+export const SOUNDBOARD_ANNOUNCE_TOPIC = 'nexplay-soundboard';
 export const MUSIC_BOT_IDENTITY = 'music-bot';
-export const MUSIC_BOT_DISPLAY_NAME = 'SausiMusic';
-export const MUSIC_BOT_TRACK_NAME = 'sausimusic-test-tone';
+export const MUSIC_BOT_DISPLAY_NAME = 'NexMusic';
+export const MUSIC_BOT_TRACK_NAME = 'nexmusic-test-tone';
 export const MUSIC_PLAY_INPUT_MAX_LENGTH = 300;
 export const SOUNDBOARD_NAME_MAX_LENGTH = 32;
 export const SOUNDBOARD_AUDIO_DATA_URL_MAX_LENGTH = 600_000;
@@ -255,7 +255,7 @@ export interface ListeningActivity {
 export type Activity = PlayingActivity | ListeningActivity;
 
 export interface HumanParticipantMetadata {
-  app: 'sausixudos';
+  app: 'nexplay';
   participantType: 'HUMAN';
   userId: string;
   accentColor: AccentColor;
@@ -267,7 +267,11 @@ export interface HumanParticipantMetadata {
 }
 
 export interface BotParticipantMetadata {
-  app: 'sausixudos';
+  // 'sausixudos' aceito por compatibilidade: apps/music-bot ainda não foi
+  // migrado pro rebrand NexPlay (trabalho próprio em andamento não
+  // relacionado) e continua construindo essa tag antiga. Remover a união
+  // quando o music-bot for migrado separadamente (ver parseParticipantMetadata).
+  app: 'nexplay' | 'sausixudos';
   participantType: 'BOT';
   botId: typeof MUSIC_BOT_IDENTITY;
 }
@@ -304,13 +308,18 @@ export function parseParticipantMetadata(value: string | undefined): Participant
   if (!value) return null;
   try {
     const metadata = JSON.parse(value) as Record<string, unknown>;
-    if (metadata.app !== 'sausixudos') return null;
+    // 'sausixudos' aceito por compatibilidade: apps/music-bot ainda não foi
+    // migrado pro rebrand NexPlay (tem trabalho próprio em andamento não
+    // relacionado) e continua publicando essa tag antiga no metadata do
+    // participante do LiveKit. Remover esse fallback quando o music-bot for
+    // migrado separadamente.
+    if (metadata.app !== 'nexplay' && metadata.app !== 'sausixudos') return null;
     if (
       metadata.participantType === 'BOT' &&
       metadata.botId === MUSIC_BOT_IDENTITY
     ) {
       return {
-        app: 'sausixudos',
+        app: 'nexplay',
         participantType: 'BOT',
         botId: MUSIC_BOT_IDENTITY,
       };
@@ -323,7 +332,7 @@ export function parseParticipantMetadata(value: string | undefined): Participant
       typeof metadata.statusText === 'string'
     ) {
       return {
-        app: 'sausixudos',
+        app: 'nexplay',
         participantType: 'HUMAN',
         userId: metadata.userId,
         accentColor: metadata.accentColor as AccentColor,
@@ -441,7 +450,7 @@ export interface MusicCommandResponse {
   removeTextMessage?: boolean;
 }
 
-/** Contrato interno usado pela API para encaminhar um comando autenticado ao SausiMusic. */
+/** Contrato interno usado pela API para encaminhar um comando autenticado ao NexMusic. */
 interface MusicBotCommandRequestBase {
   channelId: string;
   requestedBy: AuthenticatedUserIdentity;

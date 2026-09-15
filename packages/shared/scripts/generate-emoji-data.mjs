@@ -2,7 +2,7 @@
 // unicode-emoji-json (instalado só temporariamente pra rodar este script —
 // não é dependência de build). Pra re-gerar no futuro (ex. nova versão do
 // unicode com mais emojis):
-//   npm install unicode-emoji-json --no-save -w @sausixudos/shared
+//   npm install unicode-emoji-json --no-save -w @nexplay/shared
 //   node packages/shared/scripts/generate-emoji-data.mjs
 //   npm install   (na raiz, sem args, pra restaurar o lockfile)
 import { writeFileSync } from 'node:fs';

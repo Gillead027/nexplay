@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { EMOJI_DATA, EMOJI_GROUPS, type EmojiDatasetEntry } from '@sausixudos/shared';
+import { EMOJI_DATA, EMOJI_GROUPS, type EmojiDatasetEntry } from '@nexplay/shared';
 import { SearchIcon } from './Icons';
 
 function normalize(value: string): string {

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { Activity, ListeningActivity } from '@sausixudos/shared';
+import type { Activity, ListeningActivity } from '@nexplay/shared';
 import { GameControllerIcon, MusicNoteIcon } from './Icons';
 
 export function formatActivity(activity: Activity): string {

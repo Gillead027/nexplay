@@ -23,7 +23,7 @@ import type {
   TextMessage,
   UserSession,
   VoiceChannel,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 
 interface ApiErrorBody {
   error?: string;

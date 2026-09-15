@@ -15,7 +15,7 @@ import {
   type TextChannel,
   type TextMessage,
   type UserSession,
-} from '@sausixudos/shared';
+} from '@nexplay/shared';
 import { api } from '../api';
 import { routeTextChannelInput } from '../musicCommandRouting';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
@@ -118,16 +118,16 @@ function BotTextMessageRow({
   onMusicCommand: (command: string) => Promise<MusicCommandResponse>;
 }) {
   return (
-    <article className="message text-message sausimusic-message">
-      <div className="sausimusic-bot-avatar" aria-hidden="true"><span className="sausimusic-avatar-bars"><i /><i /><i /></span></div>
-      <div className="sausimusic-message-content">
-        <header className="sausimusic-message-header">
+    <article className="message text-message nexmusic-message">
+      <div className="nexmusic-bot-avatar" aria-hidden="true"><span className="nexmusic-avatar-bars"><i /><i /><i /></span></div>
+      <div className="nexmusic-message-content">
+        <header className="nexmusic-message-header">
           <strong>{message.senderName}</strong>
-          <span className="sausimusic-app-badge">APP</span>
+          <span className="nexmusic-app-badge">APP</span>
           <time dateTime={new Date(message.sentAt).toISOString()}>
             {new Date(message.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
           </time>
-          <span className="sausimusic-sleep-mark" aria-hidden="true">zZ</span>
+          <span className="nexmusic-sleep-mark" aria-hidden="true">zZ</span>
         </header>
         {message.musicCard ? (
           <MusicCard card={message.musicCard} onCommand={onMusicCommand} />
@@ -927,7 +927,7 @@ export function TextChannelView({
               onTogglePin={() => void togglePin(message)}
               onMusicCommand={async (commandText) => {
                 if (!voiceChannelId) {
-                  throw new Error('Você precisa estar em um canal de voz para usar os controles do SausiMusic.');
+                  throw new Error('Você precisa estar em um canal de voz para usar os controles do NexMusic.');
                 }
                 const response = await api.sendMusicCommand(channel.serverId, voiceChannelId, commandText, channel.id);
                 if (response.removeTextMessage) {

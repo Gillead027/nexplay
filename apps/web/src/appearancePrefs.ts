@@ -13,13 +13,13 @@ export const UI_ACCENT_SWATCHES = [
   '#8a5a4a',
 ] as const;
 
-const CHAT_FONT_KEY = 'gc:chat-font-step';
-const MESSAGE_SPACING_KEY = 'gc:message-spacing-step';
-const UI_ZOOM_KEY = 'gc:ui-zoom-step';
-const UI_ACCENT_KEY = 'gc:ui-accent';
-const UI_ACCENT_ENABLED_KEY = 'gc:ui-accent-enabled';
-const OUTPUT_VOLUME_KEY = 'gc:output-volume';
-const SOUNDBOARD_VOLUME_KEY = 'gc:soundboard-volume';
+const CHAT_FONT_KEY = 'np:chat-font-step';
+const MESSAGE_SPACING_KEY = 'np:message-spacing-step';
+const UI_ZOOM_KEY = 'np:ui-zoom-step';
+const UI_ACCENT_KEY = 'np:ui-accent';
+const UI_ACCENT_ENABLED_KEY = 'np:ui-accent-enabled';
+const OUTPUT_VOLUME_KEY = 'np:output-volume';
+const SOUNDBOARD_VOLUME_KEY = 'np:soundboard-volume';
 
 export function getOutputVolume(): number {
   const stored = localStorage.getItem(OUTPUT_VOLUME_KEY);

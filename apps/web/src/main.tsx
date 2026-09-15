@@ -5,8 +5,10 @@ import { bootPerfMode } from './perfMode';
 import { bootTheme } from './theme';
 import { bootDensity } from './density';
 import { bootAppearancePrefs } from './appearancePrefs';
+import { migrateLegacyStorageKeys } from './legacyStorageMigration';
 import './styles.css';
 
+migrateLegacyStorageKeys();
 bootPerfMode();
 bootTheme();
 bootDensity();

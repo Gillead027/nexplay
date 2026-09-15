@@ -1,5 +1,5 @@
 import { type FormEvent, type RefObject, useCallback, useEffect, useId, useRef, useState } from 'react';
-import { SERVER_DESCRIPTION_MAX_LENGTH, SERVER_NAME_MAX_LENGTH, type Server, type ServerMember, type UserSession } from '@sausixudos/shared';
+import { SERVER_DESCRIPTION_MAX_LENGTH, SERVER_NAME_MAX_LENGTH, type Server, type ServerMember, type UserSession } from '@nexplay/shared';
 import { api } from '../api';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { CloseIcon } from './Icons';
