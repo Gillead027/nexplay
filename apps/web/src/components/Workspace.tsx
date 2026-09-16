@@ -2,7 +2,7 @@ import { ContextMenu, useContextMenu } from './ContextMenu';
 import { CategorySettingsModal, type CategorySettingsModalHandle } from './CategorySettingsModal';
 import { TextChannelSettingsModal } from './TextChannelSettingsModal';
 import { VoiceChannelSettingsModal } from './VoiceChannelSettingsModal';
-import { type FormEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
   ACCENT_COLORS,
@@ -519,6 +519,7 @@ function ChannelButton({
   onDisconnectParticipant,
   disconnectingIdentity,
   settings,
+  onContextMenu,
 }: {
   channel: VoiceChannel;
   summary: RoomSummary | undefined;
@@ -542,10 +543,11 @@ function ChannelButton({
     onUpdated: (channel: VoiceChannel) => void;
     onDeleted: () => void;
   } | undefined;
+  onContextMenu?: (event: ReactMouseEvent<HTMLElement>) => void;
 }) {
   return (
     <div className="channel-block">
-      <div className={`channel-row ${settings ? 'channel-row-renamable' : ''}`}>
+      <div className={`channel-row ${settings ? 'channel-row-renamable' : ''}`} onContextMenu={onContextMenu}>
         <button
           type="button"
           className={`channel-button ${active ? 'active' : ''}`}
@@ -1787,6 +1789,80 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const [categoryPrefs, setCategoryPrefs] = useState<Record<string, CategoryPrefs>>({});
   const categoryMenu = useContextMenu();
   const categoryEditRefs = useRef<Record<string, CategorySettingsModalHandle | null>>({});
+  const [moveConfirm, setMoveConfirm] = useState<{
+    kind: 'text' | 'voice';
+    channelId: string;
+    channelLabel: string;
+    destinationCategoryId: string | null;
+    destinationLabel: string;
+    becomingStaffOnly: boolean;
+  } | null>(null);
+  const [moveError, setMoveError] = useState('');
+
+  function categoryStaffOnly(categoryId: string | null): boolean {
+    return categoryId ? categories.find((category) => category.id === categoryId)?.staffOnly ?? false : false;
+  }
+
+  async function applyChannelMove(kind: 'text' | 'voice', channelId: string, destinationCategoryId: string | null) {
+    if (!activeServerId) return;
+    setMoveError('');
+    try {
+      if (kind === 'text') {
+        const result = await api.updateTextChannelSettings(activeServerId, channelId, { categoryId: destinationCategoryId });
+        setTextChannels((current) => current.map((item) => item.id === channelId ? result.channel : item));
+      } else {
+        const result = await api.updateVoiceChannelSettings(activeServerId, channelId, { categoryId: destinationCategoryId });
+        setRooms((current) => current.map((item) => item.id === channelId ? { ...item, ...result.channel } : item));
+      }
+      setMoveConfirm(null);
+    } catch (err) {
+      setMoveError(err instanceof Error ? err.message : 'Não foi possível mover o canal.');
+    }
+  }
+
+  // Só pede confirmação quando a mudança de categoria muda de verdade a
+  // visibilidade do canal (entrando ou saindo de uma categoria staffOnly) —
+  // igual ao Discord real só perguntar quando há permissão de fato pra
+  // sincronizar. Sem overwrite de permissão por canal neste app (ver
+  // DISCORD_PARITY_PLAN.md §15), a "sincronização" aqui é só essa herança de
+  // visibilidade da categoria, não um conjunto de permissões copiado.
+  function requestMoveChannel(
+    kind: 'text' | 'voice',
+    channelId: string,
+    channelLabel: string,
+    currentCategoryId: string | null,
+    destinationCategoryId: string | null,
+    destinationLabel: string,
+  ) {
+    const becomingStaffOnly = categoryStaffOnly(destinationCategoryId);
+    if (categoryStaffOnly(currentCategoryId) !== becomingStaffOnly) {
+      setMoveError('');
+      setMoveConfirm({ kind, channelId, channelLabel, destinationCategoryId, destinationLabel, becomingStaffOnly });
+      return;
+    }
+    void applyChannelMove(kind, channelId, destinationCategoryId);
+  }
+
+  function openMoveChannelMenu(
+    event: { preventDefault: () => void; clientX: number; clientY: number },
+    kind: 'text' | 'voice',
+    channelId: string,
+    channelLabel: string,
+    currentCategoryId: string | null,
+  ) {
+    if (!canManageChannels) return;
+    const items = [
+      {
+        key: 'none', label: 'Sem categoria', checked: currentCategoryId === null,
+        onSelect: () => requestMoveChannel(kind, channelId, channelLabel, currentCategoryId, null, 'Sem categoria'),
+      },
+      ...categories.map((category) => ({
+        key: category.id, label: category.name, checked: currentCategoryId === category.id,
+        onSelect: () => requestMoveChannel(kind, channelId, channelLabel, currentCategoryId, category.id, category.name),
+      })),
+    ];
+    categoryMenu.open(event, [{ items: [{ key: 'header', label: 'Mover para', onSelect: () => {}, disabled: true }] }, { items }]);
+  }
   const [selectedTextChannelId, setSelectedTextChannelId] = useState<string | null>(null);
   const [view, setView] = useState<'server' | 'friends'>('server');
   const [selectedDmChannelId, setSelectedDmChannelId] = useState<string | null>(null);
@@ -2382,6 +2458,32 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         }}
         returnFocusRef={createCategoryButtonRef}
       />
+      {moveConfirm && (
+        <div className="dialog-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget) setMoveConfirm(null); }}>
+          <div className="channel-dialog move-channel-confirm" role="dialog" aria-modal="true">
+            <header>
+              <div><h2>Mover canal?</h2></div>
+              <button type="button" onClick={() => setMoveConfirm(null)} aria-label="Fechar"><CloseIcon size={18} /></button>
+            </header>
+            <p>
+              {moveConfirm.becomingStaffOnly ? (
+                <>Ao mover <strong>{moveConfirm.channelLabel}</strong> para <span className="category-lock" aria-hidden="true">🔒</span> <strong>{moveConfirm.destinationLabel}</strong>, ele passa a ficar visível só pra membros com algum cargo de staff.</>
+              ) : (
+                <>Ao mover <strong>{moveConfirm.channelLabel}</strong> para <strong>{moveConfirm.destinationLabel}</strong>, ele deixa de ser restrito e passa a ficar visível pra todo mundo.</>
+              )}
+              {' '}A visibilidade neste app é sempre herdada da categoria — não existe permissão própria de canal.
+            </p>
+            {moveError && <p className="form-error" role="alert">{moveError}</p>}
+            <footer>
+              <button type="button" className="dialog-cancel" onClick={() => setMoveConfirm(null)}>Cancelar</button>
+              <button type="button" className="danger-button"
+                onClick={() => void applyChannelMove(moveConfirm.kind, moveConfirm.channelId, moveConfirm.destinationCategoryId)}>
+                Mover canal
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
       {activeServer && member && (
         <ServerSettings
           open={serverSettingsOpen}
@@ -2495,7 +2597,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                     {channels.map((channel) => {
                       const selected = channel.id === selectedTextChannelId;
                       return (
-                        <div className="text-channel-row" key={channel.id}>
+                        <div className="text-channel-row" key={channel.id}
+                          onContextMenu={(event) => openMoveChannelMenu(event, 'text', channel.id, `#${channel.name}`, channel.categoryId)}>
                           <button type="button" className={`text-channel-button ${selected ? 'active' : ''}`}
                             onClick={() => setSelectedTextChannelId(channel.id)}
                             aria-current={selected ? 'page' : undefined} title={channel.description}>
@@ -2517,6 +2620,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                   <ChannelButton
                     key={room.id}
                     channel={room}
+                    onContextMenu={(event) => openMoveChannelMenu(event, 'voice', room.id, room.name, room.categoryId)}
                     settings={voiceSettingsFor(room)}
                     summary={room}
                     active={voice.currentChannel?.id === room.id && voice.connected}
