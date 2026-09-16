@@ -1,4 +1,4 @@
-name: sausixudos
+name: nexplay
 
 services:
 
@@ -25,7 +25,7 @@ services:
       LIVEKIT_PUBLIC_URL: "wss://${APP_DOMAIN:?Defina APP_DOMAIN no arquivo .env}/livekit"
       LIVEKIT_INTERNAL_URL: http://livekit:7880
       MUSIC_BOT_INTERNAL_URL: http://music-bot:4100
-      DB_PATH: /app/data/gillecord.db
+      DB_PATH: /app/data/nexplay.db
       VOICE_CHANNELS: "${VOICE_CHANNELS:-geral:Geral:Conversa livre,jogos:Jogos:Partidas e squads,afk:AFK:Pausa rápida}"
       MINIO_ENDPOINT: minio
       MINIO_PORT: 9000
@@ -170,7 +170,17 @@ services:
       start_period: 5s
 
 volumes:
+  # Nomes físicos fixados nos volumes já existentes em produção (criados sob
+  # o antigo nome de projeto Compose "sausixudos"). Sem isso, renomear o
+  # projeto pra "nexplay" faria o Compose procurar volumes novos e vazios
+  # (nexplay_caddy_data etc.) na próxima subida, dando a impressão de que
+  # todo o histórico/anexos/certificado TLS sumiram — o dado continua exatamente
+  # onde está, só o nome dos containers muda pra nexplay-*.
   caddy_data:
+    name: sausixudos_caddy_data
   caddy_config:
+    name: sausixudos_caddy_config
   api_data:
+    name: sausixudos_api_data
   minio_data:
+    name: sausixudos_minio_data
