@@ -10,6 +10,7 @@ import {
 import { api } from '../api';
 import { SettingsIcon, SmileIcon, TrashIcon } from './Icons';
 import { EmojiPicker } from './EmojiPicker';
+import { InvitesPane } from './ServerSettings';
 
 function slowModeLabel(seconds: number): string {
   if (seconds === 0) return 'Desligado';
@@ -24,12 +25,14 @@ export function TextChannelSettingsModal({
   channel,
   serverId,
   categories,
+  canManageServer,
   onUpdated,
   onDeleted,
 }: {
   channel: TextChannel;
   serverId: string;
   categories: Category[];
+  canManageServer: boolean;
   onUpdated: (channel: TextChannel) => void;
   onDeleted: () => void;
 }) {
@@ -180,11 +183,7 @@ export function TextChannelSettingsModal({
               Permissões específicas deste canal ainda não são suportadas — gerencie o acesso pelos Cargos do servidor.
             </p>
           )}
-          {tab === 'invites' && (
-            <p className="channel-settings-stub">
-              Use o convite do servidor (menu do servidor → Convidar pessoas) para trazer alguém direto pra este canal.
-            </p>
-          )}
+          {tab === 'invites' && <InvitesPane serverId={serverId} canManageServer={canManageServer} />}
           {tab === 'integrations' && (
             <p className="channel-settings-stub">Nenhuma integração disponível.</p>
           )}

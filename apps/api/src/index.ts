@@ -67,6 +67,7 @@ import {
   createUser,
   getUserById,
   getUserByUsername,
+  updateUserPassword,
   updateUserProfile,
   verifyPassword,
   type UserRecord,
@@ -690,6 +691,26 @@ app.get('/api/session', requireSession, (_request, response) => {
 
 app.delete('/api/session', (_request, response) => {
   clearSessionCookie(response);
+  response.status(204).end();
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
+});
+
+app.patch('/api/auth/password', requireSession, authLimiter, (request, response) => {
+  const body = changePasswordSchema.safeParse(request.body);
+  if (!body.success) {
+    response.status(400).json({ error: `A nova senha deve ter entre ${PASSWORD_MIN_LENGTH} e ${PASSWORD_MAX_LENGTH} caracteres.` });
+    return;
+  }
+  const user = currentUser(response);
+  if (!verifyPassword(user, body.data.currentPassword)) {
+    response.status(401).json({ error: 'Senha atual incorreta.' });
+    return;
+  }
+  updateUserPassword(user.id, body.data.newPassword);
   response.status(204).end();
 });
 

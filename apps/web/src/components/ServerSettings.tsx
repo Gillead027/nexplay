@@ -209,7 +209,7 @@ function ServerProfilePane({
   );
 }
 
-function InvitesPane({ serverId, canManageServer }: { serverId: string; canManageServer: boolean }) {
+export function InvitesPane({ serverId, canManageServer }: { serverId: string; canManageServer: boolean }) {
   const [invite, setInvite] = useState<Invite | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');

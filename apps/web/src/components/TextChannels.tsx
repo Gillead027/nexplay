@@ -1210,16 +1210,6 @@ export function CreateTextChannelDialog({
           onChange={(event) => setDescription(event.target.value)}
           placeholder="Sobre o que é este canal?"
         />
-        <div className="channel-static-option">
-          <div><strong>Canal privado</strong><span>Somente membros e cargos selecionados poderão acessar.</span></div>
-          <button type="button" className="settings-switch" aria-label="Canal privado" />
-        </div>
-        <label>Quem pode acessar?</label>
-        <div className="channel-access-search"><SearchIcon size={15} /><input readOnly placeholder="Buscar cargos ou membros" /></div>
-        <div className="channel-access-list">
-          <div><span className="access-avatar everyone">@</span><p><strong>@everyone</strong><small>Todos os membros do servidor</small></p><i>✓</i></div>
-          <div><span className="access-avatar friends">A</span><p><strong>Amigo</strong><small>7 membros</small></p><i>✓</i></div>
-        </div>
         {error && <p id={errorId} className="form-error" role="alert">{error}</p>}
         <footer>
           <button type="button" className="dialog-cancel" onClick={close} disabled={saving}>Cancelar</button>

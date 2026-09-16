@@ -9,9 +9,12 @@ import {
   hasPermission,
   MUSIC_BOT_IDENTITY,
   parseParticipantMetadata,
+  PASSWORD_MAX_LENGTH,
+  PASSWORD_MIN_LENGTH,
   Permission,
   type AccentColor,
   type Activity,
+  type BlockedUserSummary,
   type Category,
   type CategoryPrefs,
   type PublicConfig,
@@ -654,7 +657,7 @@ function RoomSkeleton() {
   );
 }
 
-type SettingsSection = 'profile' | 'voice' | 'appearance';
+type SettingsSection = 'profile' | 'security' | 'privacy' | 'voice' | 'appearance';
 
 const MIC_METER_BARS = 20;
 
@@ -929,6 +932,46 @@ function SettingsModal({
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
+  const [currentPasswordInput, setCurrentPasswordInput] = useState('');
+  const [newPasswordInput, setNewPasswordInput] = useState('');
+  const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState(false);
+
+  async function submitPasswordChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPasswordSuccess(false);
+    if (newPasswordInput !== confirmPasswordInput) {
+      setPasswordError('A confirmação não bate com a nova senha.');
+      return;
+    }
+    setPasswordSaving(true);
+    setPasswordError('');
+    try {
+      await api.changePassword(currentPasswordInput, newPasswordInput);
+      setCurrentPasswordInput('');
+      setNewPasswordInput('');
+      setConfirmPasswordInput('');
+      setPasswordSuccess(true);
+    } catch (err) {
+      setPasswordError(err instanceof Error ? err.message : 'Não foi possível trocar a senha.');
+    } finally {
+      setPasswordSaving(false);
+    }
+  }
+
+  const [blockedUsers, setBlockedUsers] = useState<BlockedUserSummary[] | null>(null);
+  const [blockedError, setBlockedError] = useState('');
+
+  async function unblock(userId: string) {
+    try {
+      await api.unblockUser(userId);
+      setBlockedUsers((current) => current?.filter((user) => user.userId !== userId) ?? current);
+    } catch (err) {
+      setBlockedError(err instanceof Error ? err.message : 'Não foi possível desbloquear.');
+    }
+  }
   const firstNavigationButtonRef = useRef<HTMLButtonElement>(null);
 
   async function handleAvatarFile(file: File | undefined) {
@@ -965,6 +1008,15 @@ function SettingsModal({
   }, [listeningForKey, setPttKeyBinding]);
 
   const [section, setSection] = useState<SettingsSection>('profile');
+
+  useEffect(() => {
+    if (!open || section !== 'privacy') return;
+    let active = true;
+    api.getBlocks().then(({ blocks }) => { if (active) setBlockedUsers(blocks); })
+      .catch((err) => { if (active) setBlockedError(err instanceof Error ? err.message : 'Não foi possível carregar os bloqueios.'); });
+    return () => { active = false; };
+  }, [open, section]);
+
   const mounted = useDelayedUnmount(open, 200);
 
   useEffect(() => {
@@ -1027,8 +1079,12 @@ function SettingsModal({
           <button ref={firstNavigationButtonRef} type="button" className={section === 'profile' ? 'active' : ''} onClick={() => setSection('profile')}>
             <UserIcon size={15} /> Meu perfil
           </button>
-          <button type="button"><span className="nav-glyph">▣</span> Conta e segurança</button>
-          <button type="button"><span className="nav-glyph">◈</span> Privacidade</button>
+          <button type="button" className={section === 'security' ? 'active' : ''} onClick={() => setSection('security')}>
+            <span className="nav-glyph">▣</span> Conta e segurança
+          </button>
+          <button type="button" className={section === 'privacy' ? 'active' : ''} onClick={() => setSection('privacy')}>
+            <span className="nav-glyph">◈</span> Privacidade
+          </button>
           <span className="settings-nav-group">Configurações do app</span>
           <button type="button" className={section === 'voice' ? 'active' : ''} onClick={() => setSection('voice')}>
             <VoiceIcon size={15} /> Voz e vídeo
@@ -1036,11 +1092,6 @@ function SettingsModal({
           <button type="button" className={section === 'appearance' ? 'active' : ''} onClick={() => setSection('appearance')}>
             <PaletteIcon size={15} /> Aparência
           </button>
-          <button type="button"><span className="nav-glyph">♧</span> Notificações</button>
-          <button type="button"><span className="nav-glyph">⌨</span> Atalhos</button>
-          <button type="button"><span className="nav-glyph">文</span> Idioma</button>
-          <button type="button"><span className="nav-glyph">▧</span> Arquivos e mídia</button>
-          <button type="button"><span className="nav-glyph">⚙</span> Avançado</button>
           <span className="settings-nav-divider" />
           <button type="button" className="settings-nav-signout" onClick={onSignOut}>
             <LeaveIcon size={15} /> Sair da conta
@@ -1161,6 +1212,53 @@ function SettingsModal({
                   {profileBio && <p>{profileBio}</p>}
                 </div>
               </div>
+            </div>
+          )}
+
+          {section === 'security' && (
+            <div className="settings-pane">
+              <h2>Conta e segurança</h2>
+              <p className="settings-page-description">Troque sua senha de acesso.</p>
+              <form onSubmit={(event) => void submitPasswordChange(event)}>
+                <label htmlFor="current-password">Senha atual</label>
+                <input id="current-password" type="password" autoComplete="current-password" required
+                  value={currentPasswordInput} onChange={(event) => setCurrentPasswordInput(event.target.value)} />
+                <label htmlFor="new-password">Nova senha</label>
+                <input id="new-password" type="password" autoComplete="new-password" required
+                  minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH}
+                  value={newPasswordInput} onChange={(event) => setNewPasswordInput(event.target.value)} />
+                <label htmlFor="confirm-password">Confirmar nova senha</label>
+                <input id="confirm-password" type="password" autoComplete="new-password" required
+                  minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH}
+                  value={confirmPasswordInput} onChange={(event) => setConfirmPasswordInput(event.target.value)} />
+                {passwordError && <p className="form-error" role="alert">{passwordError}</p>}
+                {passwordSuccess && <p className="settings-hint">Senha atualizada.</p>}
+                <button type="submit" className="primary-button" disabled={passwordSaving}
+                  style={{ marginTop: 14 }}>
+                  {passwordSaving ? 'Salvando…' : 'Trocar senha'}
+                </button>
+              </form>
+            </div>
+          )}
+
+          {section === 'privacy' && (
+            <div className="settings-pane">
+              <h2>Privacidade</h2>
+              <p className="settings-page-description">Pessoas que você bloqueou não podem chamar você nem ver sua atividade.</p>
+              {blockedError && <p className="form-error" role="alert">{blockedError}</p>}
+              {blockedUsers === null && !blockedError && <p className="settings-hint">Carregando…</p>}
+              {blockedUsers?.length === 0 && <p className="settings-hint">Você não bloqueou ninguém.</p>}
+              {blockedUsers && blockedUsers.length > 0 && (
+                <ul className="blocked-users-list">
+                  {blockedUsers.map((user) => (
+                    <li key={user.userId}>
+                      <Avatar name={user.displayName} accentColor={user.accentColor} avatarUrl={user.avatarUrl} />
+                      <strong>{user.displayName}</strong>
+                      <button type="button" onClick={() => void unblock(user.userId)}>Desbloquear</button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 
@@ -1812,6 +1910,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const activeServer = serversState.servers.find((server) => server.id === activeServerId) ?? null;
   const member = useActiveServerMember(activeServerId, session);
   const canManageChannels = hasPermission(member?.permissions ?? 0, Permission.MANAGE_CHANNELS);
+  const canManageServer = hasPermission(member?.permissions ?? 0, Permission.MANAGE_SERVER);
   const [addServerOpen, setAddServerOpen] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<ForwardSource | null>(null);
   const addServerButtonRef = useRef<HTMLButtonElement>(null);
@@ -2564,6 +2663,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                           </button>
                           {canManageChannels && (
                             <TextChannelSettingsModal channel={channel} serverId={activeServerId ?? ''} categories={categories}
+                              canManageServer={canManageServer}
                               onUpdated={(updated) => setTextChannels((current) => current.map((item) => item.id === updated.id ? updated : item))}
                               onDeleted={() => setTextChannels((current) => current.filter((item) => item.id !== channel.id))} />
                           )}

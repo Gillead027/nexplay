@@ -82,6 +82,11 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   deleteSession: () => request<void>('/api/session', { method: 'DELETE' }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<void>('/api/auth/password', {
+      method: 'PATCH',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
   updateProfile: (
     accentColor: AccentColor,
     statusText: string,

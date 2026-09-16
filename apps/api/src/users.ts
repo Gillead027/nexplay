@@ -53,6 +53,7 @@ const updateProfileStatement = db.prepare(
   'UPDATE users SET accent_color = ?, status_text = ?, bio = ?, pronouns = ?, avatar_data_url = ?, banner_data_url = ? WHERE id = ?',
 );
 const updateTimeoutStatement = db.prepare('UPDATE users SET timeout_until = ? WHERE id = ?');
+const updatePasswordStatement = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
 
 export function createUser(username: string, password: string, accentColor: AccentColor): UserRecord {
   const id = randomUUID();
@@ -88,6 +89,10 @@ export function getUserById(id: string): UserRecord | undefined {
 
 export function verifyPassword(user: UserRecord, password: string): boolean {
   return bcrypt.compareSync(password, user.passwordHash);
+}
+
+export function updateUserPassword(id: string, newPassword: string): void {
+  updatePasswordStatement.run(bcrypt.hashSync(newPassword, 10), id);
 }
 
 export function updateUserProfile(
