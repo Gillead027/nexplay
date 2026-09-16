@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo: conectar/mute/deafen/desconectar/câmera/compartilhar tela). Roteiros 7–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). Roteiros 8–69+ pendentes — ver nota de continuação no final do arquivo.
 
 ---
 
@@ -4072,4 +4072,456 @@ Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropri
 
 **Lacunas reais confirmadas nesta passagem**: sem atalho de teclado configurável pra mute/deafen (o próprio exemplo do pedido original menciona isso como esperado); sem som específico de deafen/undeafen nem de ligar/desligar câmera; sem preview/seletor de fundo-blur antes de ligar a câmera; sem trocar qualidade de compartilhamento de tela sem reconectar; sem cancelamento explícito da tela "Entrando na sala..." além de esperar o timeout.
 
-**Ainda dentro da prioridade especial de Voz, pendente de auditoria** (continuação natural deste roteiro numa próxima passagem, dado o tamanho já grande deste documento): dispositivos de entrada/saída (`DeviceMenu`), push-to-talk configurável, os 3 perfis de microfone + Krisp em detalhe, o chat de texto dentro da call (canal de dados do LiveKit), soundboard (já `CORE`/testado, mas sem ficha campo-a-campo ainda), lista de participantes com indicador de fala, grid/foco de vídeo e tela compartilhada, e a auditoria de Vídeo dedicada (Roteiro 7 do pedido original). Depois: Servidor/Configurações completas (Cargos, Permissões, Membros, Convites — já `CORE` mas sem ficha campo-a-campo), Amigos/DMs, Configurações do app inteiras, Premium/Shop (tudo `MISSING`, registrado em bloco em `DISCORD_PARITY_PLAN.md` §10), e as Jornadas de usuário completas nos documentos ainda não criados (`DISCORD_NAVIGATION_TREE.md`, `DISCORD_INTERACTION_MATRIX.md`, `DISCORD_USER_JOURNEYS.md`).
+---
+
+# ROTEIRO 7 — VOZ: PARTICIPANTES, DISPOSITIVOS, CHAT DA CALL, PTT, PERFIS DE MICROFONE
+
+Continuação direta do Roteiro 6. Arquitetura real (verificada em `Workspace.tsx`, componentes `ChannelButton`/`ParticipantRow`/`VoiceAudioSinks`/`DeviceMenu`, e a seção "Voz e vídeo" de Configurações): a lista de participantes é **persistente por canal na sidebar**, não só um painel que aparece quando conectado; volume é controlado em três canais independentes (voz, tela compartilhada, soundboard); e o chat de texto dentro de uma call é um sistema totalmente separado do chat de canal de texto (Roteiro 4) — mensagens efêmeras via canal de dados WebRTC, sem markdown, sem persistência.
+
+---
+
+## 7.1 — VOICE_PARTICIPANT_SIDEBAR_LIST
+
+**ID**: `VOICE_PARTICIPANT_SIDEBAR_LIST`
+**NOME**: Lista de participantes exibida abaixo de cada canal de voz na sidebar
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Servidor > sidebar de canais > qualquer canal de voz > abaixo do nome do canal`
+**POSIÇÃO NA INTERFACE**: `.channel-block > .channel-user-row`, uma linha por participante, para **qualquer** canal de voz do servidor — não só o canal em que o próprio usuário está conectado.
+**APARÊNCIA**: Avatar (com anel de "falando" se aplicável) + nome + selo `BOT` (se aplicável) + selo "AO VIVO" inline (se compartilhando tela) + ícone de microfone cortado (se mutado) + contador de participantes no próprio botão do canal (`<small>{summary?.participants.length}</small>`).
+**ESTADO NORMAL**: Uma linha por participante conectado àquele canal específico.
+**HOVER**: Linha do participante reage a hover (botão clicável).
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: O botão de abrir perfil (`channel-user`) é `disabled` especificamente para participantes `BOT` (o NexMusic não tem perfil clicável).
+**LOADING**: O botão do canal mostra `"..."` no lugar da contagem de participantes enquanto `loading` (conectando àquele canal específico).
+**TRIGGER**: Clique no nome/avatar de um participante (que não seja bot).
+**PRÉ-CONDIÇÕES**: Canal visível ao usuário (mesma regra de visibilidade de categoria do Roteiro 3).
+**RESULTADO IMEDIATO**: `onOpenProfile(identity, event)` — abre o mini-perfil do participante (`ProfilePopover`, auditoria detalhada própria pendente de um roteiro futuro sobre perfis).
+**RESULTADO VISUAL**: Popover de perfil aparece.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: O próprio mini-perfil, ao clicar.
+**MENU**: Não aplicável a este clique (ver `VOICE_MODERATOR_DISCONNECT_PARTICIPANT` para o botão de desconectar, que é um elemento separado na mesma linha).
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Depende do mini-perfil.
+**RESULTADO FINAL**: Lista sempre reflete quem está em cada canal, em tempo real, **para todos os canais de voz do servidor simultaneamente** — um membro navegando pela sidebar vê a ocupação de todas as salas de uma vez, exatamente como o Discord real.
+**EFEITO LOCAL**: Nenhuma mudança de dado, só leitura/navegação.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: A lista de participantes por canal vem dos webhooks do LiveKit (`participant_joined`/`left`) repassados pelo WebSocket de dados do NexPlay (Roteiro 5) — **não** é o `RoomEvent` nativo do LiveKit (que só entrega estado detalhado da sala em que você está fisicamente conectado); é por isso que a lista funciona pra canais em que você não está.
+**BACKEND**: `GET /api/servers/:id/rooms` no carregamento inicial do servidor; atualizações incrementais via WebSocket depois.
+**BANCO**: Não aplicável diretamente (estado de sala vem do LiveKit, não de uma tabela do NexPlay).
+**REFRESH**: Recarregado do zero a cada F5/troca de servidor.
+**RECONEXÃO**: Recarregado ao reconectar o WebSocket.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não confirmado clique-direito específico num participante da lista da sidebar (distinto do menu do canal em si, Roteiro 3).
+**ACESSIBILIDADE**: `title` descritivo em cada linha.
+
+**Nota de auditoria — achado importante**: `speakingIds` (indicador de fala em tempo real) **só é preenchido pro canal em que o próprio usuário está conectado agora** — confirmado explicitamente no comentário do código: "o LiveKit não entrega 'quem está falando' de salas que você não entrou." Isso significa que a lista de participantes de canais **onde você não está** mostra quem está presente, mas nunca quem está falando naquele momento — limitação arquitetural do LiveKit em si, não uma escolha do NexPlay.
+
+---
+
+## 7.2 — VOICE_SPEAKING_INDICATOR
+
+**ID**: `VOICE_SPEAKING_INDICATOR`
+**NOME**: Indicador visual de quem está falando agora
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Canal de voz em que você está conectado > avatar de cada participante`
+**POSIÇÃO NA INTERFACE**: `ChannelUserAvatar`, prop `speaking`.
+**APARÊNCIA**: Anel/destaque ao redor do avatar (detalhe exato de CSS não relido nesta passagem, mas o mecanismo de dados está confirmado).
+**ESTADO NORMAL**: Sem destaque.
+**HOVER**: Não aplicável ao indicador em si.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: `RoomEvent.ActiveSpeakersChanged` do LiveKit — o próprio SFU detecta nível de áudio e decide quem está "falando ativamente" (algoritmo nativo do LiveKit, não um VAD customizado do NexPlay).
+**PRÉ-CONDIÇÕES**: Conectado ao mesmo canal do participante.
+**RESULTADO IMEDIATO**: `setSpeakers(new Set(active.map(p => p.identity)))` — recalculado a cada mudança.
+**RESULTADO VISUAL**: Avatar do(s) participante(s) ativo(s) ganha destaque instantaneamente.
+**RESULTADO SONORO**: Não aplicável (é só visual).
+**ANIMAÇÃO**: Provavelmente uma transição suave de opacidade/escala no anel (não confirmado o detalhe exato).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Indicador reflete continuamente quem está com o áudio ativo.
+**EFEITO LOCAL**: Puramente visual.
+**EFEITO REMOTO**: Nenhum (cada cliente calcula/recebe seu próprio estado de "quem está falando", não é uma ação que alguém dispara).
+**REALTIME**: `RoomEvent.ActiveSpeakersChanged`, nativo do LiveKit.
+**BACKEND**: Nenhuma chamada à API REST.
+**BANCO**: Não aplicável.
+**REFRESH**: Recalculado do zero a cada nova conexão.
+**RECONEXÃO**: Recalculado.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: **Achado**: nenhum `aria-label`/anúncio confirmado indicando "fulano está falando" para leitores de tela — o indicador é puramente visual, sem equivalente sonoro/textual pra quem não pode ver o anel de destaque.
+
+---
+
+## 7.3 — VOICE_MODERATOR_DISCONNECT_PARTICIPANT
+
+**ID**: `VOICE_MODERATOR_DISCONNECT_PARTICIPANT`
+**NOME**: Desconectar outro participante de uma call de voz (kick de voz)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Canal de voz (em que você está conectado) > linha do participante > botão de desconectar`
+**POSIÇÃO NA INTERFACE**: `.channel-user-disconnect`, à direita da linha do participante.
+**APARÊNCIA**: `LeaveIcon` pequeno (12px).
+**ESTADO NORMAL**: Visível só quando `canDisconnect = active && participant.identity !== ownIdentity` — **só aparece no canal em que você mesmo está conectado** (não dá pra desconectar alguém de um canal que você só está vendo de fora) **e nunca aparece na sua própria linha**.
+**HOVER**: `title`/`aria-label` = "Desconectar {nome}".
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: `disabled={disconnectingIdentity === participant.identity}` — trava só o botão daquele participante específico durante a chamada em andamento (outros participantes continuam desconectáveis normalmente nesse meio-tempo).
+**LOADING**: Estado de "desconectando" implícito via o próprio `disabled`.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: **Não confirmado nesta passagem se há checagem explícita de permissão de moderação no cliente** antes de mostrar o botão (a condição vista no JSX é só `active && !== ownIdentity`, sem checar `canManageChannels`/permissão de moderação) — **achado a verificar**: se de fato qualquer membro conectado ao canal pode tentar desconectar qualquer outro (o backend certamente valida via `authorizeVoiceDisconnect`, já confirmado existente e testado em `DISCORD_PARITY_PLAN.md`/testes automatizados desta linha de trabalho — "permite que um participante da sala desconecte outro participante" é literalmente um dos testes já existentes), o que sugere que **isso pode ser deliberadamente aberto a qualquer participante da mesma sala**, não uma ação exclusiva de moderador — comportamento a confirmar com mais certeza numa auditoria futura dedicada a moderação.
+**RESULTADO IMEDIATO**: `window.confirm('Desconectar {nome} do canal de voz?')` — confirmação nativa do navegador antes de agir.
+**RESULTADO VISUAL**: Se confirmado: participante removido da sala (efeito no cliente dele: cai da call, similar a `VOICE_DISCONNECT` mas forçado externamente).
+**RESULTADO SONORO**: Não aplicável ao cliente que desconecta; o cliente desconectado tocaria seu próprio som de saída normalmente (mesmo `playLeaveSound` de uma saída voluntária, já que do lado dele é só uma desconexão de sala).
+**ANIMAÇÃO**: Não aplicável.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: O `window.confirm()` nativo (mesma técnica simples já vista em `CATEGORY_DELETE`, Roteiro 3 — não um modal customizado do NexPlay).
+**SEGUNDA ETAPA**: `api.disconnectVoiceParticipant(serverId, roomId, identity)`, seguido de um refetch da lista de salas (`api.getRooms`).
+**RESULTADO FINAL**: Participante removido da call; lista de salas atualizada.
+**EFEITO LOCAL**: Nenhuma mudança pro cliente que desconectou (além da lista atualizar).
+**EFEITO REMOTO**: O participante desconectado é ejetado da sala LiveKit à força (mecanismo exato — kick via API do LiveKit — já confirmado existente em `apps/api/src/index.ts`/`voiceModeration.ts`, auditado informalmente em sessão anterior).
+**REALTIME**: `RoomEvent.ParticipantDisconnected` do lado de quem foi removido; lista de salas atualizada via WebSocket de dados pra todo mundo.
+**BACKEND**: `POST /api/servers/:id/rooms/:roomId/participants/:identity/disconnect`.
+**BANCO**: Não aplicável diretamente (é uma ação de sala LiveKit, não uma escrita de dado persistente do NexPlay).
+**REFRESH**: Não aplicável.
+**RECONEXÃO**: Participante desconectado pode entrar de volta imediatamente (não é um ban/timeout — só uma ejeção pontual da sala, sem bloqueio de reentrada).
+**ERRO**: `window.alert(error.message ou 'Não foi possível desconectar {nome}.')` — **achado real de bug de encoding**: a mensagem de fallback no código-fonte lido aparece como `"N?o foi poss?vel desconectar..."` em vez de `"Não foi possível desconectar..."` — caracteres acentuados corrompidos (`ã`/`í` viraram `?`), sugerindo um problema de codificação de arquivo nesse trecho específico do código-fonte que se manifestaria literalmente assim na tela pro usuário final.
+**CANCELAMENTO**: Clicar "Cancelar" no `window.confirm()`.
+**REVERSÃO**: A pessoa desconectada pode simplesmente entrar de volta no canal.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável (é um botão dedicado, não um item de menu).
+**ACESSIBILIDADE**: `aria-label` descritivo com o nome do participante.
+
+---
+
+## 7.4 — VOICE_PARTICIPANT_VOLUME_CONTROL
+
+**ID**: `VOICE_PARTICIPANT_VOLUME_CONTROL`
+**NOME**: Ajustar o volume individual de um participante
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Painel de voz expandido (central, não a sidebar) > linha do participante > controle de volume` (componente `ParticipantRow`, distinto da lista compacta da sidebar já documentada em `VOICE_PARTICIPANT_SIDEBAR_LIST`)
+**POSIÇÃO NA INTERFACE**: `.volume-control`, à direita de cada linha de participante remoto (**não aparece na própria linha do usuário local** — `{!local && (...)}`, já que não faz sentido ajustar o próprio volume de recepção).
+**APARÊNCIA**: `<input type="range" min="0" max="100">` com rótulo "Vol." e valor numérico exibido (`<output>{volume}</output>`).
+**ESTADO NORMAL**: 100% por padrão (`volumes[identity] ?? 100`).
+**HOVER**: `title="Volume de {nome}: {valor}%"`.
+**ACTIVE/PRESSED**: Arrastando o slider, valor atualiza em tempo real.
+**SELECTED**: Não aplicável.
+**DISABLED**: Nunca (sempre ajustável para qualquer participante remoto).
+**LOADING**: Não aplicável.
+**TRIGGER**: Arrastar o slider, clicar em um ponto dele, ou navegação por teclado (seta esquerda/direita com foco no slider — comportamento nativo de `<input type="range">`).
+**PRÉ-CONDIÇÕES**: Conectado à mesma call que o participante.
+**RESULTADO IMEDIATO**: `setVolume(novoValor)` — atualiza o estado local `volumes[identity]`.
+**RESULTADO VISUAL**: Número exibido atualiza junto com a posição do slider.
+**RESULTADO SONORO**: O volume de reprodução daquele participante específico muda **imediatamente** (aplicado via `RemoteAudioSink`, Roteiro a confirmar mecanismo exato de mixagem de áudio).
+**ANIMAÇÃO**: Nativa do `<input type="range">`.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Volume individual daquele participante ajustado só para o ouvinte local — **é um controle inteiramente pessoal, nunca sincronizado com ninguém** (nem com o próprio participante cujo volume foi ajustado, nem com outros ouvintes).
+**EFEITO LOCAL**: Mixagem de áudio local ajustada.
+**EFEITO REMOTO**: **Nenhum** — o participante cujo volume foi abaixado/aumentado não é notificado nem afetado; é puramente do lado de quem ajusta.
+**REALTIME**: Não aplicável (nenhuma sincronização de rede envolvida).
+**BACKEND**: Nenhuma chamada.
+**BANCO**: **Não persiste** — `volumes` é estado React local (a confirmar exatamente onde vive esse estado — provavelmente em `Workspace.tsx`, resetado a cada nova sessão de call, já que não há chamada de API nem `localStorage` confirmado para isso).
+**REFRESH**: Volta a 100% em qualquer reconexão/F5.
+**RECONEXÃO**: Volta ao padrão (100%) — **lacuna real de conveniência**: se alguém sempre ajusta o volume de uma pessoa específica pra baixo, precisa refazer isso toda vez que reconecta.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Arrastar de volta.
+**ATALHO**: Setas do teclado com foco no slider (nativo do HTML).
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label="Volume de {nome}"` no input — rotulado corretamente por participante.
+
+**Nota de auditoria**: existem **três canais de volume independentes** no sistema (confirmado em `VoiceAudioSinks`/`useVoiceRoom`): volume de voz por participante (esta ficha), `streamVolume` (volume específico do áudio de tela compartilhada de cada participante, separado do volume de voz dele) e `soundboardVolume` (volume geral do soundboard, Roteiro a confirmar onde é ajustado). Essa granularidade de três volumes distintos por pessoa/fonte é mais refinada do que muitos apps de chamada — documentado aqui como `CORE`, mas nenhum dos três persiste entre sessões.
+
+---
+
+## 7.5 — VOICE_AUDIO_PERSISTS_ACROSS_VIEWS (referência — arquitetura correta confirmada)
+
+**ID**: `VOICE_AUDIO_PERSISTS_ACROSS_VIEWS`
+**NOME**: Áudio da call continua tocando ao navegar para outras telas do app
+**STATUS**: `CORE` — confirmado lendo o comentário explícito do código (`VoiceAudioSinks` em `Workspace.tsx`): "Sempre montado enquanto conectado à voz, independente de qual canal (texto ou voz) está sendo exibido — antes o áudio ficava preso dentro do painel de membros da chamada, então trocar pra um canal de texto silenciava todo mundo até reconectar. Áudio não pode depender de qual tela está visível." — **um bug real já corrigido**, documentado aqui como confirmação positiva de que a correção está de pé.
+**Comportamento verificado**: navegar para um canal de texto, abrir Configurações, trocar de servidor (permanecendo conectado à voz de um servidor enquanto visualiza outro — **a confirmar se trocar de *servidor* ativo desconecta da voz ou não**, distinto de só trocar de canal de texto dentro do mesmo servidor, que claramente não desconecta) — em nenhum desses casos o áudio da call deveria parar, já que `VoiceAudioSinks` é renderizado incondicionalmente sempre que `voice.connected`, fora da árvore condicional de qual conteúdo central está sendo exibido.
+**Relevância para `ROTEIRO 51` do pedido original** ("background behavior" — `WINDOW_VISIBLE` ≠ `VOICE_CONNECTED` ≠ `WEBSOCKET_CONNECTED` são estados independentes): esta é exatamente a confirmação de que `VOICE_CONNECTED` não depende de qual tela está visível *dentro* do app — só falta confirmar a extensão disso pra fora do app (janela minimizada/oculta, já auditado no Roteiro 0 como funcionando, já que nada no processo desktop pausa a `WebContents` ao minimizar).
+
+---
+
+## 7.6 — VOICE_DEVICE_SELECT
+
+**ID**: `VOICE_DEVICE_SELECT`
+**NOME**: Selecionar dispositivo de entrada/saída de áudio
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Rodapé da sidebar > seta pequena ao lado do ícone de microfone/fone de ouvido` (`DeviceMenu`, dois componentes idênticos — um pra entrada, um pra saída)
+**POSIÇÃO NA INTERFACE**: `.device-menu-chevron`, ícone de seta pequena colado a cada botão principal (mic/deafen).
+**APARÊNCIA**: `ChevronIcon` (12px); ao abrir, `.device-menu-popover` com "Padrão do sistema" + um item por dispositivo detectado (`device.label`, o nome real do hardware conforme reportado pelo SO/navegador).
+**ESTADO NORMAL**: Fechado; "Padrão do sistema" selecionado por padrão (`selectedMicId`/`selectedSpeakerId = 'default'`).
+**HOVER**: Padrão de item de menu.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Classe `active` no dispositivo/opção atualmente escolhido.
+**DISABLED**: Não aplicável — a lista sempre mostra pelo menos "Padrão do sistema", mesmo sem nenhum dispositivo extra detectado.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique na seta abre; clique num item seleciona e fecha; **clique fora fecha sem selecionar** (`mousedown` global com checagem de `contains`, mesma técnica de popover já vista em outros lugares do app).
+**PRÉ-CONDIÇÕES**: Nenhuma — funciona mesmo fora de uma call ativa (a troca de dispositivo padrão fica pronta pra próxima vez que conectar, ou aplicada em tempo real se já conectado, via `room.switchActiveDevice`).
+**RESULTADO IMEDIATO**: `onSelect(deviceId)` → `setSelectedMicId`/`setSelectedSpeakerId` + `room.switchActiveDevice('audioinput'/'audiooutput', deviceId)`.
+**RESULTADO VISUAL**: Popover fecha, item selecionado passa a refletir a nova escolha.
+**RESULTADO SONORO**: Nenhum som de confirmação (a troca em si não é anunciada sonoramente).
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: É o próprio popover.
+**MENU**: É o próprio menu.
+**MODAL**: Não é modal.
+**SEGUNDA ETAPA**: Nenhuma — troca é imediata, mesmo com uma call já em andamento (`switchActiveDevice` troca o dispositivo ativo sem precisar reconectar).
+**RESULTADO FINAL**: Áudio passa a ser capturado/reproduzido pelo novo dispositivo.
+**EFEITO LOCAL**: Troca de hardware de captura/reprodução.
+**EFEITO REMOTO**: Nenhum diretamente (mudar de microfone não muda a qualidade percebida pelos outros além do que o hardware novo naturalmente capta).
+**REALTIME**: Não aplicável (troca de dispositivo é local).
+**BACKEND**: Nenhuma chamada.
+**BANCO**: **Não confirmado se `selectedMicId`/`selectedSpeakerId` persistem em `localStorage`** entre sessões — diferente de várias outras preferências de voz (perfil de microfone, modo PTT, tecla PTT, supressão/eco/ganho — todos confirmados com chaves de `localStorage` explícitas no código já lido) — a escolha de dispositivo específico **não tem uma chave de persistência visível** nesta auditoria, sugerindo que sempre volta a "Padrão do sistema" a cada novo lançamento do app.
+**REFRESH**: Ver acima — provavelmente reseta.
+**RECONEXÃO**: Dispositivo escolhido deveria se manter durante a mesma sessão do app (só o estado React, não recarregado).
+**ERRO**: Não aplicável a esta interação específica (erros de dispositivo aparecem nas fichas de `VOICE_SELF_MUTE`/`VOICE_CHANNEL_JOIN`).
+**CANCELAMENTO**: Clicar fora do popover.
+**REVERSÃO**: Escolher outro dispositivo, ou "Padrão do sistema" de novo.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label`/`title` no botão de abrir (usa o `label` passado como prop, "Escolher microfone"/"Escolher saída de áudio").
+
+**Nota de auditoria**: **não existe o mesmo `DeviceMenu` pra câmera** diretamente no painel rápido — seleção de câmera fica em Configurações > Voz e vídeo (`setCameraDevice`, já confirmado existir no hook, mas exposto só na tela de configurações completa, não como um chevron rápido ao lado do botão de câmera do jeito que mic/fone têm).
+
+---
+
+## 7.7 — VOICE_TEXT_CHAT_TOGGLE
+
+**ID**: `VOICE_TEXT_CHAT_TOGGLE`
+**NOME**: Abrir/fechar o chat de texto dentro de uma call de voz
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Canal de voz (conectado) > linha do canal na sidebar > ícone de balão de chat`
+**POSIÇÃO NA INTERFACE**: `.channel-chat-toggle`, só visível quando `active` (você está conectado àquele canal específico).
+**APARÊNCIA**: `MessageIcon` (13px); classe `active` quando o painel de chat está aberto.
+**ESTADO NORMAL**: Fechado por padrão ao entrar num canal.
+**HOVER**: `title` dinâmico "Abrir chat"/"Fechar chat".
+**ACTIVE/PRESSED**: `event.stopPropagation()` no clique — **impede que o clique também dispare a seleção do canal por baixo** (já que o botão fica dentro da mesma linha clicável do canal).
+**SELECTED**: Classe `active` quando aberto.
+**DISABLED**: Só existe quando conectado àquele canal.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Conectado ao canal de voz.
+**RESULTADO IMEDIATO**: `onToggleChat()` → `setChatOpen(!chatOpen)`.
+**RESULTADO VISUAL**: Painel lateral `.chat-panel` aparece/desaparece; `.room-content` ganha classe `with-chat`, redistribuindo o layout.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não é modal (painel lateral persistente).
+**SEGUNDA ETAPA**: Ver `VOICE_TEXT_CHAT_SEND`.
+**RESULTADO FINAL**: Painel de chat visível/oculto.
+**EFEITO LOCAL**: Apenas visual/layout.
+**EFEITO REMOTO**: Nenhum — abrir/fechar o painel é uma preferência de visualização inteiramente pessoal, invisível para os outros participantes.
+**REALTIME**: Não aplicável ao toggle em si.
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: `chatOpen` reseta ao trocar de canal/reconectar (estado local, não persistido).
+**RECONEXÃO**: Reseta.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Clicar de novo, ou o X dentro do próprio painel (`.chat-close`).
+**REVERSÃO**: Clicar de novo.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label` dinâmico.
+
+---
+
+## 7.8 — VOICE_TEXT_CHAT_SEND
+
+**ID**: `VOICE_TEXT_CHAT_SEND`
+**NOME**: Enviar uma mensagem no chat de texto da call
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Painel de chat da call (aberto) > composer próprio, no rodapé do painel`
+**POSIÇÃO NA INTERFACE**: `.chat-panel`, rodapé.
+**APARÊNCIA**: Campo de texto + botão de enviar (estrutura exata do composer não relida campo-a-campo nesta passagem, mas o comportamento de envio já foi lido em `useVoiceRoom.ts`/`Workspace.tsx`).
+**ESTADO NORMAL**: Vazio.
+**HOVER**: Padrão de composer.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: `room.state !== ConnectionState.Connected` bloqueia o envio (`sendMessage` retorna cedo).
+**LOADING**: Não confirmado indicador de "enviando".
+**TRIGGER**: Enter/clique em enviar.
+**PRÉ-CONDIÇÕES**: Conectado à call.
+**RESULTADO IMEDIATO**: `routeVoiceChatInput` decide entre comando de música (mesmo roteamento de `/play` etc. do chat de texto normal, Roteiro 4) ou mensagem de chat de voz normal.
+**RESULTADO VISUAL**: Mensagem aparece no painel, para todos os participantes conectados à mesma call.
+**RESULTADO SONORO**: `playMessageSound` — **toca para quem recebe a mensagem** (confirmado no handler `onData` do `RoomEvent.DataReceived`), não confirmado se toca também para quem envia a própria mensagem (o handler de recebimento é só pra mensagens de **outros** participantes, via `RemoteParticipant` — mensagens do próprio remetente são adicionadas diretamente ao estado local em `sendMessage`, sem passar pelo mesmo caminho de som).
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL — ACHADO IMPORTANTE, DISTINTO DO CHAT DE CANAL**: mensagem entregue via `room.localParticipant.publishData(...)` — **canal de dados WebRTC do LiveKit, não o WebSocket do NexPlay nem a API REST**. Isso significa: (1) **nenhuma persistência** — não existe uma tabela de "mensagens de chat de voz" no banco, a mensagem só existe na memória de quem está conectado no momento; (2) **quem entra depois não vê o histórico** — `voice.messages` é resetado a cada `connect()`/`disconnect()` (já confirmado no Roteiro 6); (3) **sem markdown** — o painel renderiza `<p>{message.text}</p>` puro, sem passar por `MarkdownText` (diferente do chat de canal de texto, Roteiro 4, que tem negrito/itálico/etc.) — texto literal, sem formatação nenhuma; (4) **limitado a quem está na mesma sala LiveKit**, não escopado por `sendToServerMembers` como o resto do app.
+**EFEITO LOCAL**: Mensagem adicionada ao estado local (`messages`, limitado às últimas 100 — `current.slice(-99)` antes de adicionar a nova).
+**EFEITO REMOTO**: Outros participantes da mesma call recebem via `DataReceived`.
+**REALTIME**: Canal de dados WebRTC (`VOICE_CHAT_TOPIC`), não `RealtimeEvent` do Roteiro 5.
+**BACKEND**: Nenhuma chamada à API REST do NexPlay pra mensagens normais (só comandos de música passam pela API, via `sendMusicCommand`).
+**BANCO**: **Nenhuma escrita** — confirmado, não existe persistência.
+**REFRESH**: Todo o histórico da call se perde num F5 (cai a call inteira, ver Roteiro 6).
+**RECONEXÃO**: Se a call cair e reconectar, o histórico de chat também se perde (não é recuperado do LiveKit, que também não guarda isso — é puramente transiente).
+**ERRO**: `setError(commandError.message ou 'Não foi possível encaminhar o comando ao NexMusic.')` — mensagem de erro é específica de comando de música, sugerindo que o caminho de erro mais comum testado é o roteamento de comando, não o envio de texto simples (que dificilmente falharia, já que é só publicar um pacote de dados).
+**CANCELAMENTO**: Apagar o texto antes de enviar.
+**REVERSÃO**: **`MISSING`** — sem editar/apagar mensagens do chat de voz (diferente do chat de canal, que tem os dois).
+**ATALHO**: Enter para enviar (padrão universal do app, não confirmado Shift+Enter para nova linha especificamente aqui).
+**MENU DE CONTEXTO**: **`MISSING`** — sem toolbar de hover nem menu de contexto no chat de voz (diferente do chat de canal, que tem reagir/responder/copiar/fixar/editar/apagar) — **este chat é deliberadamente muito mais simples**, praticamente só texto + comandos de música.
+**ACESSIBILIDADE**: `aria-live="polite"` no container de mensagens (mesma técnica já vista no chat de canal).
+
+**Nota de auditoria**: esta é uma divergência arquitetural real e deliberada frente ao chat de canal de texto — vale a pena confirmar com o usuário, numa fase de decisão de produto futura, se essa simplicidade (efêmero, sem markdown, sem histórico) é intencional pra sempre ou um "MVP" que deveria eventualmente ganhar as mesmas funcionalidades do chat de canal.
+
+---
+
+## 7.9 — VOICE_INPUT_MODE_SELECT
+
+**ID**: `VOICE_INPUT_MODE_SELECT`
+**NOME**: Escolher entre "Voz ativa" e "Push to talk"
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Configurações > Voz e vídeo > seção de modo de entrada > dois cartões`
+**POSIÇÃO NA INTERFACE**: `.input-mode-card`, dois cartões lado a lado (mesmo padrão visual de `CHANNEL_TYPE_SELECT`, Roteiro 3).
+**APARÊNCIA**: Cartão "Voz ativa" (`MicIcon` + "O microfone é ativado automaticamente quando você fala.") e "Push to talk" (`MicOffIcon` + "O microfone só é ativado quando você pressiona uma tecla.").
+**ESTADO NORMAL**: "Voz ativa" é o padrão (`loadInputMode()` cai em `'voice'` se nunca configurado).
+**HOVER**: Padrão de cartão clicável.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Classe `active` no cartão escolhido.
+**DISABLED**: Nunca.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique no cartão.
+**PRÉ-CONDIÇÕES**: Nenhuma — configurável mesmo fora de uma call ativa.
+**RESULTADO IMEDIATO**: `setInputMode(modo)`: persiste em `localStorage` (`np:input-mode`); **se já conectado a uma call no momento da troca**, aplica na hora: mudar para "Voz ativa" liga o microfone imediatamente; mudar para PTT desliga o microfone imediatamente (até a tecla ser pressionada).
+**RESULTADO VISUAL**: Cartão escolhido ganha destaque; se PTT, campo de tecla aparece (ver `VOICE_PTT_KEY_REBIND`).
+**RESULTADO SONORO**: Nenhum confirmado especificamente nesta troca (os sons de mute/unmute do `toggleMicrophone` **não** são os mesmos disparados aqui — a troca de modo chama `setMicrophoneEnabled` diretamente, sem passar pelos handlers que tocam som).
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Se PTT: configurar a tecla (ficha seguinte).
+**RESULTADO FINAL**: Modo de entrada de voz mudado, efetivo imediatamente e persistido pra futuras sessões.
+**EFEITO LOCAL**: Comportamento do microfone muda fundamentalmente (contínuo vs. sob demanda).
+**EFEITO REMOTO**: Nenhum diretamente — outros só percebem o efeito indireto (o microfone ficar mais silencioso/intermitente se PTT).
+**REALTIME**: Reflexo em `TrackMuted`/`TrackUnmuted` nativo do LiveKit quando aplicável.
+**BACKEND**: Nenhuma chamada — preferência 100% local.
+**BANCO**: `localStorage` (`np:input-mode`), não banco de dados do servidor — **preferência por dispositivo/navegador, não por conta** (logar em outro computador não traria essa preferência junto).
+**REFRESH**: Persiste (é `localStorage`, sobrevive a F5 e a fechar/reabrir o navegador/app).
+**RECONEXÃO**: Mantido.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Escolher o outro cartão.
+**REVERSÃO**: Escolher o outro cartão.
+**ATALHO**: Nenhum atalho pra alternar rapidamente sem entrar em Configurações.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Cartões são `<button>` reais, alcançáveis via Tab — mesma lacuna já notada em `CHANNEL_TYPE_SELECT` (sem semântica `radiogroup` formal).
+
+---
+
+## 7.10 — VOICE_PTT_KEY_REBIND
+
+**ID**: `VOICE_PTT_KEY_REBIND`
+**NOME**: Configurar a tecla de push-to-talk
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Configurações > Voz e vídeo > modo PTT selecionado > "Tecla de push-to-talk"`
+**POSIÇÃO NA INTERFACE**: `.ptt-key-button`, abaixo dos cartões de modo de entrada, só visível com `inputMode === 'ptt'`.
+**APARÊNCIA**: Botão mostrando a tecla atual (ex.: `ControlRight`, o padrão) ou "Pressione uma tecla…" durante a captura.
+**ESTADO NORMAL**: Mostra a tecla configurada.
+**HOVER**: Padrão de botão.
+**ACTIVE/PRESSED**: Clicado, entra em modo de escuta.
+**SELECTED**: Não aplicável.
+**DISABLED**: Nunca.
+**LOADING**: O texto "Pressione uma tecla…" **é** o estado de espera/captura.
+**TRIGGER**: Clique no botão inicia a captura (`setListeningForKey(true)`); **a próxima tecla física pressionada em qualquer lugar da janela** é capturada como a nova tecla de PTT (mecanismo exato de captura — provavelmente um `keydown` global temporário — não relido linha a linha nesta passagem, mas o padrão é claro pelo texto "Pressione uma tecla…").
+**PRÉ-CONDIÇÕES**: Modo PTT selecionado.
+**RESULTADO IMEDIATO**: Botão entra em modo de escuta ativa.
+**RESULTADO VISUAL**: Texto muda para "Pressione uma tecla…".
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Pressionar qualquer tecla física.
+**RESULTADO FINAL**: `setPttKeyBinding(event.code)` — persiste em `localStorage` (`np:ptt-key`); botão volta a mostrar o nome da nova tecla.
+**EFEITO LOCAL**: Doravante, segurar essa tecla (em vez da anterior) ativa o microfone durante uma call.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada.
+**BANCO**: `localStorage`, por dispositivo/navegador.
+**REFRESH**: Persiste.
+**RECONEXÃO**: Mantido.
+**ERRO**: **Não confirmado** o que acontece se a tecla capturada já for usada por outro atalho do sistema/navegador, ou se `Escape` durante a captura cancela em vez de virar a nova tecla de PTT (comportamento razoável esperado, mas não confirmado no código lido nesta passagem).
+**CANCELAMENTO**: Comportamento de Esc durante a captura não confirmado (ver `ERRO`).
+**REVERSÃO**: Reconfigurar de novo.
+**ATALHO**: É o próprio mecanismo de configuração de atalho.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: **Achado**: capturar "qualquer tecla" via um listener genérico pode conflitar com navegação normal por teclado (Tab, setas) se o usuário só estiver tentando navegar pela tela de configurações e acidentalmente estiver com o botão de captura ativo — comportamento exato de quais teclas são aceitas/ignoradas durante a captura não confirmado nesta passagem.
+
+---
+
+## 7.11 — VOICE_MIC_PROFILE_SELECT
+
+**ID**: `VOICE_MIC_PROFILE_SELECT`
+**NOME**: Escolher o perfil de processamento de microfone
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Configurações > Voz e vídeo > seção de perfil de microfone > três cartões`
+**POSIÇÃO NA INTERFACE**: Três `.input-mode-card` (mesmo componente visual reaproveitado de `VOICE_INPUT_MODE_SELECT`/`CHANNEL_TYPE_SELECT`).
+**APARÊNCIA**: "Isolamento de Voz" (padrão — Krisp real ou supressão nativa + eco/ganho automáticos), "Estúdio" ("Áudio puro": mic aberto sem nenhum processamento, igual ao Discord), "Personalizado" (expõe supressão/eco/ganho/sensibilidade individualmente).
+**ESTADO NORMAL**: "Isolamento de Voz" por padrão pra instalações novas; migração inteligente pra quem já tinha desligado supressão de ruído no toggle antigo (única opção que existia antes desse recurso existir) — cai em "Personalizado" automaticamente pra preservar a preferência antiga em vez de reativar supressão silenciosamente.
+**HOVER**: Padrão de cartão.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Classe `active`.
+**DISABLED**: Nunca.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Nenhuma.
+**RESULTADO IMEDIATO**: `setMicProfile(perfil)`: persiste em `localStorage` (`np:mic-profile`); `applyMicCaptureOptions()` reaplica as constraints no track de microfone **já publicado**, sem precisar reconectar à call; se o Krisp estiver carregado, `krispProcessorRef.current?.setEnabled(...)` liga/desliga o processor conforme o perfil escolhido pedir supressão real ou não.
+**RESULTADO VISUAL**: Cartão escolhido em destaque; se "Personalizado", sliders/toggles individuais aparecem (`matchesSearch('supressão de ruído cancelamento de eco ganho automático sensibilidade de entrada')` — a seção só aparece se bater com a busca da própria tela de configurações, ver nota de auditoria).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Se "Personalizado": ajustar supressão de ruído, cancelamento de eco, ganho automático, e sensibilidade de entrada (com opção de calibração automática — `autoSensitivity`, que amostra o nível ambiente por 1.5s e calcula um limiar) individualmente.
+**RESULTADO FINAL**: Áudio capturado processado conforme o perfil, aplicado em tempo real mesmo durante uma call já em andamento.
+**EFEITO LOCAL**: Qualidade/processamento do áudio capturado muda imediatamente.
+**EFEITO REMOTO**: Outros participantes ouvem a diferença (é o áudio que chega até eles que muda).
+**REALTIME**: Nenhum evento de protocolo — é reconfiguração de captura local, cujo efeito só é percebido pelos outros através do próprio áudio.
+**BACKEND**: Nenhuma chamada.
+**BANCO**: `localStorage`, por dispositivo/navegador — mesma característica de não viajar entre contas/dispositivos que `VOICE_INPUT_MODE_SELECT`.
+**REFRESH**: Persiste.
+**RECONEXÃO**: Reaplicado a cada novo `connect()` (via `audioCaptureDefaults` na criação do `Room` e reforçado no fluxo de conexão).
+**ERRO**: Não aplicável diretamente a esta troca (erros de dispositivo aparecem em `applyMicCaptureOptions`, já coberto na ficha de referência do hook).
+**CANCELAMENTO**: Escolher outro perfil.
+**REVERSÃO**: Escolher outro perfil.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Mesma lacuna de `radiogroup` formal já notada em fichas semelhantes.
+
+**Nota de auditoria — qualidade de engenharia**: o Krisp roda como *processor* sobre o track já publicado, não como *constraint* de captura — o código documenta explicitamente por quê: pedir supressão nativa do navegador **e** Krisp ao mesmo tempo cascatearia dois DSPs de ruído diferentes, "o que soa pior, não melhor." A constraint nativa só entra como alternativa quando o Krisp não pôde carregar. Esse tipo de detalhe (evitar duplo processamento de ruído) é o tipo de coisa que normalmente só se descobre testando de verdade — confirma que esta parte do app já passou por iteração real baseada em qualidade de áudio percebida, não é uma implementação ingênua.
+
+**Nota de auditoria — busca dentro de Configurações**: a seção "Voz e vídeo" tem um campo de busca próprio (`matchesSearch`, `voiceSearch`) que filtra quais subseções aparecem — **achado positivo não documentado antes**: é uma busca real, funcional, específica dessa página (não confirmado se outras seções de Configurações têm o mesmo mecanismo — a verificar numa auditoria futura dedicada a Configurações do app como um todo).
+
+---
+
+## 7.12 — VOICE_SOUNDBOARD_PLAY (referência — já auditado/testado em profundidade)
+
+**ID**: `VOICE_SOUNDBOARD_PLAY`
+**NOME**: Tocar um som do soundboard durante uma call
+**STATUS**: `CORE` — confirmado em `DISCORD_PARITY_PLAN.md` §12 como implementado com áudio real via LiveKit (não um relay de servidor — quem toca publica a própria track de áudio, distribuída pra sala inteira pelo SFU), com um bug real de CSP no cliente desktop já corrigido em sessão anterior (`fetch('data:...')` bloqueado pela CSP do Electron — corrigido decodificando a `data:` URL manualmente via `atob`, sem depender de `fetch()`, já confirmado lendo `dataUrlToArrayBuffer` em `useVoiceRoom.ts` nesta mesma passagem). Mecanismo: cria um `AudioContext` local, decodifica o som, publica como `Track.Source.Unknown` com nome `"soundboard"`, desconecta automaticamente quando o som termina (`source.onended`), e anuncia "quem tocou o quê" via canal de dados separado (`SOUNDBOARD_ANNOUNCE_TOPIC`) pra gerar o toast/notificação cosmética nos outros clientes. Upload de som novo com validação real de duração (`decodeAudioData`, não só tamanho de arquivo) já auditado como `DONE`. **UI de onde o botão de tocar soundboard vive dentro da tela de voz não foi relida em detalhe nesta passagem específica** (fica para uma auditoria futura, já que o mecanismo por trás já está bem documentado e confirmado funcional).
+
+---
+
+# CONTINUAÇÃO
+
+Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas `MISSING`/de referência), as **24 interações do Roteiro 0**, **18 do Roteiro 1**, **11 do Roteiro 2**, **19 do Roteiro 3**, **23 do Roteiro 4**, **8 do Roteiro 5**, **9 do Roteiro 6** e **12 do Roteiro 7** — **124 fichas no total**. Com isso, a auditoria de Voz cobre agora o ciclo completo: entrar, mutar, ensurdecer, sair, câmera, compartilhar tela, participantes (lista, fala, volume, desconectar), dispositivos, chat da call, PTT e perfis de microfone. Achados novos de maior interesse: um provável bug de encoding numa mensagem de erro (`"N?o foi poss?vel..."`); o chat de voz é arquitetural e deliberadamente mais simples que o chat de canal (efêmero, sem markdown, sem histórico, sem toolbar); volumes individuais (voz/tela/soundboard) e escolha de dispositivo não persistem entre sessões, diferente de quase toda outra preferência de voz, que já usa `localStorage` consistentemente.
+
+**Ainda pendente dentro de Voz/Vídeo** (próxima passagem): grid/foco de vídeo e tela compartilhada (`ScreenStage.tsx`, ainda não lido nesta auditoria), auditoria de Vídeo dedicada (câmera em detalhe — preview, grid multi-participante), e o botão/UI específico de acionar o soundboard dentro da tela de voz. **Depois**: Servidores/Configurações completas (Cargos, Permissões, Membros, Convites, Integrações — já `CORE` mas sem ficha campo-a-campo), Amigos/DMs, Configurações do app inteiras (Conta, Privacidade, Aparência — já com achados parciais dispersos nas seções anteriores), Premium/Shop (bloco `MISSING`), e os três documentos ainda não criados (`DISCORD_NAVIGATION_TREE.md`, `DISCORD_INTERACTION_MATRIX.md`, `DISCORD_USER_JOURNEYS.md`) — que passam a fazer mais sentido produzir a partir daqui, já que boa parte da superfície do app já está mapeada em profundidade suficiente para alimentá-los sem generalizar.
