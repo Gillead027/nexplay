@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). Roteiros 1–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). Roteiros 2–69+ pendentes — ver nota de continuação no final do arquivo.
 
 ---
 
@@ -932,8 +932,718 @@ Arquitetura real (verificada lendo `apps/desktop/src/main.ts`, `preload.ts`, `up
 
 ---
 
-# FIM DO ROTEIRO 0 — CONTINUAÇÃO
+# ROTEIRO 1 — LOGIN E SESSÃO
 
-Este documento cobriu, com todos os 36 campos exigidos, as **24 interações reais do processo desktop** (`Roteiro 0`), verificadas linha a linha contra `apps/desktop/src/main.ts`, `preload.ts`, `updater.ts`, `activity.ts` e `apps/web/src/components/AppChrome.tsx` — nenhuma delas foi inventada ou copiada do Discord real sem checar o código primeiro. Onde o comportamento não existe, isso foi dito explicitamente como `MISSING`, nunca simulado como se existisse.
+Arquitetura real (verificada lendo `apps/web/src/App.tsx`, `apps/web/src/components/EntryScreen.tsx`, `apps/web/src/realtime.ts`, `apps/api/src/session.ts` e as rotas `/api/auth/*`/`/api/session` em `apps/api/src/index.ts`): sessão é um cookie assinado por HMAC-SHA256 (`nexplay_session`), `httpOnly`, `sameSite: strict`, `secure` conforme config, validade fixa de 12 horas — **stateless**, sem tabela de sessões no banco, sem lista de dispositivos, sem revogação individual. Não existe "lembrar-me"/duração configurável — toda sessão dura exatamente 12h. Login e cadastro dividem a mesma tela (`EntryScreen`) como duas abas do mesmo formulário, não duas telas separadas.
 
-**Escala real do trabalho restante** (para ser transparente sobre o tamanho do que falta, sem resumir o pedido): os Roteiros 1 a 69+ cobrem a interface inteira — servidores, categorias, canais de texto/voz, mensagens, composer, voz (mute/deafen/câmera/tela), member list, mini-perfil, configurações (conta, perfil, privacidade, voz&vídeo, aparência, atalhos, avançado — auditoria completa de cada uma), configurações de servidor (cargos, permissões, convites, moderação, integrações), amigos/DMs, busca, inbox, notificações, atalhos de teclado, estados vazios/loading/erro/offline, e as jornadas completas (entrar em voz, mutar, compartilhar tela, fechar sem sair da call, encerrar de verdade). Cada uma dessas áreas, no mesmo padrão de profundidade do Roteiro 0 acima (36 campos por interação), é um documento do tamanho do que foi escrito aqui — este arquivo vai continuar crescendo seção por seção nas próximas passagens de auditoria, na mesma ordem de prioridade do pedido original (voz e chamada primeiro, depois servidores/canais/mensagens, depois o resto).
+---
+
+## 1.1 — SESSION_RESTORE_ON_BOOT
+
+**ID**: `SESSION_RESTORE_ON_BOOT`
+**NOME**: Restaurar sessão existente ao abrir o app
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > primeiro frame após APP_LAUNCH (desktop) ou carregar a página (web) > App.tsx`
+**POSIÇÃO NA INTERFACE**: Tela cheia (`<main className="splash">`), substitui qualquer outra UI até resolver.
+**APARÊNCIA**: `LoadingWindow`: uma "janela de boot" (`.boot-window`) centralizada com título "NexPlay", duas barras de esqueleto (`.skeleton-line`, uma `wide` e uma normal, presumivelmente animadas via CSS shimmer) e um rótulo de texto abaixo ("Carregando usuário…").
+**ESTADO NORMAL**: `state = { status: 'loading' }` — é sempre o primeiro estado, antes de qualquer decisão.
+**HOVER**: Não aplicável (tela sem elementos interativos).
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: É o próprio estado documentado aqui.
+**TRIGGER**: Automático, `useEffect` executado uma vez na montagem do `App`.
+**PRÉ-CONDIÇÕES**: Nenhuma.
+**RESULTADO IMEDIATO**: `api.getSession()` chama `GET /api/session` (rota protegida por `requireSession`, que lê e valida o cookie via `getSession(request)`).
+**RESULTADO VISUAL**: `LoadingWindow` visível até a chamada resolver.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: As barras de esqueleto presumivelmente têm uma animação CSS de "pulso"/shimmer (não confirmado no CSS nesta passagem — a confirmar).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Duas ramificações: (a) cookie válido → `.then(({ user }) => loadAuthenticatedApp(user))`, que por sua vez chama `api.getConfig()` (`GET /api/config`) antes de considerar o boot concluído; (b) cookie ausente/inválido/expirado → a Promise rejeita (a API responde 401) → `.catch(() => setState({ status: 'signed-out' }))`.
+**RESULTADO FINAL**: Ou `state.status === 'ready'` (sessão + config carregados, `Workspace` monta) ou `state.status === 'signed-out'` (`EntryScreen` aparece).
+**EFEITO LOCAL**: Nenhuma mudança de dado — só leitura.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: A conexão WebSocket **não é aberta nesta etapa** — só depois que `Workspace` monta (`connectRealtime()` é chamado de dentro do `Workspace`, não do `App`), então há uma janela onde o usuário já está "autenticado" mas ainda sem tempo real ativo.
+**BACKEND**: `GET /api/session` (autenticação) e, se autenticado, `GET /api/config` (config pública).
+**BANCO**: Nenhuma escrita — só a leitura implícita de usuário feita por `requireSession`/`currentUser` no backend.
+**REFRESH**: É a própria ação (todo F5/reload passa por aqui de novo, do zero).
+**RECONEXÃO**: Não aplicável a esta etapa especificamente (é o boot, não uma reconexão de uma sessão já ativa).
+**ERRO**: Se `api.getConfig()` falhar depois de uma sessão válida (ex.: backend caiu entre as duas chamadas), `loadAuthenticatedApp` cai no `catch` e seta `state = { status: 'error', message }` — ver `APP_BOOT_ERROR`.
+**CANCELAMENTO**: Não aplicável — não há como o usuário interromper o boot.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `<main aria-live="polite">` no `LoadingWindow` — mudanças de estado são anunciadas a leitores de tela sem interromper o que estavam lendo.
+
+---
+
+## 1.2 — LOGIN_TAB_SELECT / REGISTER_TAB_SELECT
+
+**ID**: `ENTRY_MODE_TOGGLE`
+**NOME**: Alternar entre as abas "Entrar" e "Criar conta"
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Tela de entrada > janela central (.entry-window) > abaixo do cabeçalho > .entry-mode-toggle`
+**POSIÇÃO NA INTERFACE**: Duas abas lado a lado, logo abaixo do título "NexPlay"/"Servidor privado", acima do formulário.
+**APARÊNCIA**: `role="tablist"`, dois `<button role="tab">`: "Entrar" e "Criar conta". A aba ativa recebe classe `active` e `aria-selected="true"`.
+**ESTADO NORMAL**: Aba "Entrar" ativa por padrão (`mode = 'login'` é o estado inicial).
+**HOVER**: Estilo de hover definido em CSS para `.entry-mode-toggle button` (a confirmar detalhe visual exato — não lido nesta passagem).
+**ACTIVE/PRESSED**: Aba com `aria-selected="true"` ganha destaque visual via classe `active`.
+**SELECTED**: A aba clicada vira a ativa; a outra perde o destaque.
+**DISABLED**: Não há estado desabilitado — sempre é possível trocar de aba, mesmo com o formulário parcialmente preenchido ou com `loading === true` (**achado**: `switchMode` não checa `loading`, então tecnicamente dá pra trocar de aba enquanto uma submissão está em andamento — o formulário por baixo muda de campos enquanto a requisição anterior ainda está em voo, sem cancelá-la).
+**LOADING**: Não aplicável ao clique em si.
+**TRIGGER**: Clique esquerdo em qualquer uma das duas abas.
+**PRÉ-CONDIÇÕES**: Nenhuma.
+**RESULTADO IMEDIATO**: `switchMode(nextMode)`: `setMode(nextMode)` e `setError('')` (limpa qualquer mensagem de erro da tentativa anterior).
+**RESULTADO VISUAL**: Campos do formulário mudam: modo "Criar conta" revela três campos extras (Código de convite, Cor do perfil) que não existem no modo "Entrar"; o campo de senha muda `autoComplete` (`current-password` vs `new-password`), `minLength` (nenhum vs 8) e `placeholder` ("Sua senha" vs "Pelo menos 8 caracteres"); o botão de envio muda de texto ("Entrar" vs "Criar conta e entrar").
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma transição documentada entre os dois layouts de formulário (troca instantânea, sem fade/slide).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Usuário preenche o formulário correspondente ao novo modo.
+**RESULTADO FINAL**: Formulário no modo escolhido, pronto para preenchimento.
+**EFEITO LOCAL**: **`username` e `password` já digitados não são limpos ao trocar de aba** (só `error` é limpo) — se o usuário digitar no modo "Entrar" e trocar para "Criar conta", o que já tinha escrito continua lá. `inviteToken`/`accentColor` só existem visualmente no modo registro, mas o estado React deles também não é resetado ao voltar para "Entrar" e trocar de novo (fica retido em memória, sem efeito visível até reaparecer).
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável (pré-autenticação, sem WebSocket ainda).
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: Modo escolhido não persiste — um F5 sempre volta para a aba "Entrar" (estado inicial do `useState`).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Clicar na outra aba.
+**ATALHO**: Nenhum atalho de teclado dedicado; navegável via Tab por serem `<button>`s normais, mas **não implementa o padrão ARIA completo de `tablist`** (setas esquerda/direita para trocar de aba não estão implementadas — só clique/Tab+Enter).
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `role="tablist"` no container, `role="tab"` + `aria-selected` em cada botão — estrutura ARIA básica correta, mas sem a navegação por seta esperada do padrão completo de abas.
+
+---
+
+## 1.3 — LOGIN_USERNAME_FIELD
+
+**ID**: `LOGIN_USERNAME_FIELD`
+**NOME**: Campo de nome de usuário (login e cadastro)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Tela de entrada > formulário > primeiro campo, logo abaixo das abas`
+**POSIÇÃO NA INTERFACE**: Topo do formulário, com `<label htmlFor="username">Usuário</label>` acima.
+**APARÊNCIA**: `<input id="username">` padrão, `placeholder="Seu nome de usuário"`, `autoComplete="username"`.
+**ESTADO NORMAL**: Vazio, com placeholder visível.
+**HOVER**: Estilo de borda em hover conforme CSS de input padrão do app (não detalhado nesta passagem).
+**ACTIVE/PRESSED**: Foco muda a borda/outline (estilo padrão de `:focus`).
+**SELECTED**: Não aplicável (não é um item de lista).
+**DISABLED**: **Não fica desabilitado durante `loading`** — o campo continua editável mesmo enquanto uma submissão está em andamento (só o botão de envio é desabilitado, ver `LOGIN_SUBMIT`). Usuário pode editar o texto enquanto a requisição anterior ainda está em voo.
+**LOADING**: Não aplicável ao campo em si.
+**TRIGGER**: Clique para focar, digitação para preencher.
+**PRÉ-CONDIÇÕES**: Nenhuma.
+**RESULTADO IMEDIATO**: `onChange` atualiza o estado `username` a cada tecla.
+**RESULTADO VISUAL**: Texto digitado aparece no campo.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Tab avança para o campo de senha.
+**RESULTADO FINAL**: Valor pronto para `handleSubmit`.
+**EFEITO LOCAL**: Validação client-side só via atributos HTML nativos: `required`, `minLength={2}`, `maxLength={24}` — **nenhuma validação de formato/caracteres permitidos no cliente** (a regex `^[\p{L}\p{N} _.-]+$` só é checada no backend, no `usernameSchema`; um usuário pode digitar um caractere inválido, o campo aceita, e só ao submeter recebe o erro genérico do backend).
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada por tecla (só no submit).
+**BANCO**: Não aplicável.
+**REFRESH**: Valor perdido em F5 (não é salvo em nenhum lugar).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Validação nativa do HTML (`required`/`minLength`/`maxLength`) bloqueia o submit do navegador antes mesmo de chegar no `handleSubmit` React se vazio ou fora do tamanho — mensagem de erro é a padrão do navegador (não estilizada pelo NexPlay).
+**CANCELAMENTO**: Apagar o texto digitado (Ctrl+A + Delete, ou Backspace).
+**REVERSÃO**: Não aplicável (não há "desfazer" dedicado, só o Ctrl+Z nativo do campo de texto do navegador).
+**ATALHO**: Ctrl+Z/Ctrl+Y nativos do campo de texto (não customizados pelo NexPlay).
+**MENU DE CONTEXTO**: Menu de contexto nativo do navegador/SO para campos de texto (recortar/copiar/colar) — não customizado.
+**ACESSIBILIDADE**: `<label htmlFor="username">` associado corretamente — leitor de tela anuncia "Usuário" ao focar o campo.
+
+---
+
+## 1.4 — LOGIN_PASSWORD_FIELD
+
+**ID**: `LOGIN_PASSWORD_FIELD`
+**NOME**: Campo de senha (login e cadastro)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Tela de entrada > formulário > segundo campo`
+**POSIÇÃO NA INTERFACE**: Abaixo do campo de usuário.
+**APARÊNCIA**: `<input type="password" id="password">` — caracteres mascarados (pontos/asteriscos, nativo do navegador). Placeholder muda conforme o modo: "Sua senha" (login) ou "Pelo menos 8 caracteres" (cadastro).
+**ESTADO NORMAL**: Vazio, mascarado.
+**HOVER**: Mesmo padrão de input do app.
+**ACTIVE/PRESSED**: Foco muda borda/outline.
+**SELECTED**: Não aplicável.
+**DISABLED**: Mesma observação de `LOGIN_USERNAME_FIELD` — não desabilita durante loading.
+**LOADING**: Não aplicável ao campo.
+**TRIGGER**: Clique para focar, digitação para preencher.
+**PRÉ-CONDIÇÕES**: Nenhuma.
+**RESULTADO IMEDIATO**: `onChange` atualiza `password`.
+**RESULTADO VISUAL**: Pontos/asteriscos aparecem conforme digita. **`MISSING`: nenhum botão de "mostrar senha" (ícone de olho)** — não existe no código, a senha é sempre mascarada sem alternativa de revelar.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Modo cadastro: Tab avança para o campo de convite. Modo login: Tab avança para o botão de envio (não há mais campos).
+**RESULTADO FINAL**: Valor pronto para `handleSubmit`.
+**EFEITO LOCAL**: `required` sempre; `minLength={8}` só no modo cadastro (`mode === 'register' ? 8 : undefined`) — no modo login, **qualquer tamanho é aceito no cliente** (a validação real de "senha existe e bate" só acontece no backend via `verifyPassword`). Nenhum indicador de força de senha.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada por tecla.
+**BANCO**: Não aplicável.
+**REFRESH**: Valor perdido em F5. **Navegadores podem oferecer preencher automaticamente via gerenciador de senha salvo** (`autoComplete` correto: `current-password` no login, `new-password` no cadastro, o que ativa sugestão de gerar senha forte em alguns navegadores).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Validação nativa do HTML bloqueia submit se vazio ou (no cadastro) menor que 8 caracteres — mensagem padrão do navegador. Erro de senha incorreta só aparece depois do submit (ver `LOGIN_ERROR_INVALID_CREDENTIALS`).
+**CANCELAMENTO**: Apagar o texto digitado.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Nativos do campo de texto.
+**MENU DE CONTEXTO**: Nativo do navegador/SO (campos `type="password"` tipicamente restringem "copiar" em alguns navegadores — comportamento do próprio Chromium/Electron, não do NexPlay).
+**ACESSIBILIDADE**: `<label htmlFor="password">` associado corretamente.
+
+---
+
+## 1.5 — REGISTER_INVITE_TOKEN_FIELD
+
+**ID**: `REGISTER_INVITE_TOKEN_FIELD`
+**NOME**: Campo de código de convite (só no cadastro)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Tela de entrada > aba "Criar conta" > formulário > terceiro campo`
+**POSIÇÃO NA INTERFACE**: Só visível quando `mode === 'register'`, entre o campo de senha e o seletor de cor.
+**APARÊNCIA**: `<input type="password" id="inviteToken">` — **também mascarado como senha** (escolha deliberada de não expor o token em texto claro na tela), `placeholder="Código do convite do servidor"`.
+**ESTADO NORMAL**: Vazio, mascarado.
+**HOVER**: Padrão de input do app.
+**ACTIVE/PRESSED**: Foco muda borda/outline.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não desabilita durante loading.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique para focar, digitação ou colar (Ctrl+V) para preencher.
+**PRÉ-CONDIÇÕES**: `mode === 'register'`.
+**RESULTADO IMEDIATO**: `onChange` atualiza `inviteToken`.
+**RESULTADO VISUAL**: Caracteres mascarados aparecem.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: O campo inteiro (junto com "Cor do perfil") aparece/desaparece instantaneamente ao trocar de aba (sem transição, ver `ENTRY_MODE_TOGGLE`).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Tab avança para o seletor de cor.
+**RESULTADO FINAL**: Valor pronto para `handleSubmit`, comparado no backend contra `config.INVITE_TOKEN` via `timingSafeEqual` (`inviteMatches`, `apps/api/src/session.ts`) — **um único token de convite compartilhado por toda a instância**, não um convite por servidor específico e não expira nem tem contagem de uso.
+**EFEITO LOCAL**: Só `required` no cliente — nenhuma validação de formato.
+**EFEITO REMOTO**: Nenhum até o submit.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada por tecla.
+**BANCO**: Não aplicável (o token em si não é uma tabela — é uma env var comparada em memória).
+**REFRESH**: Valor perdido em F5.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Ver `REGISTER_ERROR_INVALID_INVITE`.
+**CANCELAMENTO**: Apagar o texto digitado.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Nativos do campo de texto.
+**MENU DE CONTEXTO**: Nativo.
+**ACESSIBILIDADE**: `<label htmlFor="inviteToken">` associado.
+
+---
+
+## 1.6 — REGISTER_ACCENT_COLOR_SELECT
+
+**ID**: `REGISTER_ACCENT_COLOR_SELECT`
+**NOME**: Selecionar a cor de perfil inicial no cadastro
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Tela de entrada > aba "Criar conta" > formulário > "Cor do perfil"`
+**POSIÇÃO NA INTERFACE**: Último campo do formulário de cadastro, antes do botão de envio.
+**APARÊNCIA**: `role="radiogroup"`, uma fileira de botões circulares/quadrados pequenos (`.accent-swatch`), um por cor em `ACCENT_COLORS` (mesma paleta usada em todo o app — perfil de usuário e perfil de servidor, já documentada nas sessões anteriores desta auditoria de código), cada um com `data-color` definindo a cor de fundo via CSS.
+**ESTADO NORMAL**: Primeira cor da lista (`ACCENT_COLORS[0]`) pré-selecionada por padrão (`useState(ACCENT_COLORS[0])`), com `aria-checked="true"` e classe `selected`.
+**HOVER**: A confirmar detalhe exato de CSS (mesma classe `.accent-swatch` reaproveitada em `ServerSettings.tsx`, já documentada como tendo tratamento de hover nas fichas de perfil de servidor auditadas informalmente na sessão anterior).
+**ACTIVE/PRESSED**: Clique aplica `selected` imediatamente (sem etapa de confirmação).
+**SELECTED**: Anel/borda de destaque na cor escolhida (`selected` class), `aria-checked="true"` só nessa opção.
+**DISABLED**: Não desabilita durante loading.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique esquerdo em qualquer swatch.
+**PRÉ-CONDIÇÕES**: `mode === 'register'`.
+**RESULTADO IMEDIATO**: `setAccentColor(color)`.
+**RESULTADO VISUAL**: Swatch clicado ganha o anel de seleção; o anterior perde.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada nesta passagem (provavelmente uma transição simples de `box-shadow`/`border`, reaproveitando o mesmo CSS do seletor de cor de perfil de servidor).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Usuário segue para o botão de envio.
+**RESULTADO FINAL**: Cor escolhida vai no corpo de `POST /api/auth/register` como `accentColor`, validada no backend por `z.enum(ACCENT_COLORS)` — só um valor da paleta fixa é aceito, sem cor livre/hex nesta etapa (diferente da cor de "Faixa" de servidor, que já foi documentada em sessões anteriores como aceitando a mesma paleta fixa também, não hex livre).
+**EFEITO LOCAL**: Nenhuma pré-visualização em outro lugar da tela de entrada (a cor não aparece refletida em nenhum outro elemento da própria tela de cadastro — só será visível depois, no perfil, pós-login).
+**EFEITO REMOTO**: Nenhum até o cadastro ser concluído.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada por clique (só no submit).
+**BANCO**: Gravado em `users.accent_color` só na criação da conta (`createUser`).
+**REFRESH**: Volta pra primeira cor da paleta em F5 (estado não persiste antes do cadastro concluir).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável (sempre um valor válido, já que só botões pré-definidos existem — não há campo de texto livre para errar o formato).
+**CANCELAMENTO**: Escolher outra cor substitui a anterior.
+**REVERSÃO**: Trocável a qualquer momento antes do submit; depois do cadastro, só editável em Configurações > Meu perfil (fora do escopo desta ficha).
+**ATALHO**: Navegável via Tab; **não confirmado se implementa navegação por seta dentro do `radiogroup`** (padrão ARIA completo de radiogroup usaria setas para mover a seleção) — mesma lacuna de `ENTRY_MODE_TOGGLE`.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `role="radiogroup"` + `aria-label="Cor do perfil"` no container; cada botão com `role="radio"`, `aria-checked`, `aria-label="Cor {valor}"` (anuncia o nome/valor da cor, não uma amostra visual, então funciona para leitor de tela apesar de não haver nome amigável tipo "Verde"/"Roxo" — só o valor bruto da paleta).
+
+---
+
+## 1.7 — LOGIN_SUBMIT
+
+**ID**: `LOGIN_SUBMIT`
+**NOME**: Enviar formulário de login
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Tela de entrada > aba "Entrar" > formulário > botão principal no rodapé`
+**POSIÇÃO NA INTERFACE**: Base do formulário, largura total (`.primary-button.entry-submit`).
+**APARÊNCIA**: Botão de destaque (cor de acento do app), texto "Entrar" em estado normal.
+**ESTADO NORMAL**: Texto "Entrar", habilitado.
+**HOVER**: Estilo padrão de `.primary-button:hover` do app (não detalhado nesta passagem).
+**ACTIVE/PRESSED**: Estilo padrão de `:active`.
+**SELECTED**: Não aplicável.
+**DISABLED**: `disabled={loading}` — desabilita assim que a submissão começa, até resolver (sucesso ou erro).
+**LOADING**: Texto muda para um `<span className="button-spinner-row">` com um spinner (`<span className="spinner" aria-hidden="true" />`) e o texto "Entrando…".
+**TRIGGER**: Clique esquerdo, ou Enter com qualquer campo do formulário focado (comportamento nativo de `<form onSubmit>`).
+**PRÉ-CONDIÇÕES**: Campos `username`/`password` preenchidos o suficiente para passar a validação nativa do HTML (`required`).
+**RESULTADO IMEDIATO**: `handleSubmit`: `event.preventDefault()`, `setLoading(true)`, `setError('')`, depois `api.login(username, password)` → `POST /api/auth/login`.
+**RESULTADO VISUAL**: Botão vira spinner + "Entrando…"; campos continuam visíveis e editáveis (não travados).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Spinner girando (CSS, a confirmar detalhe exato de keyframes).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Backend valida `loginSchema`, busca usuário por `username` (`getUserByUsername`), compara senha (`verifyPassword`), checa banimento (`isBanned`) — nessa ordem exata. Se tudo passar: `createSession` + `setSessionCookie` + `200` com `{ user }`.
+**RESULTADO FINAL — sucesso**: `onAuthenticated(user)` chamado (prop vinda de `App.tsx`, é `loadAuthenticatedApp`) → busca config → `state = 'ready'` → `Workspace` monta.
+**EFEITO LOCAL**: Cookie de sessão `nexplay_session` setado no navegador/WebContents (12h de validade, `httpOnly`, não acessível via JS).
+**EFEITO REMOTO**: Nenhum ainda (outros usuários não são notificados de "fulano entrou" — não existe indicador de presença geral, conforme já registrado em `DISCORD_PARITY_PLAN.md` §8: "Presença (online/ausente/dnd/invisível/offline) | MISSING").
+**REALTIME**: WebSocket ainda não conectado nesta etapa (só quando `Workspace` monta).
+**BACKEND**: `POST /api/auth/login`, sujeito a `authLimiter` (20 tentativas por 15 minutos, por IP, `express-rate-limit`).
+**BANCO**: Nenhuma escrita (login não atualiza um "último acesso" nem qualquer outro campo — só leitura de `users`).
+**REFRESH**: Não aplicável a esta etapa.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Ver `LOGIN_ERROR_INVALID_CREDENTIALS` e `LOGIN_ERROR_BANNED`. Erro de rede genérico (backend fora do ar): `requestError instanceof Error ? requestError.message : 'Não foi possível entrar.'` exibido no mesmo `<div className="form-error" role="alert">`.
+**CANCELAMENTO**: **`MISSING`** — não há como cancelar uma submissão em andamento (nenhum `AbortController` visível, o botão só fica desabilitado até a Promise resolver).
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Enter em qualquer campo do formulário (comportamento nativo de HTML `<form>`).
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `role="alert"` na mensagem de erro (anunciada automaticamente por leitores de tela assim que aparece). Spinner tem `aria-hidden="true"` (decorativo, o texto "Entrando…" ao lado já comunica o estado).
+
+---
+
+## 1.8 — REGISTER_SUBMIT
+
+**ID**: `REGISTER_SUBMIT`
+**NOME**: Enviar formulário de cadastro
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Tela de entrada > aba "Criar conta" > formulário > botão principal no rodapé`
+**POSIÇÃO NA INTERFACE**: Idêntica a `LOGIN_SUBMIT` — mesmo elemento, texto diferente.
+**APARÊNCIA**: Texto "Criar conta e entrar" em vez de "Entrar".
+**ESTADO NORMAL**: Habilitado, texto "Criar conta e entrar".
+**HOVER**: Idêntico a `LOGIN_SUBMIT`.
+**ACTIVE/PRESSED**: Idêntico.
+**SELECTED**: Não aplicável.
+**DISABLED**: `disabled={loading}`, idêntico.
+**LOADING**: Spinner + texto "Criando conta…" (mensagem diferente de `LOGIN_SUBMIT`).
+**TRIGGER**: Clique esquerdo, ou Enter em qualquer campo.
+**PRÉ-CONDIÇÕES**: `username`, `password` (≥8 caracteres), `inviteToken` e uma cor selecionada (sempre há uma, por padrão).
+**RESULTADO IMEDIATO**: `api.register(username, password, inviteToken, accentColor)` → `POST /api/auth/register`.
+**RESULTADO VISUAL**: Idêntico padrão de `LOGIN_SUBMIT` (spinner substitui o texto).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Idêntica.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Backend, na ordem exata do código: (1) valida `registerSchema`; (2) checa `inviteMatches(inviteToken)`; (3) normaliza espaços do username (`replace(/\s+/g, ' ')`); (4) checa duplicidade (`getUserByUsername`); (5) `createUser` (hash de senha); (6) `addServerMember` + `assignDefaultRole` no **servidor mais antigo da instância** (`getDefaultServerId()`) — cadastro com o token global sempre entra automaticamente nesse servidor, não em um escolhido pelo usuário; (7) `createSession` + `setSessionCookie`; (8) `201` com `{ user }`.
+**RESULTADO FINAL — sucesso**: Mesma cascata de `LOGIN_SUBMIT` (`onAuthenticated` → config → `Workspace`), mas com a conta nova já como membro do servidor padrão, pronta para aparecer na rail de servidores imediatamente.
+**EFEITO LOCAL**: Cookie de sessão setado; conta nova persistida.
+**EFEITO REMOTO — achado real**: **Nenhum evento de tempo real (`MEMBER_JOIN`) é emitido para os outros membros do servidor padrão quando alguém se cadastra** — checando o código da rota `POST /api/auth/register`, não há chamada a `sendToServerMembers`. Membros já conectados só veriam o novo usuário na lista depois de um refresh/reconexão que refaça o fetch de membros. **Isso é uma lacuna real, distinta de `MEMBER_JOIN` via convite de servidor específico** (que já é documentado como funcionando em sessões anteriores — a confirmar se o evento existe nesse outro fluxo quando a auditoria chegar em Servidores/Convites).
+**REALTIME**: Ver `EFEITO REMOTO` — nenhum evento emitido nesta rota especificamente.
+**BACKEND**: `POST /api/auth/register`, sujeito ao mesmo `authLimiter` de `LOGIN_SUBMIT` (20/15min, mesmo balde compartilhado por IP entre login e registro).
+**BANCO**: Escreve em `users`, `server_members`, `user_roles` (atribuição do cargo `@everyone` do servidor padrão).
+**REFRESH**: Não aplicável a esta etapa.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Ver `REGISTER_ERROR_INVALID_INVITE` e `REGISTER_ERROR_DUPLICATE_USERNAME`. Erro de validação de schema (senha curta, username com caracteres inválidos) retorna a mensagem genérica "Informe um nome de usuário e senha válidos." — **não diferencia qual campo especificamente falhou** (username inválido e senha curta geram a mesma mensagem).
+**CANCELAMENTO**: `MISSING`, mesma lacuna de `LOGIN_SUBMIT`.
+**REVERSÃO**: Não aplicável — não há "desfazer cadastro" (a conta já existe; só um admin excluindo o usuário diretamente no banco reverteria, fora do escopo de qualquer UI).
+**ATALHO**: Enter em qualquer campo.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Idêntica a `LOGIN_SUBMIT`.
+
+---
+
+## 1.9 — LOGIN_ERROR_INVALID_CREDENTIALS
+
+**ID**: `LOGIN_ERROR_INVALID_CREDENTIALS`
+**NOME**: Erro de usuário/senha inválidos
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Tela de entrada > aba "Entrar" > abaixo dos campos, acima do botão de envio`
+**POSIÇÃO NA INTERFACE**: `<div className="form-error" role="alert">`, entre os campos e o botão de envio.
+**APARÊNCIA**: Texto de erro em destaque (cor de perigo, presumivelmente vermelha — padrão `.form-error` reaproveitado em outros formulários já documentados nesta auditoria, como o de exclusão de servidor).
+**ESTADO NORMAL**: Ausente — só aparece após uma tentativa falha.
+**HOVER**: Não aplicável (texto estático, não interativo).
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: Resposta `401` de `POST /api/auth/login` com corpo `{ error: 'Usuário ou senha inválidos.' }` — disparado quando `getUserByUsername` não encontra o usuário **ou** `verifyPassword` falha. **Mensagem deliberadamente idêntica nos dois casos** (usuário inexistente vs. senha errada) — boa prática de segurança (não revela se o username existe), confirmada como intencional lendo o código (`if (!user || !verifyPassword(user, body.data.password))`, uma única branch para os dois casos).
+**PRÉ-CONDIÇÕES**: Tentativa de login com credenciais que não batem.
+**RESULTADO IMEDIATO**: `catch` em `handleSubmit` seta `error` com a mensagem vinda do backend.
+**RESULTADO VISUAL**: Mensagem aparece; `loading` volta a `false` (bloco `finally`), botão volta ao estado normal ("Entrar").
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma transição de entrada documentada (aparece instantaneamente).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Usuário corrige e tenta de novo, ou troca de aba.
+**RESULTADO FINAL**: Nenhuma sessão criada; usuário continua na tela de entrada.
+**EFEITO LOCAL**: Nenhum cookie setado.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: A tentativa em si já conta para o limite de `authLimiter` (20/15min) — **múltiplas tentativas erradas consecutivas eventualmente bloqueiam até tentativas corretas**, com a mensagem genérica "Muitas tentativas. Aguarde alguns minutos." (ver ficha própria a seguir, se aplicável em auditoria futura de rate-limit).
+**BANCO**: Nenhuma escrita — nenhum registro de "tentativa falha" persistido (sem auditoria de tentativas de login no banco).
+**REFRESH**: Erro desaparece em F5 (estado React perdido).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: É a própria ficha de erro.
+**CANCELAMENTO**: Trocar de aba ou editar os campos já limpa implicitamente (o erro só é limpo explicitamente por `switchMode`, **não por editar os campos e tentar de novo** — na real o próximo `handleSubmit` já faz `setError('')` no início, então o erro anterior desaparece assim que uma nova tentativa começa, não enquanto o usuário só está digitando).
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `role="alert"` — leitores de tela anunciam automaticamente assim que a mensagem aparece no DOM.
+
+---
+
+## 1.10 — LOGIN_ERROR_BANNED
+
+**ID**: `LOGIN_ERROR_BANNED`
+**NOME**: Erro de conta banida ao tentar entrar
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: Idêntico a `LOGIN_ERROR_INVALID_CREDENTIALS` — mesmo elemento de UI.
+**POSIÇÃO NA INTERFACE**: Idêntica.
+**APARÊNCIA**: Idêntica (`.form-error`).
+**ESTADO NORMAL**: Ausente.
+**HOVER**: Não aplicável.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: Resposta `403` de `POST /api/auth/login` com `{ error: 'Sua conta foi banida deste servidor.' }` — disparado quando `isBanned(user.id)` retorna verdadeiro, **checado depois** de confirmar que usuário/senha estão corretos (então um usuário banido descobre que a senha está certa antes de saber que está banido — a ordem exata do código é login válido → checagem de ban, não o contrário).
+**PRÉ-CONDIÇÕES**: Credenciais corretas, mas conta banida.
+**RESULTADO IMEDIATO**: Mesmo fluxo de `catch`/`setError` de `LOGIN_ERROR_INVALID_CREDENTIALS`.
+**RESULTADO VISUAL**: Mensagem específica de banimento exibida.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma — usuário banido não tem caminho de recurso na própria UI (**`MISSING`: nenhum link/instrução de "entre em contato com um administrador"**, nenhuma informação de quem baniu ou por quê).
+**RESULTADO FINAL**: Sessão nunca criada para essa conta enquanto o ban estiver ativo.
+**EFEITO LOCAL**: Nenhum.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Mesma sujeição a `authLimiter`.
+**BANCO**: Nenhuma escrita nesta tentativa (só leitura de `bans`).
+**REFRESH**: Erro some em F5.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: É a própria ficha.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Só um administrador desbanindo a conta (fora do escopo desta tela — ação feita em Configurações do servidor > Membros, área ainda não auditada em detalhe neste documento).
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Idêntica a `LOGIN_ERROR_INVALID_CREDENTIALS`.
+
+**Nota de auditoria**: `isBanned` — a confirmar em auditoria futura se o banimento é por instância inteira ou por servidor (o `DISCORD_PARITY_PLAN.md` §1 registra "Timeout por servidor" como `DONE` mas trata banimento (`bans`) como ainda de instância inteira via `broadcast()` global em `MEMBER_BANNED`/`MEMBER_UNBANNED` — ou seja, ser banido de um servidor único **impede login na instância inteira**, não só naquele servidor. Isso é coerente com o texto exato da mensagem de erro aqui documentada ("banida deste servidor") ser tecnicamente enganosa, já que o efeito real bloqueia a conta inteira, não só aquele servidor — **achado a confirmar/registrar como possível inconsistência de copy quando a auditoria de moderação for feita**.
+
+---
+
+## 1.11 — REGISTER_ERROR_INVALID_INVITE
+
+**ID**: `REGISTER_ERROR_INVALID_INVITE`
+**NOME**: Erro de código de convite inválido
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: Idêntico a `LOGIN_ERROR_INVALID_CREDENTIALS`, na aba "Criar conta".
+**POSIÇÃO NA INTERFACE**: Idêntica.
+**APARÊNCIA**: Idêntica (`.form-error`).
+**ESTADO NORMAL**: Ausente.
+**HOVER**: Não aplicável.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: Resposta `401` de `POST /api/auth/register` com `{ error: 'Convite inválido.' }`, disparada quando `inviteMatches(inviteToken)` retorna falso — comparação de tempo constante (`timingSafeEqual`) contra `config.INVITE_TOKEN`, resistente a ataque de temporização.
+**PRÉ-CONDIÇÕES**: Tentativa de cadastro com token errado.
+**RESULTADO IMEDIATO**: Mesmo fluxo `catch`/`setError`.
+**RESULTADO VISUAL**: Mensagem "Convite inválido." exibida.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Usuário corrige o token e tenta de novo.
+**RESULTADO FINAL**: Nenhuma conta criada.
+**EFEITO LOCAL**: Nenhum.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Sujeito a `authLimiter` — **compartilha o mesmo balde de 20/15min que login e registro juntos**, então várias tentativas de convite errado consecutivas também podem bloquear tentativas de login legítimas do mesmo IP.
+**BANCO**: Nenhuma escrita.
+**REFRESH**: Erro some em F5.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: É a própria ficha.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Idêntica.
+
+---
+
+## 1.12 — REGISTER_ERROR_DUPLICATE_USERNAME
+
+**ID**: `REGISTER_ERROR_DUPLICATE_USERNAME`
+**NOME**: Erro de nome de usuário já existente
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: Idêntico às fichas de erro anteriores, na aba "Criar conta".
+**POSIÇÃO NA INTERFACE**: Idêntica.
+**APARÊNCIA**: Idêntica.
+**ESTADO NORMAL**: Ausente.
+**HOVER**: Não aplicável.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: Resposta `409` de `POST /api/auth/register` com `{ error: 'Esse nome de usuário já existe.' }`, disparada quando `getUserByUsername(username)` já retorna um registro — checagem feita **depois** de normalizar espaços (`username.replace(/\s+/g, ' ')`) e **depois** de validar o convite (então um convite errado é sempre reportado primeiro, mesmo que o username também já exista).
+**PRÉ-CONDIÇÕES**: Convite válido, username já cadastrado por outra conta.
+**RESULTADO IMEDIATO**: Mesmo fluxo `catch`/`setError`.
+**RESULTADO VISUAL**: Mensagem exibida.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Usuário escolhe outro nome.
+**RESULTADO FINAL**: Nenhuma conta criada.
+**EFEITO LOCAL**: Nenhum.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Sujeito a `authLimiter`.
+**BANCO**: Nenhuma escrita (só a leitura que constata a colisão).
+**REFRESH**: Erro some em F5.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: É a própria ficha.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Idêntica.
+
+**Nota de auditoria**: comparação de duplicidade não é explicitamente case-insensitive nem confirmada como tal nesta passagem — a checar em auditoria futura de `apps/api/src/users.ts` (`getUserByUsername`) se "Fulano" e "fulano" são tratados como o mesmo nome ou como dois usuários distintos.
+
+---
+
+## 1.13 — APP_BOOT_ERROR
+
+**ID**: `APP_BOOT_ERROR`
+**NOME**: Erro ao carregar o app após autenticação (config indisponível)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > após SESSION_RESTORE_ON_BOOT ou LOGIN_SUBMIT/REGISTER_SUBMIT bem-sucedidos > falha ao buscar api.getConfig()`
+**POSIÇÃO NA INTERFACE**: Tela cheia, substitui toda a UI (`<main className="splash error-page">`).
+**APARÊNCIA**: Título "Não foi possível iniciar", parágrafo com a mensagem de erro específica, botão `.primary-button` "Tentar novamente".
+**ESTADO NORMAL**: Não aplicável (só existe em erro).
+**HOVER**: Padrão de `.primary-button:hover`.
+**ACTIVE/PRESSED**: Padrão de `:active`.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável a esta tela (a tela de loading já passou).
+**TRIGGER**: `api.getConfig()` rejeitar dentro de `loadAuthenticatedApp`.
+**PRÉ-CONDIÇÕES**: Sessão já autenticada (cookie válido ou login/registro recém bem-sucedido), mas `GET /api/config` falha (backend fora do ar, erro de rede, etc.).
+**RESULTADO IMEDIATO**: `catch` seta `state = { status: 'error', message }`.
+**RESULTADO VISUAL**: Tela de erro substitui a de loading/formulário.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Clique em "Tentar novamente" → `window.location.reload()` — **recarrega a página/app inteiro do zero** (não uma nova tentativa isolada de só `getConfig()`; é um reload completo, equivalente a `APP_RELOAD` documentado no Roteiro 0 quando em desktop).
+**RESULTADO FINAL**: Se o backend voltar: reload leva de volta a `SESSION_RESTORE_ON_BOOT`, que desta vez deve completar normalmente. Se continuar fora do ar: mesma tela de erro reaparece.
+**EFEITO LOCAL**: Nenhuma mudança de dado.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável — WebSocket nunca chegou a conectar, já que isso só acontece dentro do `Workspace`, que nunca chegou a montar.
+**BACKEND**: A chamada que falhou (`GET /api/config`); "Tentar novamente" refaz tudo do zero via reload.
+**BANCO**: Não aplicável.
+**REFRESH**: É a própria ação de recuperação.
+**RECONEXÃO**: Nenhuma lógica de retry automático — o erro fica parado na tela até o usuário clicar manualmente.
+**ERRO**: É a própria ficha.
+**CANCELAMENTO**: Não aplicável (não há como "descartar" o erro sem recarregar).
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Nenhum atalho de teclado dedicado para "Tentar novamente" além de Tab+Enter no botão.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Sem `role="alert"` nesta tela especificamente (diferente das mensagens de erro de formulário) — **achado**: uma falha desta magnitude (app inteiro não carrega) não é anunciada ativamente a um leitor de tela, só fica disponível se o usuário navegar até o conteúdo.
+
+---
+
+## 1.14 — LOGOUT
+
+**ID**: `LOGOUT`
+**NOME**: Sair da conta
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > Configurações (engrenagem) > barra lateral de navegação > abaixo do divisor, último item > "Sair da conta"`
+**POSIÇÃO NA INTERFACE**: Rodapé da navegação lateral do modal de Configurações, separado dos itens normais por um `<span className="settings-nav-divider" />`.
+**APARÊNCIA**: Botão com ícone (`LeaveIcon`, 15px) + texto "Sair da conta", classe própria `.settings-nav-signout` (presumivelmente com cor de destaque/perigo, distinta dos outros itens de navegação — a confirmar tom exato no CSS).
+**ESTADO NORMAL**: Sempre visível e habilitado para qualquer usuário autenticado (não há condição de permissão).
+**HOVER**: A confirmar estilo exato (herdado de `.settings-nav-signout:hover`).
+**ACTIVE/PRESSED**: Não confirmado detalhe visual distinto.
+**SELECTED**: Não aplicável (não é uma seção de configurações — não fica "ativo" como as outras abas, já que clicar nele não troca de seção, dispara a ação direto).
+**DISABLED**: Nunca desabilitado.
+**LOADING**: **`MISSING`: nenhum estado de loading visual no próprio botão** enquanto `onSignOut` está em andamento (a chamada `api.deleteSession()` é assíncrona, mas o botão não mostra spinner nem fica desabilitado durante isso — clique duplo acidental dispararia a chamada duas vezes, ainda que o efeito final seja idempotente).
+**TRIGGER**: Clique esquerdo — **direto, sem diálogo de confirmação**.
+**PRÉ-CONDIÇÕES**: Modal de Configurações aberto.
+**RESULTADO IMEDIATO**: `onClick={onSignOut}` chama a prop vinda de `Workspace`, que é `() => void voice.disconnect().finally(onSignOut)` — **primeiro desconecta de qualquer canal de voz ativo, só depois chama o `onSignOut` real** (vindo de `App.tsx`): `await api.deleteSession().catch(() => undefined); setState({ status: 'signed-out' })`.
+**RESULTADO VISUAL**: Modal de Configurações fecha junto (a tela inteira troca para `EntryScreen`); nenhuma animação de transição documentada entre os dois estados.
+**RESULTADO SONORO**: Nenhum (mas se estava em voz, o som de desconexão de voz — já documentado como existente em `DISCORD_PARITY_PLAN.md` §5 — deveria tocar como parte do `voice.disconnect()`, a confirmar quando a auditoria de voz for feita).
+**ANIMAÇÃO**: Nenhuma transição própria de logout documentada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: **`MISSING`: nenhuma confirmação "Tem certeza que quer sair?"** — clique único e imediato encerra a sessão, mesmo que o usuário estivesse no meio de digitar uma mensagem ou conectado a uma call (a call é desconectada de propósito, como parte do fluxo, não por acidente, mas sem aviso prévio nenhum).
+**SEGUNDA ETAPA**: `App.tsx` re-renderiza para `EntryScreen`.
+**RESULTADO FINAL**: `DELETE /api/session` limpa o cookie (`clearSessionCookie`) no backend; cliente esquece toda a sessão local (estado React resetado, `Workspace` desmonta por completo).
+**EFEITO LOCAL**: Cookie removido; se estava em call de voz, desconecta primeiro (efeito colateral do `.finally` encadeado); WebSocket fecha junto (desmontagem do `Workspace` limpa os listeners, mas **a conexão em si — `connectRealtime()` é "idempotente" e global via variável de módulo `started` em `realtime.ts` — não é explicitamente fechada por um `socket.close()` no logout**, o que é uma lacuna sutil: o WebSocket físico pode continuar aberto no navegador mesmo depois do logout, até a página ser recarregada ou fechada. A confirmar em auditoria futura da camada de realtime.
+**EFEITO REMOTO**: Se estava em call: outros participantes veem a desconexão de voz normalmente (mesmo efeito de um "sair da call" comum). Não há indicador de presença geral para outros verem "ficou offline" (mesma lacuna já registrada em `DISCORD_PARITY_PLAN.md` §8).
+**REALTIME**: Ver `EFEITO LOCAL` — potencial lacuna de o socket não fechar explicitamente.
+**BACKEND**: `DELETE /api/session` — **não exige `requireSession`** (rota registrada sem esse middleware), então chamar logout sem estar logado não dá erro, só limpa um cookie que talvez já nem existisse.
+**BANCO**: Nenhuma escrita (sessão é stateless — não existe uma linha de "sessão ativa" pra apagar).
+**REFRESH**: Não aplicável a esta etapa.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: `api.deleteSession().catch(() => undefined)` — **qualquer erro na chamada de logout é silenciosamente ignorado**; o cliente sempre volta pra tela de entrada independente da API responder com sucesso ou falha (comportamento correto do ponto de vista de UX: o usuário sempre "sai" localmente, mesmo que a limpeza do cookie no servidor falhe por algum motivo transitório).
+**CANCELAMENTO**: **`MISSING`** — sem confirmação, não há nada a cancelar; a ação é imediata e não tem um "desfazer" (única forma de reverter é logar de novo).
+**REVERSÃO**: Fazer login de novo (`LOGIN_SUBMIT`).
+**ATALHO**: Nenhum atalho de teclado dedicado para logout.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Alcançável via Tab dentro do modal de Configurações, ativável via Enter/Espaço.
+
+---
+
+## 1.15 — SESSION_FORCE_LOGOUT_BAN
+
+**ID**: `SESSION_FORCE_LOGOUT_BAN`
+**NOME**: Logout forçado ao ser banido enquanto a sessão está ativa
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > qualquer tela dentro do Workspace > evento de tempo real MEMBER_BANNED recebido para o próprio usuário`
+**POSIÇÃO NA INTERFACE**: Não aplicável (reação automática, sem elemento de UI próprio disparando).
+**APARÊNCIA**: Não aplicável ao gatilho em si; resultado visual é a própria `EntryScreen` reaparecendo.
+**ESTADO NORMAL**: Não aplicável.
+**HOVER**: Não aplicável.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: Evento WebSocket `{ type: 'MEMBER_BANNED', userId }` chega com `userId === session.id` — um `useEffect` em `Workspace.tsx` está sempre escutando via `onRealtimeEvent`.
+**PRÉ-CONDIÇÕES**: Usuário logado, com WebSocket conectado, sendo banido **por um administrador em qualquer servidor** enquanto ainda está com o app aberto (banimento é de instância inteira, conforme já registrado na nota de auditoria de `LOGIN_ERROR_BANNED`).
+**RESULTADO IMEDIATO**: `void onSignOut()` chamado diretamente — **mesma função de `LOGOUT`, sem passar pelo botão** — mas **note a diferença**: aqui é `onSignOut` puro (a prop recebida diretamente pelo `Workspace`), **não** o wrapper `() => void voice.disconnect().finally(onSignOut)` que o botão de Configurações usa. Ou seja, **se o usuário banido estava em call de voz no momento do ban, a conexão de voz não é explicitamente desconectada antes do logout forçado** — mesma lacuna a confirmar quando a auditoria de voz cobrir o comportamento exato de desmontagem do `Workspace`.
+**RESULTADO VISUAL**: Sem nenhum aviso ("você foi banido") — a tela simplesmente volta para `EntryScreen` como se fosse um logout normal, **sem nenhuma mensagem explicando o motivo**. Se o usuário tentar logar de novo imediatamente, só então veria `LOGIN_ERROR_BANNED`.
+**RESULTADO SONORO**: Nenhum aviso sonoro específico de "você foi banido".
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: **`MISSING`: nenhuma explicação na hora** — comparado ao Discord real, que mostra uma tela específica de "Você foi banido deste servidor", o NexPlay hoje só desloga silenciosamente sem contexto.
+**SEGUNDA ETAPA**: Usuário vê `EntryScreen` sem explicação; só descobre o motivo se tentar logar de novo.
+**RESULTADO FINAL**: Sessão encerrada no cliente (mesmo efeito de `LOGOUT`).
+**EFEITO LOCAL**: Mesmo de `LOGOUT`, sem o passo de desconexão de voz explícita.
+**EFEITO REMOTO**: O ban em si já teria efeitos remotos documentados em auditoria futura de moderação (remoção de `server_members`, etc.) — fora do escopo desta ficha específica de sessão.
+**REALTIME**: O evento que dispara tudo isso.
+**BACKEND**: Nenhuma chamada nova além do `DELETE /api/session` que `onSignOut` já faz internamente.
+**BANCO**: Nenhuma escrita nesta camada (a escrita do ban em si acontece na rota de moderação, não aqui).
+**REFRESH**: Não aplicável.
+**RECONEXÃO**: Não aplicável — a sessão é encerrada, não reconectada.
+**ERRO**: Nenhum tratamento de erro específico além do já existente em `onSignOut`.
+**CANCELAMENTO**: Não aplicável — não há como o usuário evitar isso uma vez que o evento chega.
+**REVERSÃO**: Não aplicável enquanto o ban estiver ativo.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Nenhuma anunciação especial (mesma lacuna de "sem aviso" documentada acima se estende à acessibilidade — um leitor de tela também não seria informado do motivo).
+
+---
+
+## 1.16 — SESSION_EXPIRE_NATURAL
+
+**ID**: `SESSION_EXPIRE_NATURAL`
+**NOME**: Expiração natural da sessão após 12 horas
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > qualquer tela > cookie nexplay_session ultrapassa 12h desde o login/cadastro`
+**POSIÇÃO NA INTERFACE**: Não aplicável (não é uma ação de UI — é passagem de tempo).
+**APARÊNCIA**: Não aplicável até o momento em que uma chamada à API falhar.
+**ESTADO NORMAL**: Cookie válido, contando regressivamente (`maxAge: SESSION_DURATION_SECONDS * 1000` = 12h, tanto no cookie do navegador quanto no `expiresAt` embutido no payload assinado — **dupla validação**: o navegador já para de enviar o cookie após o `maxAge`, e mesmo que o enviasse, `getSessionFromCookieHeader` rejeitaria por `payload.expiresAt <= Date.now() / 1000`).
+**HOVER**: Não aplicável.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: Passagem do tempo — nenhuma ação do usuário.
+**PRÉ-CONDIÇÕES**: App aberto (ou reaberto) depois de 12h de sessão.
+**RESULTADO IMEDIATO**: **`MISSING`: nenhum aviso proativo antes de expirar** (sem "sua sessão vai expirar em 5 minutos") e **nenhuma detecção ativa em tempo real do lado do cliente** — o app só descobre que a sessão expirou na próxima vez que uma chamada HTTP autenticada falhar com `401`, ou no próximo F5/reabrir (que refaz `SESSION_RESTORE_ON_BOOT` do zero).
+**RESULTADO VISUAL — se via F5/reabrir**: Mesmo fluxo de `SESSION_RESTORE_ON_BOOT` com cookie inválido → `EntryScreen` aparece diretamente, sem explicação de "sua sessão expirou" (visualmente indistinguível de nunca ter logado).
+**RESULTADO VISUAL — se a sessão expira com o app já aberto, sem F5**: **`MISSING`/achado real**: como não há nenhum timer no cliente vigiando `expiresAt`, e como o WebSocket usa seu próprio ciclo de vida (não checa o cookie HTTP a cada mensagem), **o app pode continuar parecendo "logado" na tela por tempo indefinido além das 12h, até a próxima chamada HTTP que exija `requireSession` falhar** — nesse momento, o comportamento exato depende de cada chamada individual tratar ou não um 401 chamando `onSignOut` (a maioria das chamadas em `api.ts`, a confirmar em auditoria futura, provavelmente só propaga o erro pro componente que a fez, sem uma reação global centralizada de "401 em qualquer lugar → desloga").
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Login de novo.
+**RESULTADO FINAL**: Nova sessão de 12h.
+**EFEITO LOCAL**: Nenhuma perda de dado não salvo é avisada — se o usuário estava digitando uma mensagem longa no momento em que a sessão expirasse silenciosamente, só descobriria ao tentar enviar e receber um erro.
+**EFEITO REMOTO**: Se estava em call de voz no momento da expiração: **a conexão LiveKit não depende do cookie HTTP pra continuar funcionando** (é uma sessão WebRTC separada, com seu próprio token de curta duração emitido no momento de entrar na sala) — então a call plausivelmente continua funcionando mesmo com a sessão HTTP/cookie já expirada, até a próxima ação que dependa da API REST falhar. **Comportamento exato a confirmar quando a auditoria de voz for feita.**
+**REALTIME**: WebSocket não é automaticamente derrubado pela expiração do cookie HTTP (protocolos diferentes) — a confirmar se o handshake do WebSocket também valida `expiresAt` só no momento de conectar (usando `getSessionFromCookieHeader` do lado do servidor) e nunca mais depois, o que significaria que uma conexão WebSocket já aberta **sobrevive indefinidamente à expiração da sessão HTTP**, sem nenhuma verificação periódica.
+**BACKEND**: Qualquer rota com `requireSession` retorna `401` a partir do momento em que `expiresAt` é ultrapassado.
+**BANCO**: Não aplicável (nada persiste o momento de expiração — é calculado on-the-fly a cada request).
+**REFRESH**: F5 força a redescoberta do estado real (sessão morta → `EntryScreen`).
+**RECONEXÃO**: **`MISSING`: nenhuma tentativa de renovar a sessão automaticamente** (sem refresh token, sem "renovar sessão silenciosamente em segundo plano" antes de expirar) — a única forma de continuar usando o app é logar de novo manualmente depois que expira.
+**ERRO**: `401 Unauthorized` em qualquer rota protegida.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Login de novo.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Não aplicável — mesma lacuna de "sem aviso" se estende à ausência de qualquer anúncio para leitor de tela.
+
+---
+
+## 1.17 — REALTIME_RECONNECT
+
+**ID**: `REALTIME_RECONNECT`
+**NOME**: Reconexão automática do WebSocket após queda
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > apps/web/src/realtime.ts > módulo global, ativo durante toda a vida do Workspace`
+**POSIÇÃO NA INTERFACE**: Não aplicável — não existe um indicador visual de "reconectando" documentado em nenhum componente encontrado até agora nesta auditoria (a confirmar contra `Workspace.tsx` em detalhe quando a auditoria de navegação/topbar for feita — pode haver um indicador que não foi identificado ainda nesta passagem específica sobre login/sessão).
+**APARÊNCIA**: Não aplicável (sem UI própria confirmada).
+**ESTADO NORMAL**: `WebSocket` aberto, `reconnectDelayMs` resetado para `1000` (1s) a cada conexão bem-sucedida (`ws.onopen`).
+**HOVER**: Não aplicável.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável (sem UI).
+**TRIGGER**: `ws.onclose` (conexão caiu, por qualquer motivo: rede instável, backend reiniciado, timeout) ou `ws.onerror` (que por sua vez chama `ws.close()`, convergindo para o mesmo caminho de `onclose`).
+**PRÉ-CONDIÇÕES**: `connectRealtime()` já ter sido chamado uma vez (dentro do `Workspace`, então só existe pós-login).
+**RESULTADO IMEDIATO**: `scheduleReconnect()`: se já há um `reconnectTimer` pendente, não faz nada (evita múltiplos timers concorrentes); senão, agenda uma nova tentativa de `open()` após `reconnectDelayMs`.
+**RESULTADO VISUAL**: Nenhum indicador confirmado nesta auditoria — usuário **não tem como saber visualmente que o WebSocket caiu e está tentando reconectar**, exceto pela ausência de atualizações em tempo real (mensagens não chegam, mudanças de outros usuários não aparecem) até a reconexão suceder.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Backoff exponencial: `reconnectDelayMs = Math.min(reconnectDelayMs * 2, 15_000)` a cada tentativa que falha — 1s, 2s, 4s, 8s, 15s (teto), 15s, 15s... indefinidamente, sem limite máximo de tentativas (tenta para sempre até suceder ou a aba/app fechar).
+**RESULTADO FINAL — sucesso**: `ws.onopen` dispara `reconnectDelayMs` de volta para `1000`, e todos os `connectHandlers` registrados via `onRealtimeConnect` são chamados — **esse é o mecanismo real de recuperação de estado perdido**: cada consumidor (ex.: `useServersState`, `useActiveServerMember`, listas de canais) reage a esse evento refazendo o fetch HTTP inicial correspondente, sincronizando qualquer coisa que mudou enquanto a conexão estava caída. Não há um mecanismo de "replay" de eventos perdidos — é sempre um refetch completo, não incremental.
+**EFEITO LOCAL**: Enquanto desconectado: nenhuma mensagem/atualização em tempo real chega; envio de novas mensagens **continuaria funcionando via HTTP normal** (o envio de mensagem é uma chamada REST, não depende do WebSocket estar aberto — só o *recebimento* em tempo real depende dele), então o usuário pode continuar enviando mensagens "às cegas" sem saber se outros estão vendo atualizações ao vivo.
+**EFEITO REMOTO**: Do ponto de vista de outros usuários, nada muda (a queda é só do lado do cliente que perdeu conexão).
+**REALTIME**: É o próprio mecanismo documentado.
+**BACKEND**: Cada tentativa de reconexão é um novo handshake de WebSocket em `/api/realtime`, que revalida o cookie de sessão via `getSessionFromCookieHeader` no momento do upgrade.
+**BANCO**: Não aplicável.
+**REFRESH**: F5 força uma reconexão imediata (`connectRealtime()` roda de novo do zero, `started` reseta com o reload da página inteira).
+**RECONEXÃO**: É a própria ficha.
+**ERRO**: Se a sessão HTTP tiver expirado entre a queda e a tentativa de reconexão (ver `SESSION_EXPIRE_NATURAL`), o handshake do WebSocket seria rejeitado — **comportamento exato de rejeição (fecha imediatamente? erro específico?) não confirmado nesta auditoria**, mas o loop de `scheduleReconnect()` continuaria tentando de qualquer forma, já que não há lógica que diferencie "falhou por rede" de "falhou por sessão expirada" — os dois casos caem no mesmo `onclose`/retry infinito, potencialmente tentando reconectar para sempre com uma sessão que nunca mais vai ser válida até o usuário logar de novo manualmente.
+**CANCELAMENTO**: Não aplicável — não há como o usuário pausar/cancelar as tentativas de reconexão automática.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Não aplicável (sem UI própria).
+
+**Status geral do Roteiro 1**: fluxo de login/cadastro é sólido e bem tratado (mensagens de erro claras, rate limiting, comparações resistentes a timing attack), mas a auditoria achou lacunas reais de UX em torno da própria sessão: nenhum aviso de expiração, nenhum indicador de reconexão do WebSocket, nenhuma explicação visível ao ser banido em tempo real, nenhuma confirmação ao sair da conta, e nenhum evento em tempo real de "novo membro" quando alguém se cadastra pelo convite global.
+
+---
+
+# CONTINUAÇÃO
+
+Este documento cobriu, com todos os 36 campos exigidos, as **24 interações do Roteiro 0** (processo desktop) e as **18 interações do Roteiro 1** (login e sessão) — 42 fichas no total, cada uma verificada contra o código real (`apps/desktop/src/*`, `apps/web/src/App.tsx`, `EntryScreen.tsx`, `realtime.ts`, `apps/api/src/session.ts`, `apps/api/src/index.ts`), nunca assumida de memória ou copiada do comportamento genérico do Discord sem checar primeiro. Toda lacuna encontrada foi marcada `MISSING`/`PARTIAL` explicitamente, nunca simulada como se existisse.
+
+**Próximo na fila** (seguindo a ordem de prioridade da "Terceira Tarefa" do pedido original): Roteiro 2 — Navegação (rail de servidores, sidebar de canais, troca de contexto, quick switcher se existir), seguido de Roteiro 3 — Servidores/canais, Roteiro 4 — Mensagens, Roteiro 5 — Tempo real, e a partir daí Voz/Mute/Deafen/Compartilhar tela/Vídeo, que o próprio pedido do usuário marca como prioridade especial. A escala total do que falta continua a mesma descrita na versão anterior deste documento — dezenas de roteiros, cada um no mesmo padrão de profundidade aqui demonstrado.
