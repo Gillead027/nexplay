@@ -1,3 +1,4 @@
+import { prepareYtDlpCookies, ytDlpError } from './ytDlpOptions.js';
 import { spawn } from 'node:child_process';
 
 export interface YtDlpMetadata {
@@ -21,15 +22,16 @@ function boundedAppend(current: string, chunk: Buffer, limit: number): string {
 }
 
 export class YtDlpClient {
-  constructor(private readonly executablePath: string) {}
+  constructor(private readonly executablePath: string, private readonly cookiesPath = '') {}
 
   private run(args: string[], options: RunOptions = {}): Promise<string> {
     const timeoutMs = options.timeoutMs ?? 15_000;
     const stdoutLimit = options.stdoutLimit ?? 256_000;
     const stderrLimit = options.stderrLimit ?? 16_000;
 
-    return new Promise((resolve, reject) => {
-      const child = spawn(this.executablePath, args, {
+    const cookies = prepareYtDlpCookies(this.cookiesPath);
+    return new Promise<string>((resolve, reject) => {
+      const child = spawn(this.executablePath, ['--ignore-config', ...cookies.args, ...args], {
         shell: false,
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],
@@ -64,12 +66,16 @@ export class YtDlpClient {
       child.once('close', (code) => {
         if (settled) return;
         if (code !== 0) {
-          finish(new Error(`yt-dlp encerrou com código ${code}${stderr.trim() ? `: ${stderr.trim()}` : ''}`));
+          finish(ytDlpError(stderr));
           return;
         }
         finish();
       });
-    });
+    }).finally(cookies.cleanup);
+  }
+
+  async searchMetadata(query: string): Promise<YtDlpMetadata[]> {
+    return this.playlistMetadata(`ytsearch5:${query}`, 5);
   }
 
   async metadata(input: string): Promise<YtDlpMetadata> {

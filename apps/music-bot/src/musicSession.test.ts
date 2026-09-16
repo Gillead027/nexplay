@@ -8,6 +8,7 @@ import type {
   VoiceLifecycleCallbacks,
 } from './botVoiceParticipant.js';
 import { MusicSessionManager } from './musicSession.js';
+import { SpotifyProvider } from './spotifyProvider.js';
 import { MusicProviderRegistry, type MusicProvider, type PlayableMusicSource } from './musicProvider.js';
 
 const requester = { id: 'user-1', displayName: 'Gillezin' };
@@ -59,6 +60,7 @@ class FakePlayback implements MusicPlaybackHandle {
 }
 
 class FakeVoiceParticipant implements MusicVoiceParticipant {
+  deliverAudioImmediately = true;
   connected = false;
   connectCalls = 0;
   startCalls = 0;
@@ -88,6 +90,7 @@ class FakeVoiceParticipant implements MusicVoiceParticipant {
     this.maxActivePlaybacks = Math.max(this.maxActivePlaybacks, this.activePlaybacks);
     this.playbackCallbacks = callbacks;
     this.playback = new FakePlayback(initialVolume);
+    if (this.deliverAudioImmediately) callbacks.onStarted?.();
     return this.playback;
   }
 
@@ -102,6 +105,7 @@ class FakeVoiceParticipant implements MusicVoiceParticipant {
     this.maxActivePlaybacks = Math.max(this.maxActivePlaybacks, this.activePlaybacks);
     this.playbackCallbacks = callbacks;
     this.playback = new FakePlayback(initialVolume);
+    if (this.deliverAudioImmediately) callbacks.onStarted?.();
     return this.playback;
   }
 
@@ -138,15 +142,16 @@ class FakeVoiceParticipant implements MusicVoiceParticipant {
   }
 }
 
-function createHarness(startError?: Error, djUserIds: ReadonlySet<string> = new Set<string>()) {
+function createHarness(startError?: Error, djUserIds: ReadonlySet<string> = new Set<string>(), providers = fakeProviders, deliverAudioImmediately = true) {
   const participants: FakeVoiceParticipant[] = [];
   const lifecycles = new Map<string, VoiceLifecycleCallbacks>();
   const manager = new MusicSessionManager((context, callbacks) => {
     lifecycles.set(context.channelId, callbacks);
     const participant = new FakeVoiceParticipant(startError);
+    participant.deliverAudioImmediately = deliverAudioImmediately;
     participants.push(participant);
     return participant;
-  }, () => {}, fakeProviders, djUserIds);
+  }, () => {}, providers, djUserIds);
   return { manager, participants, lifecycles };
 }
 
@@ -155,6 +160,59 @@ function nextTurn(): Promise<void> {
 }
 
 describe('MusicSession player stateful', () => {
+  it('only announces playback and records history after audio arrives', async () => {
+    const harness = createHarness(undefined, new Set(), fakeProviders, false);
+    try {
+      const result = await harness.manager.execute(command('/play Matuê Kenny G'));
+      assert.match(result.message, /Carregando/);
+      assert.equal(result.nowPlaying?.state, 'CONNECTING');
+      assert.equal(harness.manager.getSession('geral')?.startedAt, null);
+      assert.match((await harness.manager.execute(command('/history'))).message, /vazio/);
+      harness.participants[0]!.playbackCallbacks!.onStarted?.();
+      assert.equal(harness.manager.snapshot('geral')?.state, 'PLAYING');
+      assert.match((await harness.manager.execute(command('/history'))).message, /Kenny G/);
+    } finally { await harness.manager.shutdown(); }
+  });
+
+  it('ignores audio arriving after a pending track was stopped', async () => {
+    const harness = createHarness(undefined, new Set(), fakeProviders, false);
+    try {
+      await harness.manager.execute(command('/play Matuê Kenny G'));
+      const oldCallbacks = harness.participants[0]!.playbackCallbacks!;
+      await harness.manager.execute(command('/stop'));
+      oldCallbacks.onStarted?.();
+      assert.equal(harness.manager.getSession('geral')?.state, 'STOPPED');
+      assert.match((await harness.manager.execute(command('/history'))).message, /vazio/);
+    } finally { await harness.manager.shutdown(); }
+  });
+
+  for (const kind of ['playlist', 'album']) {
+    it(`/play imports Spotify ${kind} and advances through its queue for a non-DJ member`, async () => {
+      const spotify = new SpotifyProvider(fakeProvider, (async () => {
+        const entity = { trackList: [
+          { uri: 'spotify:track:a1', title: 'First', subtitle: 'Fake Artist', duration: 180000 },
+          { uri: 'spotify:track:a2', title: 'Second', subtitle: 'Fake Artist', duration: 180000 },
+        ] };
+        return new Response(`<script id="__NEXT_DATA__">${JSON.stringify({ props: { pageProps: { state: { data: { entity } } } } })}</script>`);
+      }) as typeof fetch);
+      const providers = new MusicProviderRegistry([spotify, fakeProvider], 'youtube');
+      const harness = createHarness(undefined, new Set(['dj-user']), providers);
+      try {
+        const result = await harness.manager.execute(command(`/play https://open.spotify.com/intl-pt/${kind}/abc123?si=test`));
+        assert.match(result.message, /2 faixa/);
+        assert.match(result.message, /First/);
+        assert.equal(harness.participants[0]?.externalStartCalls, 1);
+        harness.participants[0]!.finishNaturally();
+        await nextTurn();
+        const playing = await harness.manager.execute(command('/nowplaying'));
+        assert.match(playing.message, /Second/);
+        assert.equal(harness.participants[0]?.externalStartCalls, 2);
+      } finally {
+        await harness.manager.shutdown();
+      }
+    });
+  }
+
   it('executa fila FIFO A -> B -> C com auto-next e termina IDLE', async () => {
     const harness = createHarness();
     await harness.manager.execute(command('/play-file'));

@@ -8,13 +8,14 @@ import {
   ensureDiagnosticAudioFile,
 } from './ffmpegAudioSource.js';
 import {
+  TEST_AUDIO_CHANNELS,
   TEST_AUDIO_SAMPLE_RATE,
   TEST_AUDIO_SAMPLES_PER_CHANNEL,
 } from './programmaticAudioSource.js';
 
 describe('PcmFrameBuffer', () => {
-  it('reagrupa chunks arbitrários em frames exatos de 1920 bytes', () => {
-    const source = Buffer.alloc(4_200);
+  it('reagrupa chunks arbitrários em frames exatos de 3840 bytes', () => {
+    const source = Buffer.alloc(8_040);
     for (let offset = 0; offset + 1 < source.length; offset += 2) {
       source.writeInt16LE((offset / 2) % 30_000, offset);
     }
@@ -25,12 +26,12 @@ describe('PcmFrameBuffer', () => {
       ...buffer.push(source.subarray(500, 1_200)),
       ...buffer.push(source.subarray(1_200)),
     ];
-    assert.equal(PCM_FRAME_BYTES, 1_920);
+    assert.equal(PCM_FRAME_BYTES, 3_840);
     assert.equal(frames.length, 2);
-    assert.ok(frames.every((frame) => frame.length === TEST_AUDIO_SAMPLES_PER_CHANNEL));
+    assert.ok(frames.every((frame) => frame.length === TEST_AUDIO_SAMPLES_PER_CHANNEL * TEST_AUDIO_CHANNELS));
     assert.equal(buffer.remainderBytes, 360);
     assert.equal(frames[0]?.[0], 0);
-    assert.equal(frames[1]?.[0], TEST_AUDIO_SAMPLES_PER_CHANNEL);
+    assert.equal(frames[1]?.[0], TEST_AUDIO_SAMPLES_PER_CHANNEL * TEST_AUDIO_CHANNELS);
   });
 });
 
@@ -45,7 +46,7 @@ describe('diagnostic WAV fixture', () => {
     assert.ok(statSync(path).size > 44);
     assert.equal(
       bytes.length,
-      44 + TEST_AUDIO_SAMPLE_RATE * (DIAGNOSTIC_AUDIO_DURATION_MS / 1_000) * 2,
+      44 + TEST_AUDIO_SAMPLE_RATE * (DIAGNOSTIC_AUDIO_DURATION_MS / 1_000) * TEST_AUDIO_CHANNELS * 2,
     );
   });
 });

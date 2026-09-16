@@ -7,7 +7,6 @@ import { MusicSessionManager } from './musicSession.js';
 import { MusicProviderRegistry } from './musicProvider.js';
 import { YouTubeProvider } from './youtubeProvider.js';
 import { SpotifyProvider } from './spotifyProvider.js';
-import { SoundCloudProvider } from './soundcloudProvider.js';
 import { YtDlpClient } from './ytDlpClient.js';
 
 const log: MusicLog = (event, context) => {
@@ -17,18 +16,12 @@ const log: MusicLog = (event, context) => {
   console.log(`[MUSIC] ${event}${fields ? ` ${fields}` : ''}`);
 };
 
-const ytDlpClient = new YtDlpClient(config.YTDLP_PATH);
-const soundcloudProvider = new SoundCloudProvider(ytDlpClient);
-const youtubeProvider = new YouTubeProvider(
-  ytDlpClient,
-  soundcloudProvider,
-  config.YOUTUBE_AUDIO_FALLBACK === 'true',
-);
+const ytDlpClient = new YtDlpClient(config.YTDLP_PATH, config.YTDLP_COOKIES_PATH);
+const youtubeProvider = new YouTubeProvider(ytDlpClient);
 const providers = new MusicProviderRegistry([
   youtubeProvider,
-  soundcloudProvider,
-  new SpotifyProvider(soundcloudProvider),
-], 'youtube', ['youtube', 'soundcloud']);
+  new SpotifyProvider(youtubeProvider),
+], 'youtube');
 const djUserIds = new Set(config.MUSIC_DJ_USER_IDS.split(',').map((id) => id.trim()).filter(Boolean));
 
 // Canais de voz agora são dados dinâmicos no banco da API (não mais um env
@@ -47,6 +40,7 @@ const sessionManager = new MusicSessionManager(
       apiSecret: config.LIVEKIT_API_SECRET,
       ffmpegPath: config.FFMPEG_PATH,
       ytdlpPath: config.YTDLP_PATH,
+      ytdlpCookiesPath: config.YTDLP_COOKIES_PATH,
       ytdlpPluginDir: config.YTDLP_PLUGIN_DIR,
       ytdlpPotBaseUrl: config.YTDLP_POT_BASE_URL,
       log,

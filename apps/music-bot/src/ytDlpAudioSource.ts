@@ -1,3 +1,4 @@
+import { prepareYtDlpCookies, ytDlpError } from './ytDlpOptions.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { PcmFrameBuffer } from './ffmpegAudioSource.js';
 import { PcmJitterBuffer } from './pcmJitterBuffer.js';
@@ -22,6 +23,7 @@ const MAX_BUFFER_MS = 10_000;
 interface YtDlpAudioSourceOptions {
   webUrl: string;
   ytdlpPath: string;
+  cookiesPath?: string;
   ffmpegPath: string;
   pluginDir: string;
   potBaseUrl: string;
@@ -95,11 +97,12 @@ export class YtDlpAudioSource {
   ): Promise<ProgrammaticAudioResult> {
     if (this.ytdlp || this.ffmpeg) throw new Error('Pipeline externo já está em execução.');
 
+    const cookies = prepareYtDlpCookies(this.options.cookiesPath);
     const ytdlpArgs = [
+      '--ignore-config', ...cookies.args,
       '--plugin-dirs', this.options.pluginDir,
       '--js-runtimes', 'node',
       '--no-warnings', '--no-playlist',
-      '--extractor-args', 'youtube:player_client=mweb',
       '--extractor-args', `youtubepot-bgutilhttp:base_url=${this.options.potBaseUrl}`,
       // HLS nativo do yt-dlp usa arquivos tempor?rios de fragmento. No container
       // o cwd n?o ? grav?vel; delegar m3u8 ao FFmpeg mant?m o stream em pipe.
@@ -107,7 +110,7 @@ export class YtDlpAudioSource {
       ...(this.options.ffmpegPath === 'ffmpeg'
         ? []
         : ['--ffmpeg-location', this.options.ffmpegPath]),
-      '-f', 'bestaudio/best', '-o', '-', this.options.webUrl,
+      '-f', 'bestaudio/best', '-S', 'abr,asr', '-o', '-', this.options.webUrl,
     ];
 
     const ytdlp = spawn(this.options.ytdlpPath, ytdlpArgs, {
@@ -201,7 +204,7 @@ export class YtDlpAudioSource {
       await producer;
       const [ffmpegCode, ytdlpCode] = await Promise.all([ffmpegExit, ytdlpExit]);
       if (signal.aborted) return 'stopped';
-      if (ytdlpCode !== 0) throw new Error(`yt-dlp encerrou com código ${ytdlpCode}${ytdlpErr.trim() ? `: ${ytdlpErr.trim()}` : ''}`);
+      if (ytdlpCode !== 0) throw ytDlpError(ytdlpErr);
       if (ffmpegCode !== 0) throw new Error(`FFmpeg encerrou com código ${ffmpegCode}${ffmpegErr.trim() ? `: ${ffmpegErr.trim()}` : ''}`);
       return 'finished';
     } finally {
@@ -211,6 +214,7 @@ export class YtDlpAudioSource {
       this.ytdlp = null;
       this.ffmpeg = null;
       this.resume();
+      cookies.cleanup();
     }
   }
 }

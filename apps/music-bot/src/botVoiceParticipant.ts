@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { createStereoSignaling } from './stereoSignaling.js';
 import {
   AudioFrame,
   AudioSource,
@@ -32,6 +33,7 @@ import {
 export type MusicLog = (event: string, context: Record<string, string | number>) => void;
 
 export interface PlaybackCallbacks {
+  onStarted?: () => void;
   onFinished: () => void;
   onError: (error: Error) => void;
 }
@@ -87,6 +89,7 @@ interface BotVoiceParticipantOptions {
   apiSecret: string;
   ffmpegPath: string;
   ytdlpPath: string;
+  ytdlpCookiesPath?: string;
   ytdlpPluginDir: string;
   ytdlpPotBaseUrl: string;
   log: MusicLog;
@@ -97,6 +100,7 @@ export class BotVoiceParticipant implements MusicVoiceParticipant {
   private readonly room = new Room();
   private activeAudio: ActiveAudio | null = null;
   private intentionalDisconnect = false;
+  private signaling: Awaited<ReturnType<typeof createStereoSignaling>> | null = null;
 
   constructor(private readonly options: BotVoiceParticipantOptions) {
     this.room.on(RoomEvent.ParticipantDisconnected, () => {
@@ -147,10 +151,18 @@ export class BotVoiceParticipant implements MusicVoiceParticipant {
       room: this.options.roomName,
       channel: this.options.channelId,
     });
-    await this.room.connect(this.options.livekitUrl, await this.mintToken(), {
-      autoSubscribe: false,
-      dynacast: false,
-    });
+    await this.signaling?.close();
+    this.signaling = await createStereoSignaling(this.options.livekitUrl);
+    try {
+      await this.room.connect(this.signaling.url, await this.mintToken(), {
+        autoSubscribe: false,
+        dynacast: false,
+      });
+    } catch (error) {
+      await this.signaling.close();
+      this.signaling = null;
+      throw error;
+    }
     this.options.log('bot participant connected', {
       room: this.options.roomName,
       channel: this.options.channelId,
@@ -188,6 +200,7 @@ export class BotVoiceParticipant implements MusicVoiceParticipant {
     return this.startAudioFixture(new YtDlpAudioSource({
       webUrl: playable.input,
       ytdlpPath: this.options.ytdlpPath,
+      cookiesPath: this.options.ytdlpCookiesPath ?? '',
       ffmpegPath: this.options.ffmpegPath,
       pluginDir: this.options.ytdlpPluginDir,
       potBaseUrl: this.options.ytdlpPotBaseUrl,
@@ -209,10 +222,10 @@ export class BotVoiceParticipant implements MusicVoiceParticipant {
     // só deixava qualquer variação de timing virar gagueira audível direta.
     const source = new AudioSource(TEST_AUDIO_SAMPLE_RATE, TEST_AUDIO_CHANNELS);
     const track = LocalAudioTrack.createAudioTrack(MUSIC_BOT_TRACK_NAME, source);
-    const publishOptions = new TrackPublishOptions();
+    const publishOptions = new TrackPublishOptions({ audioEncoding: { maxBitrate: 256_000n } });
     publishOptions.source = TrackSource.SOURCE_MICROPHONE;
     publishOptions.dtx = false;
-    publishOptions.red = true;
+    publishOptions.red = false;
     const publication = await this.room.localParticipant.publishTrack(track, publishOptions);
     const active: ActiveAudio = {
       controller: new AbortController(),
@@ -223,25 +236,49 @@ export class BotVoiceParticipant implements MusicVoiceParticipant {
     };
     this.activeAudio = active;
     this.options.log('audio track published', {
+      sampleRate: TEST_AUDIO_SAMPLE_RATE, channels: TEST_AUDIO_CHANNELS, maxBitrate: 256_000,
       room: this.options.roomName,
       channel: this.options.channelId,
       track: publication.sid ?? MUSIC_BOT_TRACK_NAME,
     });
 
+    let receivedAudio = false;
+    let reportedError = false;
+    const reportError = async (error: Error) => {
+      if (reportedError || active.controller.signal.aborted) return;
+      reportedError = true;
+      clearTimeout(startupTimer);
+      await this.cleanupAudio(active);
+      callbacks.onError(error);
+    };
+    const startupTimer = setTimeout(() => {
+      void reportError(new Error('A fonte não entregou áudio em 25 segundos. Tente novamente depois de verificar a conexão e a autenticação.'));
+    }, 25_000);
+    active.controller.signal.addEventListener('abort', () => clearTimeout(startupTimer), { once: true });
+
     void fixture
       .play(
-        ({ data, sampleRate, channels, samplesPerChannel }) =>
-          source.captureFrame(new AudioFrame(data, sampleRate, channels, samplesPerChannel)),
+        async ({ data, sampleRate, channels, samplesPerChannel }) => {
+          await source.captureFrame(new AudioFrame(data, sampleRate, channels, samplesPerChannel));
+          if (!receivedAudio && !active.controller.signal.aborted) {
+            receivedAudio = true;
+            clearTimeout(startupTimer);
+            callbacks.onStarted?.();
+          }
+        },
         active.controller.signal,
       )
       .then(async (result) => {
+        if (result === 'finished' && !receivedAudio) {
+          await reportError(new Error('A fonte terminou sem entregar áudio.'));
+          return;
+        }
         if (result === 'finished') await source.waitForPlayout();
         await this.cleanupAudio(active);
-        if (result === 'finished') callbacks.onFinished();
+        if (result === 'finished' && !reportedError) callbacks.onFinished();
       })
       .catch(async (error: unknown) => {
-        await this.cleanupAudio(active);
-        callbacks.onError(error instanceof Error ? error : new Error(String(error)));
+        await reportError(error instanceof Error ? error : new Error(String(error)));
       });
 
     return {
@@ -304,6 +341,8 @@ export class BotVoiceParticipant implements MusicVoiceParticipant {
     this.intentionalDisconnect = true;
     await this.stopAudio();
     if (this.room.isConnected) await this.room.disconnect().catch(() => {});
+    await this.signaling?.close();
+    this.signaling = null;
     this.options.log('bot disconnected', {
       room: this.options.roomName,
       channel: this.options.channelId,

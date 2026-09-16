@@ -43,9 +43,7 @@ export class YouTubeProvider implements MusicProvider {
   readonly id = 'youtube';
 
   constructor(
-    private readonly client: Pick<YtDlpClient, 'metadata' | 'playlistMetadata'>,
-    private readonly audioFallback?: MusicProvider,
-    private readonly preferAudioFallback = false,
+    private readonly client: Pick<YtDlpClient, 'metadata' | 'playlistMetadata'> & Partial<Pick<YtDlpClient, 'searchMetadata'>>,
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
@@ -54,6 +52,18 @@ export class YouTubeProvider implements MusicProvider {
   }
 
   async search(query: string): Promise<ResolvedMusicTrack[]> {
+    if (this.client.searchMetadata) {
+      const tracks = (await this.client.searchMetadata(query)).map(normalizeMetadata);
+      const requested = query.toLowerCase();
+      const score = (track: ResolvedMusicTrack) => {
+        const title = track.title.toLowerCase();
+        const unwanted = ['remix', 'sped up', 'slowed', '8d', 'nightcore', 'cover', 'ao vivo', 'live'];
+        const penalty = unwanted.filter((version) => title.includes(version) && !requested.includes(version)).length * 10;
+        const official = /official audio|audio oficial| - topic$|vevo$/i.test(`${track.title} ${track.author}`) ? 2 : 0;
+        return official - penalty;
+      };
+      return tracks.sort((a, b) => score(b) - score(a));
+    }
     const metadata = await this.client.metadata(`ytsearch1:${query}`);
     return [normalizeMetadata(metadata)];
   }
@@ -83,14 +93,6 @@ export class YouTubeProvider implements MusicProvider {
 
   async resolvePlayable(track: ResolvedMusicTrack): Promise<PlayableMusicSource> {
     if (track.providerId !== this.id) throw new Error('Track pertence a outro provider.');
-    if (this.preferAudioFallback && this.audioFallback) {
-      try {
-        const [matched] = await this.audioFallback.search(`${track.title} ${track.author}`.trim());
-        if (matched) return this.audioFallback.resolvePlayable(matched);
-      } catch {
-        // Se o fallback também falhar, ainda tentamos a URL original do YouTube.
-      }
-    }
     return { input: track.webUrl, providerId: this.id, transport: 'YTDLP_PIPE' };
   }
 

@@ -197,6 +197,9 @@ export class MusicSession {
   }
 
   private async playCommand(input: string, requester: AuthenticatedUserIdentity): Promise<MusicCommandResponse> {
+    if (this.options.providers.isPlaylistInput(input)) {
+      return this.playlistCommand(input, requester);
+    }
     this.options.log('search requested', { room: this.roomName, session: this.id, inputLength: input.length });
     try {
       const resolved = await this.options.providers.resolveInput(input);
@@ -238,7 +241,7 @@ export class MusicSession {
         this.upcomingTracks.length = 0;
         return reply(`Não foi possível iniciar a playlist por ${first.title}.`);
       }
-      return reply(`Playlist iniciada com ${resolvedTracks.length} faixa(s). Tocando: ${first.title}.`, this.nowPlayingCard());
+      return reply(`Playlist iniciada com ${resolvedTracks.length} faixa(s). ${this.state === 'PLAYING' ? 'Tocando' : 'Carregando'}: ${first.title}.`, this.nowPlayingCard());
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return reply(`Não consegui carregar essa playlist: ${message}`);
@@ -265,7 +268,7 @@ export class MusicSession {
 
     const started = await this.startTrack(track);
     return started
-      ? reply(`SausiMusic começou a tocar ${track.title}.`, this.nowPlayingCard())
+      ? reply(this.state === 'PLAYING' ? `SausiMusic começou a tocar ${track.title}.` : `Carregando ${track.title}...`, this.nowPlayingCard())
       : reply(`Não foi possível tocar ${track.title}.`);
   }
 
@@ -273,12 +276,20 @@ export class MusicSession {
     if (this.destroyed) return false;
     this.state = 'CONNECTING';
     this.currentTrack = track;
-    this.startedAt = Date.now();
+    this.startedAt = null;
     const generation = ++this.playbackGeneration;
 
     try {
       await this.botParticipant.connect();
       const callbacks = {
+        onStarted: () => {
+          if (this.destroyed || generation !== this.playbackGeneration || this.state !== 'CONNECTING') return;
+          this.state = 'PLAYING';
+          this.startedAt = Date.now();
+          this.playedHistory.push(track);
+          if (this.playedHistory.length > 20) this.playedHistory.splice(0, this.playedHistory.length - 20);
+          this.options.log('playback started', { room: this.roomName, channel: this.channelId, session: this.id, track: track.id });
+        },
         onFinished: () => void this.finishPlayback(generation),
         onError: (error: Error) => void this.failPlayback(generation, error),
       };
@@ -292,10 +303,7 @@ export class MusicSession {
       } else {
         this.playback = await this.botParticipant.startTestAudio(this.volume, callbacks);
       }
-      this.state = 'PLAYING';
-      this.playedHistory.push(track);
-      if (this.playedHistory.length > 20) this.playedHistory.splice(0, this.playedHistory.length - 20);
-      this.options.log('playback started', {
+      this.options.log('playback prepared', {
         room: this.roomName,
         channel: this.channelId,
         session: this.id,
@@ -343,6 +351,7 @@ export class MusicSession {
       session: this.id,
       error: error.message,
     });
+    await this.botParticipant.sendMessage(`Não foi possível reproduzir a música: ${error.message}`).catch(() => {});
   }
 
   private async advanceQueue(reason: 'NATURAL_END' | 'SKIPPED'): Promise<MusicTrack | null> {
@@ -507,7 +516,7 @@ export class MusicSession {
 
   private queueCommand(): MusicCommandResponse {
     const now = this.currentTrack
-      ? `Tocando agora: ${this.currentTrack.title} — ${formatTime(this.positionMs)} / ${formatTime(this.currentTrack.durationMs)}.`
+      ? `${this.state === 'CONNECTING' ? 'Carregando' : 'Faixa atual'}: ${this.currentTrack.title} — ${formatTime(this.positionMs)} / ${formatTime(this.currentTrack.durationMs)}.`
       : 'Nada tocando no momento.';
     const queued = this.upcomingTracks.length > 0
       ? `Fila: ${this.upcomingTracks.map((track, index) => `${index + 1}. ${track.title}`).join('; ')}.`
@@ -518,7 +527,7 @@ export class MusicSession {
   private nowPlayingCommand(): MusicCommandResponse {
     if (!this.currentTrack) return reply('Nada tocando no momento.');
     return reply(
-      `Tocando agora: ${this.currentTrack.title}. Solicitado por: ${this.currentTrack.requestedBy.displayName}. ` +
+      `${this.state === 'CONNECTING' ? 'Carregando' : 'Faixa atual'}: ${this.currentTrack.title}. Solicitado por: ${this.currentTrack.requestedBy.displayName}. ` +
       `Estado: ${this.state}. Posição: ${formatTime(this.positionMs)} / ${formatTime(this.currentTrack.durationMs)}. ` +
       `Volume: ${this.volume}%.`,
       this.nowPlayingCard(),

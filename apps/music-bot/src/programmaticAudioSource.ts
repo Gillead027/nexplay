@@ -1,7 +1,7 @@
 import { performance } from 'node:perf_hooks';
 
 export const TEST_AUDIO_SAMPLE_RATE = 48_000;
-export const TEST_AUDIO_CHANNELS = 1;
+export const TEST_AUDIO_CHANNELS = 2;
 export const TEST_AUDIO_FRAME_DURATION_MS = 20;
 export const TEST_AUDIO_SAMPLES_PER_CHANNEL =
   (TEST_AUDIO_SAMPLE_RATE * TEST_AUDIO_FRAME_DURATION_MS) / 1_000;
@@ -26,19 +26,16 @@ export function applyPcmGain(input: Int16Array, volume: number): Int16Array {
 }
 
 export function createProgrammaticToneFrame(frameIndex: number, volume: number): Int16Array {
-  const original = new Int16Array(TEST_AUDIO_SAMPLES_PER_CHANNEL);
-  for (let sampleIndex = 0; sampleIndex < original.length; sampleIndex += 1) {
-    const absoluteSample = frameIndex * original.length + sampleIndex;
+  const original = new Int16Array(TEST_AUDIO_SAMPLES_PER_CHANNEL * TEST_AUDIO_CHANNELS);
+  for (let sampleIndex = 0; sampleIndex < TEST_AUDIO_SAMPLES_PER_CHANNEL; sampleIndex += 1) {
+    const absoluteSample = frameIndex * TEST_AUDIO_SAMPLES_PER_CHANNEL + sampleIndex;
     const elapsedSeconds = absoluteSample / TEST_AUDIO_SAMPLE_RATE;
     const fadeSamples = TEST_AUDIO_SAMPLE_RATE * 0.05;
-    const remainingSamples =
-      TEST_AUDIO_SAMPLE_RATE * (TEST_AUDIO_DURATION_MS / 1_000) - absoluteSample;
-    const envelope = Math.min(1, absoluteSample / fadeSamples, remainingSamples / fadeSamples);
-    const fundamental = Math.sin(2 * Math.PI * 440 * elapsedSeconds);
-    const harmonic = Math.sin(2 * Math.PI * 660 * elapsedSeconds) * 0.2;
-    original[sampleIndex] = clampInt16(
-      (fundamental + harmonic) * 7_500 * Math.max(0, envelope),
-    );
+    const remainingSamples = TEST_AUDIO_SAMPLE_RATE * (TEST_AUDIO_DURATION_MS / 1_000) - absoluteSample;
+    const envelope = Math.max(0, Math.min(1, absoluteSample / fadeSamples, remainingSamples / fadeSamples));
+    // Distinct left/right tones let the transport test detect an accidental mono downmix.
+    original[sampleIndex * 2] = clampInt16(Math.sin(2 * Math.PI * 440 * elapsedSeconds) * 7_500 * envelope);
+    original[sampleIndex * 2 + 1] = clampInt16(Math.sin(2 * Math.PI * 660 * elapsedSeconds) * 7_500 * envelope);
   }
   return applyPcmGain(original, volume);
 }
@@ -97,7 +94,7 @@ export class DriftFreeFrameScheduler {
 
 /**
  * Fixture determinístico no formato já validado pelo LiveKit: PCM signed
- * 16-bit, mono, 48 kHz, em frames de 20 ms. Pause bloqueia o próximo frame,
+ * 16-bit, estéreo, 48 kHz, em frames de 20 ms. Pause bloqueia o próximo frame,
  * preservando frameIndex/posição; volume é consultado a cada frame.
  */
 export class ProgrammaticAudioSource {

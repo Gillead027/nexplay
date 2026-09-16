@@ -15,7 +15,7 @@ function peak(samples: Int16Array): number {
 }
 
 describe('ProgrammaticAudioSource', () => {
-  it('gera PCM S16 mono 48 kHz em frames não silenciosos de 20 ms', async () => {
+  it('gera PCM S16 estéreo 48 kHz em frames não silenciosos de 20 ms', async () => {
     const controller = new AbortController();
     let captured = 0;
     const result = await new ProgrammaticAudioSource().play(async (frame) => {
@@ -23,7 +23,7 @@ describe('ProgrammaticAudioSource', () => {
       assert.equal(frame.sampleRate, TEST_AUDIO_SAMPLE_RATE);
       assert.equal(frame.channels, TEST_AUDIO_CHANNELS);
       assert.equal(frame.samplesPerChannel, TEST_AUDIO_SAMPLES_PER_CHANNEL);
-      assert.equal(frame.data.length, TEST_AUDIO_SAMPLES_PER_CHANNEL);
+      assert.equal(frame.data.length, TEST_AUDIO_SAMPLES_PER_CHANNEL * TEST_AUDIO_CHANNELS);
       assert.ok(frame.data.some((sample) => sample !== 0));
       controller.abort();
     }, controller.signal);

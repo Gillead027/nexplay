@@ -16,6 +16,44 @@ const fallback: MusicProvider = {
 };
 
 describe('SpotifyProvider metadata bridge', () => {
+  it('imports public playlists in order without using 30-second previews', async () => {
+    const entity = { trackList: [
+      { uri: 'spotify:track:a1', title: 'Numb', subtitle: 'Linkin Park', duration: 187000, audioPreview: { url: 'https://preview.example/short.mp3' } },
+      { uri: 'spotify:track:a2', title: 'In the End', subtitle: 'Linkin Park', duration: 216000 },
+      { uri: 'spotify:episode:e1', title: 'Podcast', subtitle: 'Speaker' },
+    ] };
+    const fakeFetch = async () => new Response(`<script type="application/json" id="__NEXT_DATA__">${JSON.stringify({ props: { pageProps: { state: { data: { entity } } } } })}</script>`);
+    const provider = new SpotifyProvider(fallback, fakeFetch as typeof fetch);
+    const tracks = await provider.resolvePlaylist(new URL('https://open.spotify.com/intl-pt/playlist/public1'));
+    assert.deepEqual(tracks.map((track) => track.sourceId), ['a1', 'a2']);
+    assert.equal(tracks[0]?.durationMs, 187000);
+    assert.equal((await provider.resolvePlayable(tracks[0]!)).providerId, 'youtube');
+    assert.ok(!JSON.stringify(tracks).includes('preview.example'));
+  });
+
+  it('reports unavailable playlist metadata rather than using preview audio', async () => {
+    const provider = new SpotifyProvider(fallback, (async () => new Response('{}')) as typeof fetch);
+    await assert.rejects(provider.resolvePlaylist(new URL('https://open.spotify.com/playlist/unavailable')), /não disponibilizou/);
+  });
+
+  it('rejects short previews and unrelated versions when matching Spotify tracks', async () => {
+    const provider = new SpotifyProvider({ ...fallback, search: async () => [
+      { ...fallbackTrack, durationMs: 30000 },
+      { ...fallbackTrack, title: 'Unrelated song' },
+    ] });
+    await assert.rejects(provider.resolvePlayable({ ...fallbackTrack, providerId: 'spotify' }), /Não encontrei/);
+  });
+
+  it('matches artist and duration instead of blindly using the first result', async () => {
+    const resolved: string[] = [];
+    const provider = new SpotifyProvider({ ...fallback, search: async () => [
+      { ...fallbackTrack, sourceId: 'wrong', title: 'Numb Live', durationMs: 350000 },
+      fallbackTrack,
+    ], resolvePlayable: async (track) => { resolved.push(track.sourceId); return fallback.resolvePlayable(track); } });
+    await provider.resolvePlayable({ ...fallbackTrack, providerId: 'spotify' });
+    assert.deepEqual(resolved, ['yt1']);
+  });
+
   it('lê metadata pública e usa YouTube somente como fonte reproduzível', async () => {
     const fakeFetch = async () => new Response(JSON.stringify({
       title: 'Numb - song and lyrics by Linkin Park | Spotify',

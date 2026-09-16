@@ -17,6 +17,7 @@ export interface PlayableMusicSource {
 export interface MusicProvider {
   readonly id: string;
   canHandleUrl(url: URL): boolean;
+  isPlaylistUrl?(url: URL): boolean;
   search(query: string): Promise<ResolvedMusicTrack[]>;
   resolveUrl(url: URL): Promise<ResolvedMusicTrack>;
   resolvePlayable(track: ResolvedMusicTrack): Promise<PlayableMusicSource>;
@@ -39,6 +40,16 @@ export class MusicProviderRegistry {
       if (!this.byId.has(providerId)) throw new Error(`Provider de busca não registrado: ${providerId}`);
     }
   }
+  isPlaylistInput(input: string): boolean {
+    try {
+      const url = new URL(input);
+      const provider = Array.from(this.byId.values()).find((item) => item.canHandleUrl(url));
+      return provider?.isPlaylistUrl?.(url) ?? false;
+    } catch {
+      return false;
+    }
+  }
+
   async resolveInput(input: string): Promise<ResolvedMusicTrack> {
     let parsedUrl: URL | null = null;
     try {
