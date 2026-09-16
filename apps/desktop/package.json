@@ -1,6 +1,6 @@
 {
   "name": "@nexplay/desktop",
-  "version": "0.2.8",
+  "version": "0.2.9",
   "private": true,
   "description": "Cliente Windows do NexPlay",
   "main": "dist/main.js",
@@ -39,7 +39,7 @@
     "publish": {
       "provider": "github",
       "owner": "Gillead027",
-      "repo": "sausixudos"
+      "repo": "nexplay"
     },
     "files": [
       "dist/**/*",
