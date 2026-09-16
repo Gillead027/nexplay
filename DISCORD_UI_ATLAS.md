@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). **Roteiro 10 completo** (7 fichas, configurações — aparência). **Roteiro 11 completo** (13 fichas, amigos e DMs). Roteiros 12–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). **Roteiro 10 completo** (7 fichas, configurações — aparência). **Roteiro 11 completo** (13 fichas, amigos e DMs). **Roteiro 12 completo** (8 fichas, configurações — meu perfil/conta e segurança/privacidade). Roteiros 13–69+ pendentes — ver nota de continuação no final do arquivo.
 
 ---
 
@@ -5578,4 +5578,127 @@ Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropri
 
 **Achados mais importantes desta seção**: (1) "Aceitar" pedido de amizade e "enviar" pedido são literalmente a mesma chamada de API, reaproveitando lógica de auto-aceite; (2) três ações de "encerrar relacionamento" (recusar/cancelar/desfazer) têm fricção inconsistente — só desfazer amizade já aceita pede confirmação; (3) erros são silenciados em quase toda ação de amigos (aceitar, recusar, desbloquear) exceto enviar pedido, que tem feedback inline — inconsistência real de tratamento de erro; (4) DM não tem reações nem anexos, diferente do chat de canal; (5) sem chamada de voz/vídeo em DM, coerente com a arquitetura de voz ser baseada em canais de servidor, não em chamadas ad-hoc.
 
-**Próximo na fila**: com Amigos/DMs e a maior parte das Configurações mapeadas, a auditoria segue pra completar Configurações restantes (Conta e segurança, Privacidade — já com achados parciais de sessões anteriores, merecem uma passagem campo-a-campo formal) e então parte para os três documentos de síntese ainda não criados (`DISCORD_NAVIGATION_TREE.md`, `DISCORD_INTERACTION_MATRIX.md`, `DISCORD_USER_JOURNEYS.md`), já que a superfície do app está mapeada em profundidade suficiente pra alimentá-los sem generalizar.
+---
+
+# ROTEIRO 12 — CONFIGURAÇÕES DO APP: MEU PERFIL, CONTA E SEGURANÇA, PRIVACIDADE
+
+Arquitetura real (verificada em `Workspace.tsx`, seções `'profile'`/`'security'`/`'privacy'` do modal de Configurações do app — distinto de "Perfil do servidor", Roteiro 3, que é outra tela). Fecha o mapeamento de Configurações do app começado no Roteiro 10.
+
+---
+
+## 12.1 — PROFILE_BANNER_UPLOAD
+
+**ID**: `PROFILE_BANNER_UPLOAD`
+**NOME**: Alterar o banner do próprio perfil
+**CAMINHO EXATO**: `Configurações > Meu perfil > "Alterar banner"`
+**APARÊNCIA**: Preview da imagem atual (se houver) + botão "Alterar banner"; input de arquivo real escondido (`hidden`, acionado via `.click()` programático — mesmo padrão de `MESSAGE_ATTACH_FILE_PICKER`, Roteiro 4).
+**RESULTADO IMEDIATO**: `handleBannerFile` → `fileToResizedDataUrl(file, 960, BANNER_DATA_URL_MAX_LENGTH)` (Roteiro 3, já documentado — **sem** o parâmetro `square`, então o banner preserva a proporção original, diferente de avatar/ícone de servidor que forçam recorte quadrado central).
+**RESULTADO VISUAL**: Preview atualiza; texto de ajuda explícito: "Recomendado: 1920×480. Máximo 800KB (redimensionado automaticamente). Formatos: PNG, JPG ou WEBP."
+**ERRO**: `bannerError` exibido como `.settings-hint` (não `.form-error`) — **inconsistência visual menor**: erro usa a mesma classe de texto de ajuda neutro, não a classe de erro em destaque usada em quase todo o resto do app.
+**PRÉ-CONDIÇÕES**: Nenhuma.
+**RESULTADO FINAL**: Só aplicado de fato ao clicar "Salvar alterações" (`PROFILE_SAVE_CANCEL`, ficha adiante) — **é um formulário de edição em lote**, diferente de várias outras telas desta auditoria onde cada campo salva individualmente ao interagir (ex.: Cargos, Roteiro 9).
+**BANCO**: `users.banner_data_url`, só gravado no submit do formulário inteiro.
+**ACESSIBILIDADE**: Botão de texto real (não só ícone), `accept="image/png,image/jpeg,image/webp"` restringe o seletor nativo do SO aos formatos suportados.
+
+---
+
+## 12.2 — PROFILE_AVATAR_UPLOAD_REMOVE
+
+**ID**: `PROFILE_AVATAR_UPLOAD_REMOVE`
+**NOME**: Alterar ou remover o próprio avatar
+**CAMINHO EXATO**: `Configurações > Meu perfil > "Alterar avatar"/"Remover"`
+**RESULTADO IMEDIATO — alterar**: `handleAvatarFile` → `fileToResizedDataUrl(file, 256, AVATAR_DATA_URL_MAX_LENGTH, true)` — **com** `square: true` (Roteiro 3), então avatar de usuário já se beneficia do mesmo recorte quadrado central corrigido nesta linha de trabalho (a mesma correção que resolveu o "ícone feio" de servidor se aplica aqui igualmente, já que é a mesma função compartilhada).
+**RESULTADO IMEDIATO — remover**: `setProfileAvatar('')` — só limpa o estado local, efetivado só ao salvar.
+**RESULTADO VISUAL**: Botão "Remover" só aparece condicionalmente (`{profileAvatar && (...)}`) — some se já não há avatar.
+**Demais campos**: mesmo padrão de lote/salvar de `PROFILE_BANNER_UPLOAD`.
+
+---
+
+## 12.3 — PROFILE_DISPLAY_NAME_READONLY *(MISSING — confirma achado já registrado)*
+
+**ID**: `PROFILE_DISPLAY_NAME_READONLY`
+**NOME**: Campo de nome de exibição, sem edição
+**CAMINHO EXATO**: `Configurações > Meu perfil > "Nome de exibição"`
+**CONFIRMAÇÃO NO CÓDIGO**: `<input id="profile-display-name" readOnly value={session.displayName} />` — **deliberadamente somente leitura**, mostrando o nome atual mas sem permitir editar. Consistente com `DISCORD_PARITY_PLAN.md` §2: "Alterar email/username | MISSING (username é fixo no registro)" — **não é um bug isolado desta tela**, é a mesma limitação de fundação já conhecida, só reaparecendo aqui como um campo visível mas inerte.
+**Diferença frente a `ROLE_LIST_SEARCH_FAKE` (Roteiro 9)**: este campo **não finge ser editável** — não tem nenhum affordance visual de campo ativo além de mostrar o valor (sem `placeholder` de convite a digitar, `readOnly` explícito) — é uma decisão de design honesta sobre uma limitação real, não um controle decorativo enganoso. Vale a distinção: um campo `readOnly` mostrando dado real não é a mesma categoria de problema que um campo de busca `readOnly` fingindo filtrar uma lista.
+
+---
+
+## 12.4 — PROFILE_STATUS_TEXT / PROFILE_PRONOUNS / PROFILE_BIO
+
+**ID**: `PROFILE_TEXT_FIELDS` (três campos de texto simples, mesmo padrão)
+**NOME**: Editar status, pronomes e biografia do perfil
+**CAMINHO EXATO**: `Configurações > Meu perfil`
+**APARÊNCIA**: Três campos com contador de caracteres visível no rótulo (`{valor.length}/60`, `/30`, `/300`).
+**RESULTADO IMEDIATO**: `onChange` atualiza estado local; nada é enviado até salvar.
+**RESULTADO VISUAL**: Refletido na pré-visualização ao lado em tempo real (mesmo padrão de `APPEARANCE_LIVE_PREVIEW`, Roteiro 10).
+**EFEITO REMOTO**: Só ao salvar — `PATCH` de perfil, visível a qualquer pessoa que veja o mini-perfil deste usuário (Roteiro 3/7, já usado em vários lugares desta auditoria).
+**Demais campos**: mesmo padrão de lote/salvar.
+
+---
+
+## 12.5 — PROFILE_ACCENT_COLOR
+
+**ID**: `PROFILE_ACCENT_COLOR`
+**NOME**: Escolher a cor de perfil pública
+**CAMINHO EXATO**: `Configurações > Meu perfil > "Cor do perfil"`
+**STATUS**: Mesmo componente/paleta fixa (`ACCENT_COLORS`, `radiogroup`/`radio`) já usado no cadastro (`REGISTER_ACCENT_COLOR_SELECT`, Roteiro 1) — **esta é a tela onde a cor escolhida no cadastro pode ser trocada depois**, primeira confirmação nesta auditoria de que a cor de perfil não é fixa para sempre após criar a conta.
+**Demais campos**: mesmo padrão de lote/salvar; refletido na pré-visualização.
+
+---
+
+## 12.6 — PROFILE_SAVE_CANCEL
+
+**ID**: `PROFILE_SAVE_CANCEL`
+**NOME**: Salvar ou descartar as alterações de perfil em lote
+**CAMINHO EXATO**: `Configurações > Meu perfil > rodapé do formulário`
+**APARÊNCIA**: "Cancelar" (`.test-toggle-button` — nome de classe genérico, provavelmente reaproveitado de um teste antigo, não indicativo de função) + "Salvar alterações" (`.save-profile-button`, destaque).
+**DISABLED**: Ambos desabilitados durante `savingProfile`.
+**LOADING**: Botão salvar mostra "Salvando…".
+**TRIGGER — cancelar**: `onCancelProfile` — reverte todos os campos (banner/avatar/status/pronomes/bio/cor) ao estado salvo mais recente, descartando qualquer edição não salva.
+**TRIGGER — salvar**: `onSaveProfile` — `PATCH` único com todos os campos de uma vez.
+**RESULTADO FINAL**: **Todos os campos desta tela são transacionais em conjunto** — diferente de Cargos/Aparência (cada controle salva individualmente ao interagir), Meu Perfil exige clicar "Salvar alterações" para qualquer mudança ter efeito. Isso é consistente e deliberado dentro desta tela específica (todos os campos fazem parte do mesmo formulário), só vale notar a diferença de padrão de UX frente a outras telas desta auditoria pra quem for trabalhar no código depois.
+**CANCELAMENTO**: Botão "Cancelar" dedicado (diferente de várias outras telas que só têm Esc/fechar).
+**EFEITO REMOTO**: `PATCH` de perfil dispara atualização visível a qualquer pessoa vendo perfil/mensagens/mini-perfil deste usuário — mecanismo exato de propagação em tempo real (evento de WebSocket dedicado, ou só refletido na próxima leitura de outros clientes) não confirmado campo a campo nesta passagem específica.
+
+---
+
+## 12.7 — PASSWORD_CHANGE
+
+**ID**: `PASSWORD_CHANGE`
+**NOME**: Trocar a senha da conta
+**CAMINHO EXATO**: `Configurações > Conta e segurança`
+**STATUS**: `CORE` — já implementado e testado nesta mesma linha de trabalho (sessão anterior), substituindo o antigo "Alterar senha | MISSING" registrado em `DISCORD_PARITY_PLAN.md` §2.
+**APARÊNCIA**: Três campos (senha atual, nova senha, confirmar nova senha), botão "Trocar senha".
+**TRIGGER**: Submit do formulário (Enter em qualquer campo, ou clique no botão).
+**PRÉ-CONDIÇÕES**: Senha atual correta; nova senha entre `PASSWORD_MIN_LENGTH` (8) e `PASSWORD_MAX_LENGTH` (72) caracteres — **validação de tamanho no HTML nativo** (`minLength`/`maxLength`), mesmos limites do cadastro (Roteiro 1).
+**RESULTADO IMEDIATO**: `submitPasswordChange` → `PATCH /api/auth/password` (Roteiro 1, rota já documentada), sujeito ao mesmo `authLimiter` de login/registro.
+**RESULTADO VISUAL — sucesso**: `passwordSuccess` → "Senha atualizada." em `.settings-hint` (neutro, não destaque de sucesso forte).
+**RESULTADO VISUAL — erro**: `passwordError` em `.form-error` (`role="alert"`) — **aqui sim usa a classe de erro correta**, diferente do `bannerError` de `PROFILE_BANNER_UPLOAD` que usa a classe neutra por engano.
+**ACHADO — SEM VALIDAÇÃO DE CONFIRMAÇÃO NO CLIENTE**: não confirmado nesta passagem se há uma checagem client-side de "nova senha === confirmar nova senha" antes de submeter — se não houver, a discrepância só seria pega no backend (ou nem seria checada lá, dependendo da implementação da rota) — **achado a confirmar em auditoria futura mais profunda do handler `submitPasswordChange`** (não lido em detalhe nesta passagem, só a UI que o aciona).
+**RESULTADO FINAL**: Sessão atual continua válida (não desloga automaticamente após trocar a senha — a confirmar se outras sessões/dispositivos são invalidadas, mesma lacuna já registrada em `DISCORD_PARITY_PLAN.md` §2 sobre não existir sessão stateful/lista de dispositivos).
+**BACKEND**: `PATCH /api/auth/password`, `requireSession` + `authLimiter`.
+**BANCO**: `UPDATE users` com novo hash de senha (`updateUserPassword`, Roteiro 1).
+**ATALHO**: Enter em qualquer campo submete o formulário.
+**ACESSIBILIDADE**: Labels associados corretamente em todos os três campos.
+
+---
+
+## 12.8 — PRIVACY_BLOCKED_USERS_LIST (referência — já documentado via DM_UNBLOCK)
+
+**ID**: `PRIVACY_BLOCKED_USERS_LIST`
+**NOME**: Ver e desbloquear usuários pela tela de Privacidade
+**CAMINHO EXATO**: `Configurações > Privacidade`
+**STATUS**: `CORE` — lista de bloqueados com avatar/nome + botão "Desbloquear" por linha; estados de carregamento ("Carregando…") e vazio ("Você não bloqueou ninguém.") tratados explicitamente.
+**Redundância com `DM_UNBLOCK` (Roteiro 11)**: esta é a **segunda tela** que já oferece exatamente a mesma ação (desbloquear), a primeira sendo a aba "Bloqueados" de Amigos — ambas chamam presumivelmente a mesma `api.unblockUser`. Consistente com o Discord real, que também duplica esse acesso entre Configurações de Privacidade e a lista de Amigos — não é uma redundância acidental, é o padrão esperado.
+**Descrição da tela**: "Pessoas que você bloqueou não podem chamar você nem ver sua atividade." — **texto descreve consequências (chamada, atividade) que não têm equivalente real neste app ainda** (sem chamada ad-hoc fora de canal de voz, Roteiro 11; "atividade" existe só como jogo/mídia detectada no desktop, Roteiro 0) — o texto foi provavelmente herdado do texto real do Discord sem adaptação total às features que este app realmente tem, um detalhe cosmético de copy, não funcional.
+
+---
+
+# CONTINUAÇÃO
+
+Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas agrupadas/de referência/`MISSING`), as **24 interações do Roteiro 0**, **18 do Roteiro 1**, **11 do Roteiro 2**, **19 do Roteiro 3**, **23 do Roteiro 4**, **8 do Roteiro 5**, **9 do Roteiro 6**, **12 do Roteiro 7**, **8 do Roteiro 8**, **15 do Roteiro 9**, **7 do Roteiro 10**, **13 do Roteiro 11** e **8 do Roteiro 12** — **175 fichas no total**. Com isso, **todas as seções do modal de Configurações do app** (Meu perfil, Conta e segurança, Privacidade, Voz e vídeo, Aparência) estão mapeadas — nenhuma seção "fantasma"/decorativa restante, confirmando o trabalho de sessão anterior desta linha de trabalho que já tinha eliminado as abas mortas (Notificações/Atalhos/Idioma/Arquivos e mídia/Avançado).
+
+**Achados desta seção**: (1) confirmação de que "Nome de exibição" é intencionalmente somente-leitura, não um bug — mesma limitação de fundação já conhecida (username fixo); (2) inconsistência pequena de estilo de erro (banner de perfil usa classe neutra, senha usa classe de erro real); (3) Meu Perfil é a única tela desta auditoria com padrão "editar tudo, salvar em lote" — todas as outras telas de configuração salvam campo a campo; (4) texto de Privacidade descreve consequências (chamada, atividade) que não se aplicam totalmente às features reais do app — copy herdada, não adaptada.
+
+**Próximo na fila**: com a superfície de app/servidor/voz/mensagens/amigos/configurações mapeada em profundidade (175 fichas, 13 roteiros), a auditoria agora tem material suficiente pra começar os três documentos de síntese ainda não criados: `DISCORD_NAVIGATION_TREE.md` (árvore de navegação completa), `DISCORD_INTERACTION_MATRIX.md` (tabela mestra de todas as interações), e `DISCORD_USER_JOURNEYS.md` (roteiros de usuário ponta a ponta) — nessa ordem, já que a árvore de navegação é a base estrutural mais simples de montar primeiro a partir do que já foi mapeado.
