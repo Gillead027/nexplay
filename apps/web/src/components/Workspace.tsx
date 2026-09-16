@@ -2377,7 +2377,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         serverId={activeServerId ?? ''}
         onClose={() => setCreateCategoryOpen(false)}
         onCreated={(category) => {
-          setCategories((current) => [...current, category]);
+          setCategories((current) => current.some(({ id }) => id === category.id) ? current : [...current, category]);
           setCreateCategoryOpen(false);
         }}
         returnFocusRef={createCategoryButtonRef}
