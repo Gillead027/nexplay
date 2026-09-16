@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). Roteiros 4–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). Roteiros 5–69+ pendentes — ver nota de continuação no final do arquivo.
 
 ---
 
@@ -2734,4 +2734,760 @@ Arquitetura real (verificada em `AddServerModal`/`Servers.tsx`, `CreateCategoryD
 
 Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas `MISSING`/de referência, conforme a convenção do topo deste arquivo), as **24 interações do Roteiro 0**, as **18 do Roteiro 1**, as **11 do Roteiro 2** e as **19 do Roteiro 3** — **72 fichas no total**, cada uma verificada contra o código real. Categorias, canais de texto/voz, criação/entrada em servidor, mover canal (drag e via menu), e exclusão de servidor já são funcionalidades **reais, testadas e em produção** — documentadas aqui como `CORE`, não redescobertas nem reconstruídas. As lacunas genuinamente novas encontradas neste roteiro: `SERVER_LEAVE` tem backend pronto mas nenhum botão na UI; "Marcar como lida" de categoria é um item de menu que não faz nada (porque a feature de não-lida inteira ainda não existe em lugar nenhum); excluir categoria usa `window.confirm()` nativo em vez do padrão de confirmação por nome já estabelecido para excluir servidor (inconsistência de fricção entre duas ações igualmente destrutivas); mover canal pode falhar silenciosamente sem confirmação de visibilidade envolvida.
 
-**Próximo na fila**: Roteiro 4 — Mensagens (composer, histórico, reações, edição, exclusão, reply, pins, forward, upload de arquivo — grande parte já implementada e testada em sessões anteriores desta linha de trabalho, auditoria vai documentar o que existe, não reconstruir), seguido de Roteiro 5 — Tempo real, e a partir daí Voz/Mute/Deafen/Compartilhar tela/Vídeo (prioridade especial do pedido original).
+---
+
+# ROTEIRO 4 — MENSAGENS
+
+Arquitetura real (verificada em `apps/web/src/components/TextChannels.tsx`, ~1265 linhas): histórico, composer, reações, edição/exclusão, reply, pins, busca, upload de anexo e markdown já são funcionalidades **reais, testadas e em produção** (auditadas informalmente em sessões anteriores desta linha de trabalho, confirmadas em `DISCORD_PARITY_PLAN.md` §8) — esta passagem documenta o que existe (`CORE`) e, principalmente, **achou lacunas reais e concretas de UX que nenhuma auditoria anterior tinha registrado explicitamente**, a mais séria sendo um scroll que puxa o usuário pra baixo à força mesmo lendo histórico antigo.
+
+---
+
+## 4.1 — TEXT_CHANNEL_HISTORY_LOAD
+
+**ID**: `TEXT_CHANNEL_HISTORY_LOAD`
+**NOME**: Carregar o histórico de mensagens ao abrir um canal
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `TEXT_CHANNEL_SELECT (Roteiro 3) > painel central > histórico`
+**POSIÇÃO NA INTERFACE**: `.messages.text-channel-messages`, área rolável central.
+**APARÊNCIA**: Lista de mensagens; sem skeleton/placeholder confirmado nesta passagem para o estado de carregamento inicial (a confirmar).
+**ESTADO NORMAL**: Não aplicável.
+**HOVER**: Não aplicável a esta ficha.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: `loading` state controla o `useEffect` de scroll inicial (ver `RESULTADO FINAL`) — indicador visual exato do estado de carregamento não confirmado em detalhe nesta passagem.
+**TRIGGER**: Automático, ao trocar de canal (`channel.id` muda).
+**PRÉ-CONDIÇÕES**: Canal selecionado e visível ao usuário.
+**RESULTADO IMEDIATO**: `GET` do histórico de mensagens do canal (via `api`, endpoint exato já coberto em auditorias anteriores desta linha de trabalho — busca as mensagens mais recentes, sem paginação infinita confirmada por scroll-up nesta passagem específica, ver nota de auditoria abaixo).
+**RESULTADO VISUAL**: Mensagens aparecem na ordem cronológica.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: `useEffect` separado assina eventos de tempo real (`TEXT_MESSAGE_CREATE`/`UPSERT`/`DELETE`/reações) escopados a `channel.id` (ver Roteiro 5 para a auditoria de tempo real em si).
+**RESULTADO FINAL**: `useEffect([channel.id, loading])`: `if (!loading) endRef.current?.scrollIntoView({ block: 'end' })` — **sempre** pula direto pro final do histórico carregado ao entrar num canal (comportamento correto/esperado para entrada inicial, diferente do problema documentado em `MESSAGE_SCROLL_AUTOSTICK` adiante, que é sobre mensagens chegando *depois* já estando na tela).
+**EFEITO LOCAL**: Estado `messages` populado.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Assinatura ativa a partir daqui.
+**BACKEND**: `GET` de histórico.
+**BANCO**: Leitura de `text_messages`.
+**REFRESH**: Recarrega do zero (não há cache local entre sessões).
+**RECONEXÃO**: Ver Roteiro 5.
+**ERRO**: Não confirmado nesta passagem o comportamento exato se o fetch inicial falhar (tela vazia? mensagem de erro? — a verificar em auditoria futura).
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Não aplicável a esta ficha.
+
+**Nota de auditoria — paginação**: não foi confirmado nesta passagem específica se rolar até o topo da lista carrega mensagens mais antigas automaticamente (infinite scroll pra trás, conforme `ROTEIRO 59` do pedido original: "Carregamento para cima: buscar histórico anterior. Manter posição do viewport.") — marcado como lacuna de verificação para auditoria futura mais profunda deste componente especificamente; a busca (`MESSAGE_SEARCH_RESULT_JUMP`, adiante) já confirma que mensagens fora da "janela carregada" existem e não são automaticamente buscáveis por scroll simples, o que sugere que a paginação pra trás pode não existir ou ser limitada.
+
+---
+
+## 4.2 — MESSAGE_SEND
+
+**ID**: `MESSAGE_SEND`
+**NOME**: Enviar uma mensagem de texto
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Canal de texto > rodapé > composer`
+**POSIÇÃO NA INTERFACE**: `.text-channel-form`, rodapé fixo do painel central.
+**APARÊNCIA**: `<textarea rows={1}>` que expande conforme o texto (comportamento de auto-resize a confirmar via CSS, não lido em detalhe), botão "Enviar" à direita, contador `{draft.length}/{CHAT_MESSAGE_MAX_LENGTH}`.
+**ESTADO NORMAL**: Vazio, placeholder "Conversar em #{canal}".
+**HOVER**: Padrão de campo/botão.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: `textarea` desabilitada se `isTimedOut`; botão "Enviar" desabilitado se `isTimedOut || sending || uploading || (sem texto E sem anexo)`.
+**LOADING**: Botão mostra "Enviando…" durante o envio.
+**TRIGGER**: Enter (sem Shift) — intercepta e chama `form.requestSubmit()`; Shift+Enter insere nova linha (`textarea` normal); ou clique no botão "Enviar".
+**PRÉ-CONDIÇÕES**: Não estar em timeout; texto não vazio OU pelo menos um anexo pendente.
+**RESULTADO IMEDIATO**: `routeTextChannelInput` decide se é um comando de música (`/play`, `!play`, etc. — roteado pro NexMusic, Roteiro 12 do pedido original, auditoria própria pendente) ou uma mensagem normal (`api.sendTextMessage(serverId, channelId, text, replyingTo?.id, attachmentIds, postAsSystem)`).
+**RESULTADO VISUAL**: Mensagem aparece no final do histórico; composer limpa (`draft` resetado, `replyingTo`/`pendingAttachments` limpos).
+**RESULTADO SONORO**: Nenhum confirmado ao enviar (diferente de outras ações do app que já têm som próprio, como voz).
+**ANIMAÇÃO**: Nenhuma própria além do scroll suave até o final.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: `window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }))` — sempre rola até o final (correto aqui, já que é a *própria* mensagem do usuário sendo enviada, diferente da mensagem de outra pessoa chegando enquanto se lê histórico antigo).
+**RESULTADO FINAL**: Mensagem persistida, visível para todos os membros do canal em tempo real.
+**EFEITO LOCAL**: `applyIncomingMessage` (dedupe contra eco de WebSocket, mesmo padrão já visto em outras partes do app auditadas nesta sessão de trabalho mais ampla).
+**EFEITO REMOTO**: `TEXT_MESSAGE_CREATE` via WebSocket pra outros membros conectados.
+**REALTIME**: `TEXT_MESSAGE_CREATE`.
+**BACKEND**: `POST` de mensagem, sujeito a `textMessageLimiter` (rate limit — 20 mensagens por 10 segundos, confirmado em `apps/api/src/index.ts` nesta mesma linha de auditoria).
+**BANCO**: Insere em `text_messages`.
+**REFRESH**: A mensagem persiste normalmente (não é estado de sessão).
+**RECONEXÃO**: Se enviada com o WebSocket caído, a mensagem **ainda é enviada com sucesso via HTTP normal** (o envio não depende do WebSocket estar aberto, só o *recebimento* em tempo real depende — já documentado no Roteiro 1, `REALTIME_RECONNECT`), mas o remetente não veria confirmação de que outros já a receberam ao vivo.
+**ERRO**: `setError(...)` exibido — posição exata na UI não confirmada nesta passagem (a verificar se aparece perto do composer).
+**CANCELAMENTO**: Apagar o texto digitado antes de enviar.
+**REVERSÃO**: `MESSAGE_DELETE` depois de enviada.
+**ATALHO**: Enter para enviar, Shift+Enter para nova linha (documentado acima). **`MISSING`: seta para cima (↑) com o campo vazio para editar a última mensagem própria** — recurso explicitamente esperado pelo pedido original (Roteiro 8: "Seta para cima: editar mensagem anterior quando aplicável"), confirmado ausente por busca no código (nenhum handler de `ArrowUp` no `textarea`).
+**MENU DE CONTEXTO**: Menu de contexto nativo do navegador para o campo de texto (recortar/copiar/colar) — não customizado.
+**ACESSIBILIDADE**: `<label className="sr-only" htmlFor="text-channel-message">` — label acessível presente mas visualmente oculto (padrão correto para um campo cujo propósito já é claro visualmente pelo placeholder/contexto).
+
+**Nota de auditoria — autocomplete**: confirmado por ausência: **nenhum autocomplete de `@` (menções), `#` (referência a canal), `:` (atalho de emoji por nome) ou `/` (comandos slash formais)** — o único "comando" reconhecido é o roteamento de texto puro pro NexMusic (`/play`, `!play`), que não tem nenhuma UI de autocomplete/picker, é só texto interpretado depois de enviado. Todos os quatro tipos de autocomplete que o pedido original espera (Roteiro 8) estão `MISSING`.
+
+---
+
+## 4.3 — MESSAGE_SCROLL_AUTOSTICK *(achado — comportamento incorreto)*
+
+**ID**: `MESSAGE_SCROLL_AUTOSTICK`
+**NOME**: Scroll automático ao chegar mensagem nova de outra pessoa
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Canal de texto > histórico > qualquer mensagem nova chegando via WebSocket enquanto o usuário está lendo`
+**POSIÇÃO NA INTERFACE**: Área de histórico (`.messages`).
+**APARÊNCIA**: Não aplicável (é um comportamento de scroll, não um elemento visual próprio).
+**ESTADO NORMAL**: Usuário pode estar em qualquer posição de scroll do histórico (no final, ou rolado pra cima lendo mensagens antigas).
+**HOVER**: Não aplicável.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: Qualquer evento `TEXT_MESSAGE_CREATE`/`TEXT_MESSAGE_UPSERT` recebido via WebSocket para o canal atualmente aberto — **de qualquer remetente**, não só o próprio usuário.
+**PRÉ-CONDIÇÕES**: Canal de texto aberto, WebSocket conectado.
+**RESULTADO IMEDIATO**: `window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }))` — **incondicional**, confirmado lendo o código exato: não há nenhuma checagem de "o usuário está perto do final?" antes de decidir rolar.
+**RESULTADO VISUAL — ACHADO REAL, CONTRÁRIO AO PEDIDO ORIGINAL**: se o usuário estiver rolado pra cima lendo mensagens antigas (histórico, não o final da conversa) e **qualquer pessoa** mandar uma mensagem nova no canal, a tela **é puxada à força até o final**, interrompendo a leitura, mesmo que o usuário não tenha pedido isso. Isso contraria diretamente o comportamento especificado no pedido original (Roteiro 59): "Usuário distante do final: não jogar scroll para baixo automaticamente. Mostrar botão: 'Novas mensagens'." — **confirmado por ausência total**: nenhuma string "Novas mensagens" existe em todo `TextChannels.tsx`, e nenhuma lógica de distância-do-final (`scrollHeight - scrollTop - clientHeight` ou equivalente) foi encontrada condicionando o `scrollIntoView`.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: `behavior: 'smooth'` — pelo menos é uma rolagem suave, não um salto abrupto, mas ainda assim indesejada quando o usuário está ativamente lendo outra parte da conversa.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma — o usuário precisa rolar manualmente de volta pra onde estava lendo, perdendo o lugar.
+**RESULTADO FINAL**: Comportamento consistentemente "sempre gruda no final", que é adequado só quando o usuário já está acompanhando a conversa ao vivo — inadequado quando está revisitando histórico.
+**EFEITO LOCAL**: Interrupção de leitura.
+**EFEITO REMOTO**: Não aplicável (é um comportamento inteiramente local ao cliente que recebe a mensagem).
+**REALTIME**: É o próprio evento que dispara o problema.
+**BACKEND**: Não aplicável.
+**BANCO**: Não aplicável.
+**REFRESH**: Não aplicável.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não é tecnicamente um erro/crash — é um comportamento de UX incorreto frente à especificação.
+**CANCELAMENTO**: Não há como desativar esse comportamento (sem configuração de "não rolar automaticamente").
+**REVERSÃO**: Rolar manualmente de volta pra posição anterior depois do salto indesejado.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Movimento de scroll não solicitado também é uma questão de acessibilidade (usuários com sensibilidade a movimento, ou usando leitor de tela navegando pelo histórico, teriam o contexto de leitura interrompido sem aviso).
+
+**Prioridade de correção sugerida**: alta — este é o tipo de achado que o pedido original pede explicitamente pra não resumir/ignorar ("Se muda algum dado, documente"), e é uma causa raiz plausível de frustração real em uso normal do chat (qualquer conversa ativa enquanto alguém revisita mensagens antigas).
+
+---
+
+## 4.4 — MESSAGE_HOVER_TOOLBAR
+
+**ID**: `MESSAGE_HOVER_TOOLBAR`
+**NOME**: Barra de ações ao passar o mouse sobre uma mensagem
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Canal de texto > histórico > qualquer mensagem de um usuário humano (não bot, não sistema) > hover`
+**POSIÇÃO NA INTERFACE**: `.message-hover-actions`, `role="toolbar"`, sobreposta no canto da mensagem.
+**APARÊNCIA**: Fileira de botões-ícone: Responder, Encaminhar, Copiar texto, Adicionar reação, (Fixar/Desafixar — só com permissão), (Editar — só mensagem própria), (Apagar — mensagem própria ou com permissão).
+**ESTADO NORMAL**: Invisível até o hover (`!isEditing` — some durante edição).
+**HOVER**: Toolbar inteira aparece; cada botão individual também reage a hover (título/tooltip nativo).
+**ACTIVE/PRESSED**: Padrão de botão-ícone.
+**SELECTED**: Não aplicável.
+**DISABLED**: Botões condicionalmente **ausentes** (não desabilitados-visíveis) conforme permissão: Fixar só com `canManageMessages`; Editar só se `isOwn`; Apagar só se `isOwn || canManageMessages`.
+**LOADING**: Não aplicável à toolbar em si.
+**TRIGGER**: Hover do mouse sobre a mensagem (`:hover` em CSS, provavelmente na `<article>` pai).
+**PRÉ-CONDIÇÕES**: Mensagem de um usuário humano (bots e mensagens de sistema têm suas próprias fichas de renderização sem essa toolbar completa — a confirmar quais ações, se alguma, mensagens de bot/sistema mantêm).
+**RESULTADO IMEDIATO**: Toolbar visível.
+**RESULTADO VISUAL**: Ícones aparecem sobrepostos, sem empurrar o layout da mensagem.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada (fade-in provável, não verificado em detalhe).
+**POPOVER**: Não aplicável (a toolbar em si; o picker de reação dentro dela é seu próprio popover, ver `MESSAGE_REACT_ADD`).
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Clicar em qualquer ícone (fichas próprias adiante).
+**RESULTADO FINAL**: Toolbar some ao tirar o mouse.
+**EFEITO LOCAL**: Nenhum só por aparecer.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada só por hover.
+**BANCO**: Não aplicável.
+**REFRESH**: Não aplicável.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Tirar o mouse.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: **`MISSING`**: nenhuma forma de acessar essas ações via teclado sem mouse — não há `tabindex` confirmado que traga a toolbar ao foco via Tab quando a mensagem em si recebe foco (mensagens não são naturalmente focáveis como elementos de lista), e não existe `MESSAGE_CONTEXT_MENU` (botão direito) como alternativa — ver ficha própria adiante confirmando essa ausência.
+**MENU DE CONTEXTO**: Ver `MESSAGE_CONTEXT_MENU` — `MISSING` por completo.
+**ACESSIBILIDADE**: `role="toolbar"` + `aria-label="Ações da mensagem"` no container — estrutura ARIA correta para quem já está com foco lá, mas **o caminho pra chegar lá via teclado sem mouse não foi confirmado como funcional** (dependendo só de hover, um usuário de teclado puro pode não conseguir revelar a toolbar de forma alguma).
+
+---
+
+## 4.5 — MESSAGE_REPLY
+
+**ID**: `MESSAGE_REPLY`
+**NOME**: Responder a uma mensagem
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Mensagem > toolbar de hover > ícone Responder`
+**POSIÇÃO NA INTERFACE**: Primeiro ícone da toolbar.
+**APARÊNCIA**: `ReplyIcon`, 14px.
+**ESTADO NORMAL**: Disponível pra qualquer mensagem de usuário humano.
+**HOVER**: Título "Responder".
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Nunca (qualquer membro pode responder a qualquer mensagem visível).
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Mensagem visível.
+**RESULTADO IMEDIATO**: `setReplyingTo(message)`.
+**RESULTADO VISUAL**: Banner acima do composer (`.reply-composer-banner`): "Respondendo a **{nome}**" + botão de cancelar (X).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Foco presumivelmente move pro composer (a confirmar se há `.focus()` explícito) — usuário digita a resposta e envia.
+**RESULTADO FINAL**: Mensagem enviada com `replyToMessageId` referenciando a original — **só o id é guardado, não um snapshot congelado do conteúdo** (comentário explícito no código: resolve contra o que já está carregado na conversa atual). Se a mensagem original não estiver mais na janela carregada (fora do histórico recente, ou apagada), o `ReplyPreview` mostra honestamente "Mensagem original não encontrada" em vez de fingir ter o conteúdo.
+**EFEITO LOCAL**: Banner de contexto de resposta.
+**EFEITO REMOTO**: Outros membros veem a mensagem nova com a prévia da respondida (se ainda estiver na janela carregada deles também — cada cliente resolve independentemente contra o que já tem).
+**REALTIME**: Mensagem normal (`TEXT_MESSAGE_CREATE`) com o campo extra.
+**BACKEND**: Mesmo endpoint de `MESSAGE_SEND`, com `replyingTo?.id` no corpo.
+**BANCO**: Coluna `reply_to_message_id` em `text_messages`.
+**REFRESH**: `replyingTo` (estado local, não enviado ainda) **não persiste** em F5 — se o usuário recarregar no meio de escrever uma resposta, perde o contexto (mas não o texto já digitado, que também se perde de qualquer forma, já que `draft` é puramente local).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Herdado de `MESSAGE_SEND`.
+**CANCELAMENTO**: Botão X no banner (`setReplyingTo(null)`), ou **Esc** — a confirmar se implementado (o pedido original espera isso explicitamente no Roteiro 8: "Esc: cancelar reply/edit quando aplicável" — não confirmado nesta passagem se há um listener de Esc especificamente pra isso, ou só os cancelamentos de modal já documentados em outras fichas).
+**REVERSÃO**: Cancelar antes de enviar.
+**ATALHO**: Nenhum atalho pra *iniciar* uma resposta via teclado (só clique no ícone).
+**MENU DE CONTEXTO**: Ausente (ver `MESSAGE_CONTEXT_MENU`).
+**ACESSIBILIDADE**: `aria-label="Responder"` no botão; botão de cancelar no banner com `aria-label="Cancelar resposta"`.
+
+---
+
+## 4.6 — MESSAGE_JUMP_TO_ORIGINAL
+
+**ID**: `MESSAGE_JUMP_TO_ORIGINAL`
+**NOME**: Clicar na prévia de resposta para pular até a mensagem original
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Mensagem com replyToMessageId > prévia de resposta acima do conteúdo`
+**POSIÇÃO NA INTERFACE**: `.message-reply-preview`, acima do cabeçalho da mensagem.
+**APARÊNCIA**: Ícone de resposta pequeno + nome do autor original + trecho do texto original.
+**ESTADO NORMAL**: Visível sempre que a mensagem é uma resposta.
+**HOVER**: Padrão de botão clicável.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: `disabled={!replyTarget}` — **se a mensagem original não estiver na janela carregada, o botão fica desabilitado** (não clicável), mostrando só "Mensagem original não encontrada" em itálico, sem fingir que dá pra navegar até algo que não está disponível.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique (só quando habilitado).
+**PRÉ-CONDIÇÕES**: Mensagem original precisa estar entre as mensagens já carregadas nesta conversa.
+**RESULTADO IMEDIATO**: `jumpToMessage(replyToMessageId)`.
+**RESULTADO VISUAL**: `element.scrollIntoView({ block: 'center', behavior: 'smooth' })` até a mensagem original, que ganha a classe `message-jump-highlight` por 1.5 segundos (destaque temporário, provavelmente um flash de cor de fundo — CSS exato não lido nesta passagem).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Scroll suave + highlight temporário de 1.5s.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Usuário vê a mensagem original destacada por um instante.
+**EFEITO LOCAL**: Só scroll/destaque visual, nenhum dado muda.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada — é busca local no DOM (`document.getElementById(`message-${id}`)`, inferido pelo padrão `id={`message-${message.id}`}` já confirmado no `<article>` de cada mensagem).
+**BANCO**: Não aplicável.
+**REFRESH**: Não aplicável.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável (o caso de "não encontrado" já é tratado como estado normal, não erro).
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: É um `<button>` real mesmo quando desabilitado (não um link/div fake), então o estado desabilitado é anunciado corretamente por leitores de tela.
+
+---
+
+## 4.7 — MESSAGE_FORWARD
+
+**ID**: `MESSAGE_FORWARD`
+**NOME**: Encaminhar mensagem para outro canal/servidor/DM
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: `CORE` — já implementado, testado com 17 checagens E2E reais e verificado em produção em sessão anterior desta linha de trabalho (confirmado em `DISCORD_PARITY_PLAN.md` §8/§16, item H). Resumo, não repetido em ficha completa de 36 campos por já ter essa cobertura de teste/verificação real documentada:
+- **Caminho**: `Mensagem > toolbar de hover > ícone Encaminhar > ForwardMessageModal`.
+- **Destino**: qualquer canal de qualquer servidor do usuário, ou qualquer DM/amigo (abre a DM na hora se não existir ainda).
+- **Atribuição**: "Encaminhada de {autor}" congelada no momento do envio — encadeamento de forward-de-forward atribui ao remetente imediato, não ao autor original da cadeia.
+- **Limitações deliberadas**: sem anexo (risco de referência compartilhada de objeto no MinIO), sem comentário adicional junto, um destino por vez, sem link de volta pra mensagem original a partir da encaminhada.
+- **Achado desta passagem, não documentado antes**: o ícone de encaminhar na toolbar **não é condicionado a nenhuma permissão** — qualquer membro que vê a mensagem pode encaminhá-la (comportamento correto/esperado, só nunca tinha sido confirmado explicitamente lendo o JSX de novo nesta auditoria).
+
+---
+
+## 4.8 — MESSAGE_COPY_TEXT
+
+**ID**: `MESSAGE_COPY_TEXT`
+**NOME**: Copiar o texto de uma mensagem
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Mensagem > toolbar de hover > ícone Copiar`
+**POSIÇÃO NA INTERFACE**: Terceiro ícone da toolbar.
+**APARÊNCIA**: `CopyIcon`, 14px.
+**ESTADO NORMAL**: Sempre disponível.
+**HOVER**: Título "Copiar texto".
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Nunca.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Nenhuma.
+**RESULTADO IMEDIATO**: `navigator.clipboard.writeText(message.text)`.
+**RESULTADO VISUAL — ACHADO**: **nenhum feedback visual de "Copiado!"** — diferente do padrão que o pedido original espera pra toda ação de copiar (Roteiro 55: "Mostrar feedback curto: 'Copiado'"). O usuário clica e não tem nenhuma confirmação de que funcionou, a menos que cole em algum lugar pra verificar.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Texto bruto (markdown não renderizado, texto fonte original) no clipboard.
+**EFEITO LOCAL**: Clipboard do SO alterado.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: Não aplicável.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: `navigator.clipboard.writeText` pode rejeitar (ex.: sem permissão de clipboard, contexto não seguro) — **nenhum `.catch()` confirmado nesta chamada específica** (`void navigator.clipboard.writeText(...)`, promise descartada sem tratamento) — se falhar, falha silenciosamente sem nenhum aviso ao usuário.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Ausente (o navegador tem seleção de texto + Ctrl+C nativo como alternativa sempre disponível, já que o texto da mensagem é texto real na página, não uma imagem).
+**ACESSIBILIDADE**: `aria-label="Copiar texto"`.
+
+**Nota de auditoria**: mesma lacuna de "sem feedback de copiado" e "sem tratamento de erro" se aplica a `CATEGORY_CONTEXT_MENU`'s "Copiar ID da Categoria" (Roteiro 3) — **padrão consistente em todo o app**: toda ação de copiar usa a mesma técnica simples (`navigator.clipboard.writeText`), sem exceção, e nenhuma tem feedback visual de sucesso. Vale como um achado transversal a corrigir de uma vez em todas as ocorrências, não uma por uma.
+
+---
+
+## 4.9 — MESSAGE_REACT_ADD
+
+**ID**: `MESSAGE_REACT_ADD`
+**NOME**: Adicionar uma reação nova a uma mensagem
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Mensagem > toolbar de hover > ícone de carinha sorridente > EmojiPicker`
+**POSIÇÃO NA INTERFACE**: Quarto ícone da toolbar; o picker abre como popover posicionado a partir do retângulo do botão (`getBoundingClientRect()`).
+**APARÊNCIA**: `SmileIcon` (14px) no botão; `EmojiPicker` completo ao abrir — busca por nome + 9 categorias sobre o dataset completo do unicode-emoji-json (~1900 emojis), já confirmado como `DONE` em `DISCORD_PARITY_PLAN.md` §8, com posicionamento `fixed` e clamp de viewport (corrigido nesta mesma linha de trabalho depois de um achado real de clipping perto do fim da lista de mensagens).
+**ESTADO NORMAL**: Fechado.
+**HOVER**: Título "Adicionar reação" no botão.
+**ACTIVE/PRESSED**: Clique alterna abrir/fechar (`setReactionPickerAnchor((current) => (current ? null : rect))` — clicar de novo no mesmo botão fecha, não abre um segundo).
+**SELECTED**: Não aplicável.
+**DISABLED**: Nunca — qualquer membro pode reagir a qualquer mensagem visível.
+**LOADING**: Não aplicável (picker é `lazy`-loaded via `React.lazy`/`Suspense`, `fallback={null}` — sem indicador de carregamento visível durante o carregamento do chunk JS, só aparece quando pronto).
+**TRIGGER**: Clique no botão.
+**PRÉ-CONDIÇÕES**: Nenhuma.
+**RESULTADO IMEDIATO**: Picker abre.
+**RESULTADO VISUAL**: Grade/lista de emoji com busca.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada nesta passagem.
+**POPOVER**: É o próprio popover.
+**MENU**: Não aplicável.
+**MODAL**: Não é modal (fecha ao clicar fora, presumidamente — mesmo padrão do resto do app).
+**SEGUNDA ETAPA**: Selecionar um emoji → `onToggleReaction(emoji, false)` (o `false` indica "ainda não reagiu com este", então é sempre um "adicionar", nunca remove por essa via específica — remover uma reação já existente é feito clicando na pastilha, ver `MESSAGE_REACTION_TOGGLE`).
+**RESULTADO FINAL**: Reação adicionada; picker fecha (`setReactionPickerAnchor(null)`).
+**EFEITO LOCAL**: Pastilha de reação aparece/incrementa.
+**EFEITO REMOTO**: `TEXT_MESSAGE_REACTION_ADD` via WebSocket — outros veem a reação em tempo real.
+**REALTIME**: `TEXT_MESSAGE_REACTION_ADD`.
+**BACKEND**: `POST` de reação (validado contra o dataset conhecido de emoji, não uma lista curada pequena — confirmado em `DISCORD_PARITY_PLAN.md` §8).
+**BANCO**: Tabela de reações (não lida em detalhe o nome exato nesta passagem, mas já confirmada existente e funcional).
+**REFRESH**: Persiste normalmente.
+**RECONEXÃO**: Recarregada com a mensagem.
+**ERRO**: Não confirmado nesta passagem onde um erro de reação apareceria (sem toast global confirmado em todo o app até agora nesta auditoria).
+**CANCELAMENTO**: Clicar fora do picker, ou clicar de novo no botão de abrir.
+**REVERSÃO**: Remover a reação clicando na pastilha (ver ficha seguinte).
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label="Adicionar reação"` no botão de abrir; acessibilidade interna do `EmojiPicker` (busca, navegação por categoria) não reauditada campo-a-campo nesta passagem específica (já existe e funciona, confirmado em sessão anterior).
+
+---
+
+## 4.10 — MESSAGE_REACTION_TOGGLE
+
+**ID**: `MESSAGE_REACTION_TOGGLE`
+**NOME**: Adicionar/remover a própria reação clicando numa pastilha existente
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Mensagem > abaixo do texto > pastilha de reação já existente (emoji + contagem)`
+**POSIÇÃO NA INTERFACE**: `.message-reactions`, abaixo do corpo da mensagem — só visível se `message.reactions?.length` (**a barra inteira nem renderiza se não há nenhuma reação**, não aparece vazia).
+**APARÊNCIA**: Pastilha (`.reaction-pill`) com emoji + número; classe `reacted` se o próprio usuário já reagiu com aquele emoji (destaque visual diferenciado).
+**ESTADO NORMAL**: Pastilha visível para qualquer reação existente na mensagem, independente de quem reagiu.
+**HOVER**: `title` nativo mostra "Você reagiu — clique para remover" (se já reagiu) ou "{N} reação(ões)" (se não) — **não lista os nomes de quem reagiu**, só a contagem, diferente do balão rico do Discord real que mostra avatares/nomes de quem reagiu.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Classe `reacted` é o próprio indicador de "selecionado" (já reagi com este).
+**DISABLED**: Nunca.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique na pastilha.
+**PRÉ-CONDIÇÕES**: Pelo menos uma reação já existir na mensagem (de qualquer pessoa) para a pastilha aparecer.
+**RESULTADO IMEDIATO**: `onToggleReaction(emoji, reacted)` — `reacted` já vem calculado (`group.userIds.includes(ownUserId)`), então a função sabe se deve adicionar ou remover.
+**RESULTADO VISUAL**: Contagem incrementa/decrementa; classe `reacted` liga/desliga; **se a contagem chega a zero depois de remover, a pastilha inteira desaparece** (comportamento inferido pela estrutura de dados — `message.reactions` provavelmente filtra grupos vazios, a confirmar exatamente onde isso acontece, cliente ou servidor).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Reação do usuário alternada.
+**EFEITO LOCAL**: Pastilha atualizada.
+**EFEITO REMOTO**: `TEXT_MESSAGE_REACTION_ADD` ou `TEXT_MESSAGE_REACTION_REMOVE` via WebSocket.
+**REALTIME**: Conforme acima.
+**BACKEND**: `POST`/`DELETE` de reação.
+**BANCO**: `INSERT`/`DELETE` na tabela de reações.
+**REFRESH**: Persiste normalmente.
+**RECONEXÃO**: Recarregada com a mensagem.
+**ERRO**: Não confirmado onde apareceria.
+**CANCELAMENTO**: Clicar de novo reverte.
+**REVERSÃO**: Clicar de novo.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Pastilha é um `<button>` real, alcançável via Tab; `title` fornece contexto, mas não é lido automaticamente por todo leitor de tela sem interação extra (limitação conhecida de `title` como mecanismo de acessibilidade, já documentada como padrão do app inteiro no Roteiro 2).
+
+---
+
+## 4.11 — MESSAGE_PIN_TOGGLE
+
+**ID**: `MESSAGE_PIN_TOGGLE`
+**NOME**: Fixar/desafixar uma mensagem
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Mensagem > toolbar de hover > ícone de pin` (só visível com `canManageMessages`)
+**POSIÇÃO NA INTERFACE**: Toolbar de hover, posição condicional (depois do picker de reação).
+**APARÊNCIA**: `PinIcon`, 14px; `title`/`aria-label` mudam dinamicamente entre "Fixar mensagem"/"Desafixar mensagem" conforme `message.pinnedAt`.
+**ESTADO NORMAL**: Ícone presente só pra quem tem `MANAGE_MESSAGES`.
+**HOVER**: Tooltip contextual (fixar vs. desafixar).
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável ao ícone; a própria mensagem ganha um indicador visual permanente quando fixada (ver abaixo).
+**DISABLED**: Ausente (não desabilitado-visível) sem permissão.
+**LOADING**: Não confirmado.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: `MANAGE_MESSAGES`; **teto de 50 mensagens fixadas por canal** (confirmado em `DISCORD_PARITY_PLAN.md` §8, mesmo limite do Discord real) — comportamento exato ao atingir o teto (erro? item mais antigo desafixado automaticamente?) não confirmado nesta passagem específica.
+**RESULTADO IMEDIATO**: `onTogglePin()` → `POST`/`DELETE` de pin.
+**RESULTADO VISUAL**: Mensagem ganha (ou perde) a classe `pinned` no `<article>`, mais um selo "📌 fixada" (`.message-pinned-mark`) no cabeçalho, ao lado do timestamp/"(editado)".
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Aparece/some do `PinnedMessagesPanel` (ficha própria adiante).
+**RESULTADO FINAL**: Estado de fixação persistido.
+**EFEITO LOCAL**: Selo visual + entrada no painel de fixadas.
+**EFEITO REMOTO**: `TEXT_MESSAGE_UPSERT` via WebSocket (reaproveitado do mesmo evento de edição — fixar não tem um tipo de evento próprio, é tratado como uma atualização de mensagem qualquer).
+**REALTIME**: `TEXT_MESSAGE_UPSERT`.
+**BACKEND**: `POST /api/text-channels/:id/messages/:id/pin` / `DELETE` equivalente.
+**BANCO**: Coluna `pinned_at` em `text_messages`.
+**REFRESH**: Persiste normalmente.
+**RECONEXÃO**: Recarregado com a mensagem.
+**ERRO**: Teto de 50 — comportamento exato não confirmado nesta passagem.
+**CANCELAMENTO**: Clicar de novo (mesmo botão faz o inverso).
+**REVERSÃO**: Clicar de novo.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Ausente (mesma lacuna geral de `MESSAGE_CONTEXT_MENU`).
+**ACESSIBILIDADE**: `aria-label` dinâmico correto (muda conforme o estado).
+
+---
+
+## 4.12 — MESSAGE_EDIT
+
+**ID**: `MESSAGE_EDIT`
+**NOME**: Editar uma mensagem própria
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Mensagem própria > toolbar de hover > ícone Editar`
+**POSIÇÃO NA INTERFACE**: Toolbar de hover, só em mensagens próprias.
+**APARÊNCIA**: `EditIcon`, 14px.
+**ESTADO NORMAL**: Presente só em mensagens onde `isOwn === true`.
+**HOVER**: Título "Editar mensagem".
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Ausente em mensagens de outros usuários (mesmo com `canManageMessages` — **achado**: gerenciar mensagens permite apagar mensagem de outro, mas nunca editar mensagem de outro, mesmo padrão do Discord real, confirmado consistente com o comentário já existente em `DISCORD_PARITY_PLAN.md` §8: "quem tem o cargo com MANAGE_MESSAGES também pode apagar mensagem de outro (não editar, igual Discord real)").
+**LOADING**: Não aplicável ao botão de iniciar.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: `isOwn`.
+**RESULTADO IMEDIATO**: `onStartEdit()` → `isEditing` vira `true` pra esta mensagem específica.
+**RESULTADO VISUAL**: Corpo da mensagem substituído por `MessageEditForm` (campo de texto editável, pré-preenchido) — **toolbar de hover inteira some enquanto edita** (`{!isEditing && (...)}`), então não dá pra, por exemplo, reagir a uma mensagem enquanto a edita.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não é modal — é inline, dentro do próprio fluxo da mensagem.
+**SEGUNDA ETAPA**: Editar o texto e salvar/cancelar (componente `MessageEditForm` — campos/atalhos internos não relidos em detalhe nesta passagem específica, mas o padrão Enter-salva/Esc-cancela é o esperado pelo pedido original, Roteiro 8, a confirmar).
+**RESULTADO FINAL**: `onSaveEdit(text)` → `PATCH` da mensagem.
+**EFEITO LOCAL**: Texto atualizado, selo "(editado)" aparece no cabeçalho.
+**EFEITO REMOTO**: `TEXT_MESSAGE_UPSERT` — outros veem a edição em tempo real, com o mesmo selo "(editado)".
+**REALTIME**: `TEXT_MESSAGE_UPSERT`.
+**BACKEND**: `PATCH /api/text-channels/:id/messages/:id`.
+**BANCO**: `UPDATE` no texto + `edited_at`.
+**REFRESH**: Se o usuário recarregar no meio de uma edição não salva, perde a edição em andamento (estado local, não persistido como rascunho).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Erro de validação/rede exibido dentro do próprio `MessageEditForm` (posição exata não relida em detalhe).
+**CANCELAMENTO**: `onCancelEdit()` — presumivelmente também via Esc (a confirmar), volta ao texto original sem salvar.
+**REVERSÃO**: Editar de novo.
+**ATALHO**: **`MISSING`**: seta para cima com o campo do composer vazio para editar a última mensagem própria diretamente (já documentado em `MESSAGE_SEND`) — aqui, uma vez já em modo de edição, o padrão esperado seria Enter salva/Esc cancela, não confirmado neste passe específico se está implementado.
+**MENU DE CONTEXTO**: Ausente.
+**ACESSIBILIDADE**: `aria-label="Editar mensagem"` no botão de iniciar.
+
+---
+
+## 4.13 — MESSAGE_DELETE
+
+**ID**: `MESSAGE_DELETE`
+**NOME**: Apagar uma mensagem
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Mensagem > toolbar de hover > ícone de lixeira`
+**POSIÇÃO NA INTERFACE**: Último ícone da toolbar.
+**APARÊNCIA**: `TrashIcon`, 14px.
+**ESTADO NORMAL**: Presente se `isOwn || canManageMessages`.
+**HOVER**: Título "Apagar mensagem".
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Ausente sem permissão/autoria.
+**LOADING**: Não confirmado.
+**TRIGGER**: Clique — **`onDelete` é chamado direto do clique, sem confirmação visível no próprio componente de mensagem** (a confirmar se `onDelete`, definido no componente pai `TextChannelView`, injeta algum `window.confirm()` antes de chamar a API — não lido em detalhe nesta passagem específica do handler pai).
+**PRÉ-CONDIÇÕES**: `isOwn || canManageMessages`.
+**RESULTADO IMEDIATO**: `DELETE` da mensagem.
+**RESULTADO VISUAL**: Mensagem some do histórico (todos os clientes, via evento de tempo real).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada (some instantaneamente ou com fade — não verificado).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: A confirmar se existe uma confirmação antes (ver `TRIGGER`).
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL — IRREVERSÍVEL**: Mensagem apagada — junto vão reações, anexos referenciados (a confirmar cascata exata), e o pin se estava fixada.
+**EFEITO LOCAL**: Removida do estado local.
+**EFEITO REMOTO**: `TEXT_MESSAGE_DELETE` via WebSocket.
+**REALTIME**: `TEXT_MESSAGE_DELETE`.
+**BACKEND**: `DELETE /api/text-channels/:id/messages/:id`.
+**BANCO**: `DELETE` (ou soft-delete — não confirmado qual dos dois nesta passagem; o schema teria uma coluna `deleted_at` num soft-delete, não confirmada como existente).
+**REFRESH**: Não aplicável (já apagada).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não confirmado onde apareceria.
+**CANCELAMENTO**: Se houver confirmação prévia, cancelar nela; senão, `MISSING` (sem desfazer depois do clique).
+**REVERSÃO**: **`MISSING`** — sem lixeira/desfazer, mensagem apagada é definitiva.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Ausente.
+**ACESSIBILIDADE**: `aria-label="Apagar mensagem"`.
+
+**Nota de auditoria**: dado que esta é uma ação destrutiva e irreversível, e que o app já estabeleceu (em `SERVER_DELETE`/`CATEGORY_DELETE`, Roteiro 3) o padrão de sempre confirmar antes de excluir algo, **vale confirmar em auditoria futura mais profunda se `MESSAGE_DELETE` realmente pula a confirmação** (o que seria uma inconsistência real frente ao próprio padrão que o app já adota em outros lugares) ou se ela só não foi capturada nesta leitura específica do componente de mensagem (por estar no componente pai, não no filho lido agora).
+
+---
+
+## 4.14 — MESSAGE_CONTEXT_MENU *(MISSING)*
+
+**ID**: `MESSAGE_CONTEXT_MENU`
+**NOME**: Menu de contexto ao clicar com o botão direito numa mensagem
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: **`MISSING` por completo.** Confirmado por ausência: nenhum `onContextMenu` em `TextChannels.tsx` inteiro — diferente de canais e categorias (Roteiro 3), que já reaproveitam o `ContextMenu.tsx` genérico, mensagens **não têm nenhum menu de botão direito**. Todas as ações (responder, encaminhar, copiar, reagir, fixar, editar, apagar) só existem via a toolbar de hover (`MESSAGE_HOVER_TOOLBAR`).
+**CAMINHO EXATO ESPERADO** (não implementado): `Mensagem > botão direito`
+**O que isso bloqueia**: além de replicar as ações já disponíveis via hover (redundância útil, não essencial), um menu de contexto normalmente traria ações que **não existem em lugar nenhum hoje**: "Copiar ID da mensagem" (`MISSING`), "Copiar link da mensagem" (`MISSING` — nem faria sentido sem o roteamento por URL documentado como ausente no Roteiro 2), "Marcar não lida a partir daqui" (`MISSING`, mesma dependência de rastreio de leitura ainda inexistente), "Denunciar mensagem" (`MISSING`, sem sistema de denúncia em lugar nenhum do app).
+**Pré-requisito de implementação, caso venha a ser feito**: reaproveitar o mesmo `useContextMenu()`/`<ContextMenu>` já usado em canais/categorias — padrão já estabelecido e testado no resto do app, só falta ligar em mensagens.
+
+---
+
+## 4.15 — MESSAGE_ATTACH_FILE_PICKER
+
+**ID**: `MESSAGE_ATTACH_FILE_PICKER`
+**NOME**: Anexar arquivo via seletor do sistema
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Composer > ícone de clipe (esquerda do campo de texto)`
+**POSIÇÃO NA INTERFACE**: `.text-channel-attach-button`, início da linha do composer.
+**APARÊNCIA**: `AttachmentIcon`, 17px — **um único botão**, sem o menu "+" com múltiplas opções (upload de mídia, criar enquete, etc.) que o pedido original espera (Roteiro 9) — aqui é direto: clique abre o seletor de arquivo do SO, sem passo intermediário de menu.
+**ESTADO NORMAL**: Habilitado.
+**HOVER**: Título "Anexar arquivo".
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: `isTimedOut || uploading || pendingAttachments.length >= ATTACHMENT_MAX_PER_MESSAGE`.
+**LOADING**: Botão continua clicável durante upload de um arquivo anterior, mas fica desabilitado se `uploading === true` (mutuamente exclusivo — não dá pra iniciar um segundo upload enquanto o primeiro está em andamento).
+**TRIGGER**: Clique → `fileInputRef.current?.click()` (dispara o `<input type="file" multiple className="sr-only">` escondido).
+**PRÉ-CONDIÇÕES**: Não estar em timeout; menos de `ATTACHMENT_MAX_PER_MESSAGE` anexos já pendentes.
+**RESULTADO IMEDIATO**: Seletor de arquivo nativo do SO abre; `multiple` permite selecionar vários de uma vez.
+**RESULTADO VISUAL**: Após selecionar: `handleFilesSelected` processa cada arquivo, mostrando uma tira de chips (`.pending-attachment-chip`) acima do composer — miniatura pra imagem, ícone de arquivo genérico pra outros tipos, nome do arquivo, botão de remover (X) por chip.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: **`MISSING`** — ver `APARÊNCIA` (Discord real tem um menu "+" com várias opções; aqui é upload direto).
+**MODAL**: Não aplicável (o seletor de arquivo é nativo do SO).
+**SEGUNDA ETAPA**: Enviar a mensagem inclui os `attachmentIds` já enviados ao MinIO nesta etapa (upload em duas etapas: sobe o arquivo assim que selecionado, vincula à mensagem só no envio — confirmado em `DISCORD_PARITY_PLAN.md` §0).
+**RESULTADO FINAL**: Anexo(s) enviados junto com a próxima mensagem (ou descartados se o usuário nunca enviar, ver `CANCELAMENTO`).
+**EFEITO LOCAL**: Upload real pro MinIO self-hosted já acontece nesta etapa (antes mesmo de enviar a mensagem).
+**EFEITO REMOTO**: Nenhum até a mensagem em si ser enviada.
+**REALTIME**: Não aplicável a esta etapa.
+**BACKEND**: `POST` de upload, sujeito a `uploadLimiter` (confirmado em `DISCORD_PARITY_PLAN.md` §14).
+**BANCO**: Registro de anexo criado (órfão até ser vinculado a uma mensagem, ou limpo se nunca for usado — mecanismo exato de limpeza de órfãos não confirmado nesta passagem).
+**REFRESH**: **Anexos pendentes se perdem em F5** (já foram upados pro MinIO, mas a referência local — o "carrinho" de anexos prontos pra enviar — é só estado React, não sobrevive a reload).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: `attachmentError` exibido em banner acima do composer (`.timeout-composer-banner`, mesmo estilo visual do aviso de timeout) — com botão de fechar. Limites: até 15MB/arquivo, 5 por mensagem (confirmado em `DISCORD_PARITY_PLAN.md` §0) — mensagem de erro exata pra cada caso (arquivo grande demais, limite de quantidade) a confirmar palavra por palavra em auditoria futura.
+**CANCELAMENTO**: Botão X em cada chip remove o anexo pendente **do carrinho local** — **não confirmado se isso também apaga o objeto já upado no MinIO**, ou se fica órfão até alguma limpeza posterior (achado a verificar).
+**REVERSÃO**: Selecionar de novo.
+**ATALHO**: Nenhum atalho de teclado pra abrir o seletor.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label="Anexar arquivo"`; input de arquivo real escondido via `sr-only` (não `display:none`, então tecnicamente ainda navegável por alguns leitores de tela via o próprio botão que o aciona).
+
+---
+
+## 4.16 — MESSAGE_ATTACH_DRAGDROP *(MISSING)*
+
+**ID**: `MESSAGE_ATTACH_DRAGDROP`
+**NOME**: Arrastar um arquivo do sistema direto pro chat
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: **`MISSING` por completo.** Confirmado por ausência: nenhum `onDrop`/`onDragOver` em `TextChannels.tsx` — a área de mensagens/composer não aceita arquivos arrastados do Explorer do Windows (ou de outra janela). O pedido original espera isso explicitamente (Roteiro 9: "Drag-and-drop: fluxo equivalente [ao upload]").
+**CAMINHO EXATO ESPERADO** (não implementado): `Arrastar arquivo de fora do app > soltar sobre a área de mensagens ou composer`
+**Único caminho real hoje**: `MESSAGE_ATTACH_FILE_PICKER` (seletor de arquivo via clique).
+
+---
+
+## 4.17 — MESSAGE_ATTACH_PASTE *(MISSING)*
+
+**ID**: `MESSAGE_ATTACH_PASTE`
+**NOME**: Colar uma imagem da área de transferência direto no composer
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: **`MISSING` por completo.** Confirmado por ausência: nenhum `onPaste` no `<textarea>` do composer. Copiar uma imagem (print de tela, imagem de outro app) e colar com Ctrl+V no campo de mensagem **não faz nada** — só cola texto normal se a área de transferência tiver texto.
+**CAMINHO EXATO ESPERADO** (não implementado): `Composer > foco no campo de texto > Ctrl+V com uma imagem na área de transferência`
+
+---
+
+## 4.18 — PINNED_MESSAGES_PANEL_TOGGLE
+
+**ID**: `PINNED_MESSAGES_PANEL_TOGGLE`
+**NOME**: Abrir/fechar o painel de mensagens fixadas
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Canal de texto > topbar (a confirmar posição exata do botão que aciona `pinsOpen` — provavelmente um ícone de pin no cabeçalho do canal, auditoria detalhada da topbar ainda pendente pra um roteiro futuro)`
+**POSIÇÃO NA INTERFACE**: Painel lateral (`.channel-side-panel.pinned-messages-panel`).
+**APARÊNCIA**: Cabeçalho "📌 Mensagens fixadas {N}", lista de mensagens fixadas (autor + trecho do texto, clicável), ou estado vazio "Nenhuma mensagem fixada neste canal ainda."
+**ESTADO NORMAL**: Fechado por padrão.
+**HOVER**: Cada linha de mensagem fixada tem hover (botão clicável).
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: `refreshPinnedMessages()` disparado ao abrir (`useEffect([pinsOpen, channel.id])`) — sem indicador de loading confirmado.
+**TRIGGER**: Clique no botão que alterna `pinsOpen` (localização exata do botão pendente de confirmação em auditoria futura da topbar).
+**PRÉ-CONDIÇÕES**: Nenhuma — qualquer membro pode ver a lista de fixadas.
+**RESULTADO IMEDIATO**: Painel aparece, busca a lista atualizada.
+**RESULTADO VISUAL**: Lista lateral com as mensagens fixadas.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não é modal (painel lateral, não bloqueia o resto da tela).
+**SEGUNDA ETAPA**: Clicar numa mensagem fixada → `onJump` (mesmo `jumpToMessage` de `MESSAGE_JUMP_TO_ORIGINAL`) — **mas aqui não há a mesma checagem de "está na janela carregada"** confirmada (`PinnedMessagesPanel` não recebe `loadedMessageIds` como prop, diferente de `MessageSearchPanel`) — **achado a confirmar**: se uma mensagem fixada antiga não estiver mais carregada no histórico visível, clicar nela pode simplesmente não fazer nada (já que `jumpToMessage` busca no DOM local, que só tem o que já foi renderizado), sem o mesmo tratamento gracioso de "desabilitado com motivo" que a busca já tem.
+**RESULTADO FINAL**: Painel aberto, navegável.
+**EFEITO LOCAL**: Nenhuma mudança de dado, só leitura.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Lista de pins reage a `TEXT_MESSAGE_UPSERT`/mudança de `pinnedAt` (confirmado no `useEffect` de eventos de tempo real já lido, linhas 809-813).
+**BACKEND**: `GET` de mensagens fixadas do canal.
+**BANCO**: Leitura de `text_messages WHERE pinned_at IS NOT NULL`.
+**REFRESH**: `pinsOpen` não persiste (fecha em F5).
+**RECONEXÃO**: Recarregado ao reabrir.
+**ERRO**: Não confirmado.
+**CANCELAMENTO**: Clicar de novo no botão que abriu, ou algum X próprio (a confirmar).
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `role="region"`, `aria-label="Mensagens fixadas"`.
+
+---
+
+## 4.19 — MESSAGE_SEARCH_RESULT_JUMP
+
+**ID**: `MESSAGE_SEARCH_RESULT_JUMP`
+**NOME**: Buscar mensagens no canal e navegar até um resultado
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Canal de texto > topbar > ícone de busca (posição exata pendente de confirmação em auditoria futura da topbar) > MessageSearchPanel`
+**POSIÇÃO NA INTERFACE**: Painel lateral (`.channel-side-panel.message-search-panel`).
+**APARÊNCIA**: Campo de busca com ícone (`SearchIcon`) + botão "Buscar"; resultados listados com autor, timestamp, trecho.
+**ESTADO NORMAL**: Campo vazio, foco automático (`autoFocus`).
+**HOVER**: Cada resultado clicável tem hover.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Botão "Buscar" desabilitado se a busca tiver menos que `MESSAGE_SEARCH_QUERY_MIN_LENGTH` caracteres.
+**LOADING**: Texto do botão muda pra "Buscando…".
+**TRIGGER**: Enter no campo, ou clique em "Buscar".
+**PRÉ-CONDIÇÕES**: Texto de busca com tamanho mínimo.
+**RESULTADO IMEDIATO**: `api.searchMessages(serverId, channelId, query)` — busca `LIKE` parametrizada com fuga manual de `%`/`_`/`\` (já confirmado como implementação segura em `DISCORD_PARITY_PLAN.md` §8), **escopada a um único canal, sem busca cross-canal/cross-servidor**.
+**RESULTADO VISUAL**: Lista de resultados, ou "Nenhuma mensagem encontrada." se vazio.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não é modal.
+**SEGUNDA ETAPA**: Clicar num resultado.
+**RESULTADO FINAL — ACHADO REAL, LIMITAÇÃO CONCRETA**: cada resultado só é clicável (`disabled={!loadedMessageIds.has(message.id)}`) **se a mensagem encontrada já estiver entre as mensagens atualmente carregadas na tela** (a "janela" recente de histórico, tipicamente as últimas N mensagens). Se a busca encontrar uma mensagem **antiga**, fora dessa janela, o resultado aparece na lista mas **fica desabilitado**, com `title="Fora da janela carregada de mensagens recentes"` explicando por quê — **a busca encontra a mensagem, mas o usuário não consegue navegar até ela**, porque não existe um mecanismo de "carregar histórico até este ponto específico" (paginação direcionada). Isso é uma lacuna funcional real, não cosmética: a busca é parcialmente inútil pra mensagens antigas.
+**EFEITO LOCAL**: Nenhuma mudança de dado.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: `GET /api/text-channels/:id/messages/search?q=`.
+**BANCO**: Leitura via `LIKE`.
+**REFRESH**: `searchOpen`/resultados não persistem (fecha em F5).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: `catch { setResults([]); setSearched(true); }` — erro de rede é tratado como "nenhum resultado encontrado", **sem diferenciar visualmente "busca falhou" de "busca não encontrou nada"** (mesma mensagem final pro usuário nos dois casos) — achado real de UX enganosa.
+**CANCELAMENTO**: Fechar o painel.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Nenhum atalho pra abrir a busca via teclado (Discord real geralmente tem Ctrl+F dentro do canal).
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `role="region"`, `aria-label="Buscar mensagens"`, `autoFocus` no campo ao abrir.
+
+---
+
+## 4.20 — MARKDOWN_RENDERING (referência — já auditado/testado em profundidade)
+
+**ID**: `MARKDOWN_RENDERING`
+**NOME**: Formatação de texto nas mensagens
+**STATUS**: `CORE` — renderizador próprio (`apps/web/src/components/Markdown.tsx`), monta árvore de elementos React (**nunca `dangerouslySetInnerHTML`** — decisão de segurança deliberada, HTML de usuário é sempre escapado mesmo dentro de formatação), 15 testes unitários reais cobrindo formatação e segurança contra XSS (confirmados passando nesta mesma linha de auditoria, seção de testes). Suporta: **negrito**, *itálico*, negrito+itálico combinado, sublinhado, ~~tachado~~, spoiler (oculto até clicar, com `role`/estado de botão), `código inline`, blocos de código multi-linha, autolink de URL `http`/`https` (**nunca autolinka esquemas perigosos como `javascript:`**, testado explicitamente), formatação aninhada (negrito contendo itálico), e marcação não fechada permanece texto literal (não quebra o parser). `MISSING` confirmado em `DISCORD_PARITY_PLAN.md` §8: escape com barra invertida, citações (`>`), listas.
+
+---
+
+## 4.21 — SLOW_MODE_ENFORCEMENT
+
+**ID**: `SLOW_MODE_ENFORCEMENT`
+**NOME**: Aplicação do modo lento (limite de tempo entre mensagens)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: `CORE` — já implementado e aplicado de verdade no backend (não só decorativo), confirmado em `DISCORD_PARITY_PLAN.md` §4: rejeita envio com `429` se o usuário mandou uma mensagem há menos tempo que o configurado (`slowModeRemainingSeconds`), **isento quem tem `MANAGE_MESSAGES`** (mesmo padrão do Discord real). Configuração do valor em segundos fica em `TextChannelSettingsModal` (Roteiro 3, aba já mencionada como `CORE` mas não re-auditada campo-a-campo nesta passagem). **Achado desta passagem**: não foi encontrado nenhum contador visual no composer mostrando "aguarde Xs" quando o modo lento está ativo e o limite foi atingido — o `textarea`/botão de enviar não têm um estado `disabled` condicionado a isso confirmado em `TextChannels.tsx` (só `isTimedOut`, que é uma restrição diferente — timeout de moderação, não modo lento). **Se essa lacuna se confirmar em auditoria mais profunda**, o usuário só descobriria que está no modo lento ao tentar enviar e receber um erro `429`, sem aviso prévio nem contagem regressiva visível.
+
+---
+
+## 4.22 — TIMEOUT_COMPOSER_LOCK
+
+**ID**: `TIMEOUT_COMPOSER_LOCK`
+**NOME**: Composer bloqueado enquanto o usuário está em timeout
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Canal de texto > composer > usuário com member.timeoutUntil no futuro`
+**POSIÇÃO NA INTERFACE**: Banner acima do composer (`.reply-composer-banner.timeout-composer-banner`).
+**APARÊNCIA**: "Você está em timeout e não pode enviar mensagens até {data/hora}."
+**ESTADO NORMAL**: Ausente pra quem não está em timeout.
+**HOVER**: Não aplicável (texto estático).
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: `textarea` e botão "Enviar"/anexar todos desabilitados via `isTimedOut`.
+**LOADING**: Não aplicável.
+**TRIGGER**: `member.timeoutUntil` no futuro (calculado a partir do estado de membro já sincronizado em tempo real via `MEMBER_TIMEOUT_UPDATE`, Roteiro 1).
+**PRÉ-CONDIÇÕES**: Timeout ativo aplicado por um moderador (Roteiro de moderação, auditoria própria pendente).
+**RESULTADO IMEDIATO**: Composer inteiro trava assim que `member.timeoutUntil` é sincronizado — **em tempo real, sem precisar de F5**, já que `useActiveServerMember` já reage a `MEMBER_TIMEOUT_UPDATE` (confirmado no Roteiro 1).
+**RESULTADO VISUAL**: Banner + campos desabilitados.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma até o timeout expirar.
+**RESULTADO FINAL**: Composer destravado automaticamente quando `timeoutUntil` passa (**a confirmar se há um timer local recalculando isso, ou só reavalia no próximo evento/F5** — se for só reavaliado em eventos, o composer poderia continuar visualmente travado por um tempo depois do timeout já ter expirado de fato, até algo disparar um re-render).
+**EFEITO LOCAL**: Impede envio local.
+**EFEITO REMOTO**: Nenhum (é uma restrição já aplicada e visível a todos igualmente, não uma ação nova).
+**REALTIME**: `MEMBER_TIMEOUT_UPDATE`.
+**BACKEND**: O backend também rejeita o envio de qualquer forma (enforcement real, não só client-side — o client-side é só UX antecipada pra não deixar tentar e falhar).
+**BANCO**: Leitura de `server_members.timeout_until`.
+**REFRESH**: Recalculado no fetch de membro.
+**RECONEXÃO**: Recalculado.
+**ERRO**: Se de alguma forma o cliente não tivesse essa trava (bug hipotético) e tentasse enviar mesmo assim, o backend rejeitaria — não testado neste passe se a mensagem de erro do backend nesse caso é amigável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Um moderador removendo o timeout manualmente, ou o tempo expirando.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Texto do banner é lido normalmente por leitores de tela (não confirmado `role="alert"` especificamente neste banner — a verificar).
+
+---
+
+## 4.23 — SYSTEM_POST_TOGGLE (referência — já auditado/construído em profundidade)
+
+**ID**: `SYSTEM_POST_TOGGLE`
+**NOME**: Publicar mensagem "como o servidor" (cartão estilo bot/APP)
+**STATUS**: `CORE` — implementado, testado e em produção, construído na sessão de trabalho imediatamente anterior a esta fase de auditoria. Resumo (ficha completa já coberta em detalhe prático durante a implementação, não repetida aqui):
+- **Caminho**: `Composer > .system-post-toggle (só visível com canManageMessages) > alterna postAsSystem`.
+- **Efeito**: mensagem enviada com `senderType: 'SYSTEM'`, renderizada como cartão com ícone/nome do servidor + selo verde "✓ APP", reaproveitando o mesmo `MarkdownText` das mensagens normais.
+- **Placeholder do composer muda** para "Publicar como o servidor em #{canal}" enquanto ativo.
+- **Permissão**: gated por `canManageMessages` tanto na UI (botão só aparece) quanto no backend (checagem real antes de aceitar `postedAsSystem: true` no corpo da requisição).
+
+---
+
+# CONTINUAÇÃO
+
+Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas `MISSING`/de referência), as **24 interações do Roteiro 0**, **18 do Roteiro 1**, **11 do Roteiro 2**, **19 do Roteiro 3** e **23 do Roteiro 4** — **95 fichas no total**, cada uma verificada contra o código real. Histórico, composer, reações, pins, busca, forward, markdown e "postar como servidor" já são funcionalidades **reais e testadas** — documentadas como `CORE`, não redescobertas.
+
+**Achados mais importantes deste roteiro** (por ordem de impacto prático no uso real do app): (1) **scroll forçado pro final a cada mensagem nova, mesmo lendo histórico antigo** — sem checagem de posição, sem botão "Novas mensagens", contrariando o comportamento esperado explicitamente pelo pedido original; (2) busca de mensagens encontra resultados antigos mas não consegue navegar até eles (fora da "janela carregada"); (3) nenhum autocomplete de `@`/`#`/`:`/`/` no composer; (4) sem drag-and-drop nem paste de imagem pro chat, só seletor de arquivo por clique; (5) nenhum menu de contexto (botão direito) em mensagens — tudo via hover only, o que também é uma lacuna de acessibilidade por teclado; (6) nenhum feedback visual de "Copiado!" em nenhuma ação de copiar do app inteiro (achado transversal, não só desta seção).
+
+**Próximo na fila**: Roteiro 5 — Tempo real (WebSocket, presença, typing indicator — já com achados prévios do Roteiro 1 a expandir aqui), seguido da prioridade especial do pedido original: Voz, Mute/Deafen, Compartilhar tela, Vídeo.
