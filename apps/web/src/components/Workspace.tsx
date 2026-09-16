@@ -2699,16 +2699,16 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                 ));
 
                 const onlineCount = rooms.reduce((sum, room) => sum + room.participants.length, 0);
-                const hasUncategorizedText = uncategorizedText.length > 0;
-                const hasUncategorizedVoice = uncategorizedRooms.length > 0;
-                // Só mostra os cabeçalhos soltos "CANAIS DE TEXTO"/"CANAIS DE VOZ" quando
-                // ainda há canal sem categoria neles, ou quando o servidor não usa
-                // categoria nenhuma ainda (mantém o comportamento de sempre pra quem
-                // nunca criou uma) — uma vez tudo organizado, cada categoria já tem seu
-                // próprio "+" pra criar direto nela, então o cabeçalho vazio era só
-                // sobra visual sem nenhuma função que as categorias não cobrissem.
-                const showUncategorizedText = hasUncategorizedText || categories.length === 0;
-                const showUncategorizedVoice = hasUncategorizedVoice || categories.length === 0;
+                // "CANAIS DE TEXTO"/"CANAIS DE VOZ" são só um rótulo — nunca uma
+                // categoria de verdade (sem id, sem menu de contexto, sem "excluir").
+                // Assim que o servidor tem QUALQUER categoria real, o rótulo some de
+                // vez (mesmo que ainda sobre canal sem categoria — eles continuam
+                // renderizando normalmente, só sem cabeçalho acima, igual o print
+                // original). Cada categoria já tem seu próprio "+" pra criar canal
+                // direto nela; "Mover para → Sem categoria" no menu de contexto
+                // continua disponível pra quem quiser voltar um canal pra cá.
+                const showUncategorizedText = categories.length === 0;
+                const showUncategorizedVoice = categories.length === 0;
                 return <>
                   <div className={`uncategorized-zone ${dragOverTarget === 'root' ? 'drag-over' : ''}`}
                     onDragOver={(event) => handleCategoryDragOver(event, null)}
