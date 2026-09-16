@@ -44,7 +44,7 @@ export function MusicCard({ card, onCommand }: MusicCardProps) {
     setLiveCard(card);
     setPositionMs(card.positionMs);
     setCoverFailed(false);
-  }, [card.title, card.webUrl, card.requestedBy, card.durationMs]);
+  }, [card.title, card.webUrl, card.requestedBy, card.durationMs, card.state]);
 
   useEffect(() => {
     if (liveCard.state !== 'PLAYING') return;

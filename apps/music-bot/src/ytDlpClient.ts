@@ -16,6 +16,16 @@ interface RunOptions {
   stderrLimit?: number;
 }
 
+function pickThumbnail(data: Record<string, unknown>): string | undefined {
+  if (typeof data.thumbnail === 'string') return data.thumbnail;
+  const thumbnails = data.thumbnails;
+  if (!Array.isArray(thumbnails)) return undefined;
+  const best = thumbnails[thumbnails.length - 1];
+  return best && typeof best === 'object' && typeof (best as Record<string, unknown>).url === 'string'
+    ? ((best as Record<string, unknown>).url as string)
+    : undefined;
+}
+
 function boundedAppend(current: string, chunk: Buffer, limit: number): string {
   if (current.length >= limit) return current;
   return current + chunk.toString('utf8').slice(0, limit - current.length);
@@ -86,7 +96,7 @@ export class YtDlpClient {
       '--no-playlist',
       '--simulate',
       '--print',
-      '%(.{id,title,uploader,duration,webpage_url,thumbnail})#j',
+      '%(.{id,title,uploader,duration,webpage_url,thumbnail,thumbnails})#j',
       input,
     ]);
     const parsed: unknown = JSON.parse(output);
@@ -105,7 +115,7 @@ export class YtDlpClient {
       uploader: typeof data.uploader === 'string' ? data.uploader : undefined,
       duration: typeof data.duration === 'number' ? data.duration : undefined,
       webpage_url: data.webpage_url,
-      thumbnail: typeof data.thumbnail === 'string' ? data.thumbnail : undefined,
+      thumbnail: pickThumbnail(data),
     };
   }
 
@@ -148,7 +158,7 @@ export class YtDlpClient {
             : undefined,
         duration: typeof data.duration === 'number' ? data.duration : undefined,
         webpage_url: webpage,
-        thumbnail: typeof data.thumbnail === 'string' ? data.thumbnail : undefined,
+        thumbnail: pickThumbnail(data),
       }];
     });
   }
