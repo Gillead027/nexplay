@@ -86,6 +86,15 @@ export function combinePermissions(...bitfields: number[]): number {
   return bitfields.reduce((combined, value) => combined | value, 0);
 }
 
+// "É staff" pra fins de visibilidade de categoria trancada (ver categories.ts
+// staffOnly): reaproveita o bitfield de cargos já existente — qualquer
+// permissão além do que o @everyone padrão já tinha antes de cargos
+// existirem conta como staff. Evita inventar um segundo sistema de
+// visibilidade por canal/categoria (ver nota em Permission acima).
+export function isStaffTier(bitfield: number): boolean {
+  return (bitfield & ~DEFAULT_EVERYONE_PERMISSIONS) !== 0;
+}
+
 export interface PermissionDefinition {
   flag: number;
   category: 'Geral' | 'Texto' | 'Voz' | 'Moderação';
@@ -207,11 +216,48 @@ export interface UserSession {
   bannerUrl: string;
 }
 
-export interface VoiceChannel {
+// 'default' = normal; 'spoiler' e 'age_restricted' só guardam o selo visual e
+// a intenção — este app não tem gate de confirmação de idade nem
+// ocultação-até-clicar de spoiler de fato (ver DISCORD_PARITY_PLAN.md).
+export type ContentVisibility = 'default' | 'spoiler' | 'age_restricted';
+export type VideoQuality = 'auto' | '720p';
+export type NotificationMode = 'all' | 'mentions' | 'none';
+
+export const CATEGORY_NAME_MAX_LENGTH = 32;
+export const CHANNEL_TOPIC_MAX_LENGTH = 1024;
+// Mesmos degraus do Discord real (subconjunto — o menu completo tem mais
+// opções que não valem a complexidade extra aqui).
+export const SLOW_MODE_OPTIONS_SECONDS = [0, 5, 10, 15, 30, 60, 300, 600, 900, 1800, 3600, 21600] as const;
+export const VOICE_BITRATE_MIN_KBPS = 8;
+export const VOICE_BITRATE_MAX_KBPS = 96;
+export const VOICE_USER_LIMIT_MAX = 99; // 0 = sem limite ("∞" na UI).
+
+export interface Category {
   id: string;
   serverId: string;
   name: string;
+  position: number;
+  staffOnly: boolean;
+  createdAt: number;
+}
+
+export interface CategoryPrefs {
+  categoryId: string;
+  collapsed: boolean;
+  notificationMode: NotificationMode;
+}
+
+export interface VoiceChannel {
+  id: string;
+  serverId: string;
+  categoryId: string | null;
+  name: string;
   description: string;
+  slowModeSeconds: number;
+  contentVisibility: ContentVisibility;
+  bitrateKbps: number;
+  videoQuality: VideoQuality;
+  userLimit: number;
   createdBy: string | null;
   createdAt: number;
 }
@@ -600,8 +646,13 @@ export interface MessageAttachment {
 export interface TextChannel {
   id: string;
   serverId: string;
+  categoryId: string | null;
   name: string;
   description: string;
+  topic: string;
+  slowModeSeconds: number;
+  contentVisibility: ContentVisibility;
+  isAnnouncement: boolean;
   createdBy: string | null;
   createdAt: number;
 }
@@ -731,9 +782,13 @@ export type RealtimeEvent =
   | { type: 'TEXT_MESSAGE_DELETE'; serverId: string; channelId: string; messageId: string }
   | { type: 'TEXT_CHANNEL_CREATE'; serverId: string; channel: TextChannel }
   | { type: 'TEXT_CHANNEL_UPDATE'; serverId: string; channel: TextChannel }
+  | { type: 'TEXT_CHANNEL_DELETE'; serverId: string; channelId: string }
   | { type: 'VOICE_CHANNEL_CREATE'; serverId: string; channel: VoiceChannel }
   | { type: 'VOICE_CHANNEL_UPDATE'; serverId: string; channel: VoiceChannel }
   | { type: 'VOICE_CHANNEL_DELETE'; serverId: string; channelId: string }
+  | { type: 'CATEGORY_CREATE'; serverId: string; category: Category }
+  | { type: 'CATEGORY_UPDATE'; serverId: string; category: Category }
+  | { type: 'CATEGORY_DELETE'; serverId: string; categoryId: string }
   | { type: 'ROOM_STATE_UPDATE'; serverId: string; room: RoomSummary }
   | { type: 'TEXT_MESSAGE_REACTION_ADD'; serverId: string; channelId: string; messageId: string; emoji: string; userId: string }
   | { type: 'TEXT_MESSAGE_REACTION_REMOVE'; serverId: string; channelId: string; messageId: string; emoji: string; userId: string }

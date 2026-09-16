@@ -3,6 +3,7 @@ import {
   MUSIC_BOT_DISPLAY_NAME,
   MUSIC_BOT_IDENTITY,
   PINNED_MESSAGES_MAX_PER_CHANNEL,
+  type ContentVisibility,
   type ForwardedFromMeta,
   type MusicNowPlayingCard,
   type TextChannel,
@@ -17,8 +18,13 @@ import type { UserRecord } from './users.js';
 interface TextChannelRow {
   id: string;
   server_id: string;
+  category_id: string | null;
   name: string;
   description: string;
+  topic: string;
+  slow_mode_seconds: number;
+  content_visibility: ContentVisibility;
+  is_announcement: number;
   created_by: string | null;
   created_at: number;
 }
@@ -57,7 +63,7 @@ const selectChannelByNameStatement = db.prepare(
   'SELECT * FROM text_channels WHERE server_id = ? AND name = ? COLLATE NOCASE',
 );
 const insertChannelStatement = db.prepare(
-  'INSERT INTO text_channels (id, server_id, name, description, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+  'INSERT INTO text_channels (id, server_id, category_id, name, description, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
 );
 const insertMessageStatement = db.prepare(`
   INSERT INTO text_messages (
@@ -157,8 +163,13 @@ function toChannel(row: TextChannelRow): TextChannel {
   return {
     id: row.id,
     serverId: row.server_id,
+    categoryId: row.category_id,
     name: row.name,
     description: row.description,
+    topic: row.topic,
+    slowModeSeconds: row.slow_mode_seconds,
+    contentVisibility: row.content_visibility,
+    isAnnouncement: Boolean(row.is_announcement),
     createdBy: row.created_by,
     createdAt: row.created_at,
   };
@@ -237,18 +248,25 @@ export function createTextChannel(
   name: string,
   description: string,
   creatorId: string,
+  categoryId: string | null = null,
 ): TextChannel {
   const channel: TextChannel = {
     id: channelSlug(name),
     serverId,
+    categoryId,
     name,
     description,
+    topic: '',
+    slowModeSeconds: 0,
+    contentVisibility: 'default',
+    isAnnouncement: false,
     createdBy: creatorId,
     createdAt: Date.now(),
   };
   insertChannelStatement.run(
     channel.id,
     channel.serverId,
+    channel.categoryId,
     channel.name,
     channel.description,
     channel.createdBy,
@@ -531,7 +549,59 @@ export function upsertMusicBotTextMessage(
   return { message, clearedChannelIds };
 }
 
+export function deleteTextChannel(id: string): boolean {
+  return db.prepare('DELETE FROM text_channels WHERE id = ?').run(id).changes > 0;
+}
+
 export function renameTextChannel(serverId: string, id: string, name: string): TextChannel | undefined {
   db.prepare('UPDATE text_channels SET name = ? WHERE id = ? AND server_id = ?').run(name, id, serverId);
   return getTextChannelById(id);
+}
+
+export interface TextChannelSettingsPatch {
+  categoryId?: string | null | undefined;
+  topic?: string | undefined;
+  slowModeSeconds?: number | undefined;
+  contentVisibility?: ContentVisibility | undefined;
+  isAnnouncement?: boolean | undefined;
+}
+
+export function updateTextChannelSettings(
+  serverId: string,
+  id: string,
+  patch: TextChannelSettingsPatch,
+): TextChannel | undefined {
+  const existing = getTextChannelById(id);
+  if (!existing || existing.serverId !== serverId) return undefined;
+  const next = {
+    categoryId: patch.categoryId !== undefined ? patch.categoryId : existing.categoryId,
+    topic: patch.topic ?? existing.topic,
+    slowModeSeconds: patch.slowModeSeconds ?? existing.slowModeSeconds,
+    contentVisibility: patch.contentVisibility ?? existing.contentVisibility,
+    isAnnouncement: patch.isAnnouncement ?? existing.isAnnouncement,
+  };
+  db.prepare(
+    `UPDATE text_channels
+     SET category_id = ?, topic = ?, slow_mode_seconds = ?, content_visibility = ?, is_announcement = ?
+     WHERE id = ? AND server_id = ?`,
+  ).run(next.categoryId, next.topic, next.slowModeSeconds, next.contentVisibility, next.isAnnouncement ? 1 : 0, id, serverId);
+  return getTextChannelById(id);
+}
+
+const selectLastMessageAtStatement = db.prepare(
+  'SELECT created_at FROM text_messages WHERE channel_id = ? AND sender_id = ? ORDER BY created_at DESC LIMIT 1',
+);
+
+// Segundos restantes de modo lento pra este usuário neste canal (0 = pode
+// enviar agora). Quem pode gerenciar mensagens (moderação) ignora o modo
+// lento, mesma isenção do Discord real.
+export function slowModeRemainingSeconds(channelId: string, senderId: string, exempt: boolean): number {
+  if (exempt) return 0;
+  const channel = getTextChannelById(channelId);
+  if (!channel || channel.slowModeSeconds <= 0) return 0;
+  const row = selectLastMessageAtStatement.get(channelId, senderId) as { created_at: number } | undefined;
+  if (!row) return 0;
+  const elapsedMs = Date.now() - row.created_at;
+  const remainingMs = channel.slowModeSeconds * 1_000 - elapsedMs;
+  return remainingMs > 0 ? Math.ceil(remainingMs / 1_000) : 0;
 }

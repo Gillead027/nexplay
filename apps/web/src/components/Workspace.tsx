@@ -1,4 +1,7 @@
-import { RenameChannel } from './RenameChannel';
+import { ContextMenu, useContextMenu } from './ContextMenu';
+import { CategorySettingsModal, type CategorySettingsModalHandle } from './CategorySettingsModal';
+import { TextChannelSettingsModal } from './TextChannelSettingsModal';
+import { VoiceChannelSettingsModal } from './VoiceChannelSettingsModal';
 import { type FormEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
@@ -11,6 +14,8 @@ import {
   TEXT_CHANNEL_NAME_MAX_LENGTH,
   type AccentColor,
   type Activity,
+  type Category,
+  type CategoryPrefs,
   type PublicConfig,
   type RoomSummary,
   type SoundboardSound,
@@ -416,6 +421,89 @@ function CreateVoiceChannelDialog({
   );
 }
 
+function CreateCategoryDialog({
+  open,
+  serverId,
+  onClose,
+  onCreated,
+  returnFocusRef,
+}: {
+  open: boolean;
+  serverId: string;
+  onClose: () => void;
+  onCreated: (category: Category) => void;
+  returnFocusRef: RefObject<HTMLButtonElement | null>;
+}) {
+  const titleId = useId();
+  const nameInputRef = useRef<HTMLInputElement>(null);
+  const [name, setName] = useState('');
+  const [staffOnly, setStaffOnly] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const close = useCallback(() => {
+    onClose();
+    window.requestAnimationFrame(() => returnFocusRef.current?.focus());
+  }, [onClose, returnFocusRef]);
+
+  useEffect(() => {
+    if (!open) return;
+    nameInputRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !saving) close();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [close, open, saving]);
+
+  if (!open) return null;
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      const { category } = await api.createCategory(serverId, name.trim(), staffOnly);
+      setName('');
+      setStaffOnly(false);
+      onCreated(category);
+      close();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível criar a categoria.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="dialog-overlay" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !saving) close();
+    }}>
+      <form className="channel-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} onSubmit={submit}>
+        <header>
+          <div><h2 id={titleId}>Criar categoria</h2></div>
+          <button type="button" onClick={close} disabled={saving} aria-label="Fechar"><CloseIcon size={18} /></button>
+        </header>
+        <label htmlFor="category-name">Nome da categoria</label>
+        <input id="category-name" ref={nameInputRef} maxLength={32} value={name}
+          onChange={(event) => setName(event.target.value)} placeholder="NOVA CATEGORIA" required />
+        <label className="toggle-row">
+          <span>Categoria restrita à staff</span>
+          <input type="checkbox" checked={staffOnly} onChange={(event) => setStaffOnly(event.target.checked)} />
+        </label>
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <footer>
+          <button type="button" className="dialog-cancel" onClick={close} disabled={saving}>Cancelar</button>
+          <button type="submit" className="primary-button" disabled={saving || !name.trim()}>
+            {saving ? 'Criando…' : 'Criar categoria'}
+          </button>
+        </footer>
+      </form>
+    </div>
+  );
+}
+
 function ChannelButton({
   channel,
   summary,
@@ -430,7 +518,7 @@ function ChannelButton({
   speakingIds,
   onDisconnectParticipant,
   disconnectingIdentity,
-  onRename,
+  settings,
 }: {
   channel: VoiceChannel;
   summary: RoomSummary | undefined;
@@ -448,11 +536,16 @@ function ChannelButton({
   speakingIds: Set<string>;
   onDisconnectParticipant: (identity: string, name: string) => void;
   disconnectingIdentity: string | null;
-  onRename: ((channel: VoiceChannel) => void) | undefined;
+  settings: {
+    serverId: string;
+    categories: Category[];
+    onUpdated: (channel: VoiceChannel) => void;
+    onDeleted: () => void;
+  } | undefined;
 }) {
   return (
     <div className="channel-block">
-      <div className={`channel-row ${onRename ? 'channel-row-renamable' : ''}`}>
+      <div className={`channel-row ${settings ? 'channel-row-renamable' : ''}`}>
         <button
           type="button"
           className={`channel-button ${active ? 'active' : ''}`}
@@ -465,7 +558,15 @@ function ChannelButton({
           <span>{channel.name}</span>
           <small>{loading ? '...' : summary?.participants.length || ''}</small>
         </button>
-        {onRename && <RenameChannel channel={channel} kind="voice" onRenamed={onRename} />}
+        {settings && (
+          <VoiceChannelSettingsModal
+            channel={channel}
+            serverId={settings.serverId}
+            categories={settings.categories}
+            onUpdated={settings.onUpdated}
+            onDeleted={settings.onDeleted}
+          />
+        )}
         {active && (
           <button
             type="button"
@@ -1682,6 +1783,10 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const [soundboardSounds, setSoundboardSounds] = useState<SoundboardSound[]>([]);
   const [textChannels, setTextChannels] = useState<TextChannel[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryPrefs, setCategoryPrefs] = useState<Record<string, CategoryPrefs>>({});
+  const categoryMenu = useContextMenu();
+  const categoryEditRefs = useRef<Record<string, CategorySettingsModalHandle | null>>({});
   const [selectedTextChannelId, setSelectedTextChannelId] = useState<string | null>(null);
   const [view, setView] = useState<'server' | 'friends'>('server');
   const [selectedDmChannelId, setSelectedDmChannelId] = useState<string | null>(null);
@@ -1705,6 +1810,79 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const addServerButtonRef = useRef<HTMLButtonElement>(null);
   const [createTextChannelOpen, setCreateTextChannelOpen] = useState(false);
   const [createVoiceChannelOpen, setCreateVoiceChannelOpen] = useState(false);
+  const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
+  const createCategoryButtonRef = useRef<HTMLButtonElement>(null);
+
+  function categoryPrefFor(categoryId: string): CategoryPrefs {
+    return categoryPrefs[categoryId] ?? { categoryId, collapsed: false, notificationMode: 'all' };
+  }
+
+  function toggleCategoryCollapsed(categoryId: string) {
+    if (!activeServerId) return;
+    const next = !categoryPrefFor(categoryId).collapsed;
+    setCategoryPrefs((current) => ({ ...current, [categoryId]: { ...categoryPrefFor(categoryId), collapsed: next } }));
+    void api.setCategoryPrefs(activeServerId, categoryId, { collapsed: next });
+  }
+
+  function collapseAllCategories() {
+    if (!activeServerId) return;
+    for (const category of categories) {
+      setCategoryPrefs((current) => ({ ...current, [category.id]: { ...categoryPrefFor(category.id), collapsed: true } }));
+      void api.setCategoryPrefs(activeServerId, category.id, { collapsed: true });
+    }
+  }
+
+  // "Silenciar" é só um atalho pro modo 'none'; "Config. de notificação"
+  // percorre os 3 modos a cada clique — sem submenu flutuante (ver
+  // ContextMenu.tsx), simplificação deliberada frente ao Discord real.
+  function toggleCategoryMuted(categoryId: string) {
+    if (!activeServerId) return;
+    const current = categoryPrefFor(categoryId);
+    const next = current.notificationMode === 'none' ? 'all' : 'none';
+    setCategoryPrefs((prev) => ({ ...prev, [categoryId]: { ...current, notificationMode: next } }));
+    void api.setCategoryPrefs(activeServerId, categoryId, { notificationMode: next });
+  }
+
+  function cycleCategoryNotificationMode(categoryId: string) {
+    if (!activeServerId) return;
+    const current = categoryPrefFor(categoryId);
+    const order = ['all', 'mentions', 'none'] as const;
+    const next = order[(order.indexOf(current.notificationMode) + 1) % order.length]!;
+    setCategoryPrefs((prev) => ({ ...prev, [categoryId]: { ...current, notificationMode: next } }));
+    void api.setCategoryPrefs(activeServerId, categoryId, { notificationMode: next });
+  }
+
+  async function removeCategory(categoryId: string) {
+    if (!activeServerId || !window.confirm('Excluir esta categoria? Os canais dentro dela ficam sem categoria.')) return;
+    try {
+      await api.deleteCategory(activeServerId, categoryId);
+      setCategories((current) => current.filter((category) => category.id !== categoryId));
+      setTextChannels((current) => current.map((channel) => channel.categoryId === categoryId ? { ...channel, categoryId: null } : channel));
+      setRooms((current) => current.map((room) => room.categoryId === categoryId ? { ...room, categoryId: null } : room));
+    } catch {
+      // Falha silenciosa: WS/refresh seguinte reconcilia o estado real.
+    }
+  }
+
+  function openCategoryMenu(event: { preventDefault: () => void; clientX: number; clientY: number }, category: Category) {
+    const pref = categoryPrefFor(category.id);
+    categoryMenu.open(event, [
+      { items: [{ key: 'mark-read', label: 'Marcar como lida', onSelect: () => {} }] },
+      { items: [
+        { key: 'collapse', label: 'Recolher categoria', checked: pref.collapsed, onSelect: () => toggleCategoryCollapsed(category.id) },
+        { key: 'collapse-all', label: 'Recolher todas as categorias', onSelect: collapseAllCategories },
+      ] },
+      { items: [
+        { key: 'mute', label: 'Silenciar categoria', checked: pref.notificationMode === 'none', onSelect: () => toggleCategoryMuted(category.id) },
+        { key: 'notif', label: 'Config. de notificação', onSelect: () => cycleCategoryNotificationMode(category.id) },
+      ] },
+      { items: [
+        { key: 'edit', label: 'Editar categoria', onSelect: () => categoryEditRefs.current[category.id]?.open() },
+        ...(canManageChannels ? [{ key: 'delete', label: 'Excluir categoria', danger: true, onSelect: () => void removeCategory(category.id) }] : []),
+      ] },
+      { items: [{ key: 'copy-id', label: 'Copiar ID da Categoria', onSelect: () => void navigator.clipboard.writeText(category.id) }] },
+    ]);
+  }
   const [perfMode, setPerfModeState] = useState<PerfMode>(() => getPerfMode());
   const [messageStyle, setMessageStyleState] = useState<MessageStyle>(() => loadMessageStyle());
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() => getTheme());
@@ -1891,8 +2069,44 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         setTextChannels((current) => current.map((channel) => channel.id === event.channel.id ? event.channel : channel));
         return;
       }
+      if (event.type === 'TEXT_CHANNEL_DELETE' && event.serverId === activeServerId) {
+        setTextChannels((current) => current.filter((channel) => channel.id !== event.channelId));
+        return;
+      }
       if (event.type !== 'TEXT_CHANNEL_CREATE' || event.serverId !== activeServerId) return;
       setTextChannels((current) => (current.some(({ id }) => id === event.channel.id) ? current : [...current, event.channel]));
+    });
+    return () => {
+      active = false;
+      unsubscribeConnect();
+      unsubscribeEvent();
+    };
+  }, [activeServerId]);
+
+  useEffect(() => {
+    if (!activeServerId) {
+      setCategories([]);
+      setCategoryPrefs({});
+      return;
+    }
+    let active = true;
+    const refresh = () => {
+      void api.getCategories(activeServerId).then(({ categories }) => active && setCategories(categories)).catch(() => {});
+      void api.getCategoryPrefs(activeServerId).then(({ prefs }) => {
+        if (!active) return;
+        setCategoryPrefs(Object.fromEntries(prefs.map((pref) => [pref.categoryId, pref])));
+      }).catch(() => {});
+    };
+    refresh();
+    const unsubscribeConnect = onRealtimeConnect(refresh);
+    const unsubscribeEvent = onRealtimeEvent((event) => {
+      if (event.type === 'CATEGORY_CREATE' && event.serverId === activeServerId) {
+        setCategories((current) => (current.some(({ id }) => id === event.category.id) ? current : [...current, event.category]));
+      } else if (event.type === 'CATEGORY_UPDATE' && event.serverId === activeServerId) {
+        setCategories((current) => current.map((category) => category.id === event.category.id ? event.category : category));
+      } else if (event.type === 'CATEGORY_DELETE' && event.serverId === activeServerId) {
+        setCategories((current) => current.filter((category) => category.id !== event.categoryId));
+      }
     });
     return () => {
       active = false;
@@ -2158,6 +2372,16 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         onCreated={handleVoiceChannelCreated}
         returnFocusRef={createVoiceChannelButtonRef}
       />
+      <CreateCategoryDialog
+        open={createCategoryOpen}
+        serverId={activeServerId ?? ''}
+        onClose={() => setCreateCategoryOpen(false)}
+        onCreated={(category) => {
+          setCategories((current) => [...current, category]);
+          setCreateCategoryOpen(false);
+        }}
+        returnFocusRef={createCategoryButtonRef}
+      />
       {activeServer && member && (
         <ServerSettings
           open={serverSettingsOpen}
@@ -2256,77 +2480,118 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
             </header>
 
             <nav className="channels" aria-label="Canais do servidor">
-              <div className="section-title">
-                <span>CANAIS DE TEXTO</span>
-                {canManageChannels && (
-                  <button
-                    ref={createTextChannelButtonRef}
-                    type="button"
-                    className="add-channel-button"
-                    onClick={() => setCreateTextChannelOpen(true)}
-                    aria-label="Criar canal de texto"
-                    title="Criar canal de texto"
-                  >
-                    <PlusIcon size={14} />
-                  </button>
-                )}
-              </div>
-              <div className="text-channel-list">
-                {textChannels.map((channel) => {
-                  const selected = channel.id === selectedTextChannelId;
-                  return (
-                    <div className="text-channel-row" key={channel.id}>
-                    <button
-                      type="button"
-                      className={`text-channel-button ${selected ? 'active' : ''}`}
-                      onClick={() => setSelectedTextChannelId(channel.id)}
-                      aria-current={selected ? 'page' : undefined}
-                      title={channel.description}
-                    >
-                      <span className="channel-hash" aria-hidden="true">#</span>
-                      <span>{channel.name}</span>
+              {(() => {
+                const uncategorizedText = textChannels.filter((channel) => !channel.categoryId);
+                const uncategorizedRooms = rooms.filter((room) => !room.categoryId);
+                const voiceSettingsFor = (room: RoomSummary) => canManageChannels ? {
+                  serverId: activeServerId ?? '',
+                  categories,
+                  onUpdated: (updated: VoiceChannel) => setRooms((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item)),
+                  onDeleted: () => setRooms((current) => current.filter((item) => item.id !== room.id)),
+                } : undefined;
+
+                const renderTextChannels = (channels: TextChannel[]) => (
+                  <div className="text-channel-list">
+                    {channels.map((channel) => {
+                      const selected = channel.id === selectedTextChannelId;
+                      return (
+                        <div className="text-channel-row" key={channel.id}>
+                          <button type="button" className={`text-channel-button ${selected ? 'active' : ''}`}
+                            onClick={() => setSelectedTextChannelId(channel.id)}
+                            aria-current={selected ? 'page' : undefined} title={channel.description}>
+                            <span className="channel-hash" aria-hidden="true">#</span>
+                            <span>{channel.name}</span>
+                          </button>
+                          {canManageChannels && (
+                            <TextChannelSettingsModal channel={channel} serverId={activeServerId ?? ''} categories={categories}
+                              onUpdated={(updated) => setTextChannels((current) => current.map((item) => item.id === updated.id ? updated : item))}
+                              onDeleted={() => setTextChannels((current) => current.filter((item) => item.id !== channel.id))} />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+
+                const renderVoiceChannels = (voiceRooms: RoomSummary[]) => voiceRooms.map((room) => (
+                  <ChannelButton
+                    key={room.id}
+                    channel={room}
+                    settings={voiceSettingsFor(room)}
+                    summary={room}
+                    active={voice.currentChannel?.id === room.id && voice.connected}
+                    loading={joiningId === room.id}
+                    onClick={() => void joinChannel(room)}
+                    chatOpen={chatOpen}
+                    onToggleChat={() => setChatOpen((open) => !open)}
+                    ownIdentity={session.id}
+                    ownAvatarUrl={session.avatarUrl}
+                    onOpenProfile={openUserProfile}
+                    speakingIds={voice.speakers}
+                    onDisconnectParticipant={(identity, name) => void disconnectParticipantFromVoice(identity, name)}
+                    disconnectingIdentity={disconnectingIdentity}
+                  />
+                ));
+
+                return <>
+                  <div className="section-title">
+                    <span>CANAIS DE TEXTO</span>
+                    {canManageChannels && (
+                      <button ref={createTextChannelButtonRef} type="button" className="add-channel-button"
+                        onClick={() => setCreateTextChannelOpen(true)} aria-label="Criar canal de texto" title="Criar canal de texto">
+                        <PlusIcon size={14} />
+                      </button>
+                    )}
+                  </div>
+                  {renderTextChannels(uncategorizedText)}
+                  <div className="section-title">
+                    <span>CANAIS DE VOZ</span>
+                    <small>{rooms.reduce((sum, room) => sum + room.participants.length, 0)} online</small>
+                    {canManageChannels && (
+                      <button ref={createVoiceChannelButtonRef} type="button" className="add-channel-button"
+                        onClick={() => setCreateVoiceChannelOpen(true)} aria-label="Criar canal de voz" title="Criar canal de voz">
+                        <PlusIcon size={14} />
+                      </button>
+                    )}
+                  </div>
+                  {!livekitAvailable && <div className="service-warning">LiveKit indisponível</div>}
+                  {renderVoiceChannels(uncategorizedRooms)}
+
+                  {[...categories].sort((a, b) => a.position - b.position).map((category) => {
+                    const collapsed = categoryPrefFor(category.id).collapsed;
+                    const categoryText = textChannels.filter((channel) => channel.categoryId === category.id);
+                    const categoryRooms = rooms.filter((room) => room.categoryId === category.id);
+                    return (
+                      <div className="channel-category" key={category.id}>
+                        <button type="button" className="category-header"
+                          onClick={() => toggleCategoryCollapsed(category.id)}
+                          onContextMenu={(event) => openCategoryMenu(event, category)}>
+                          <ChevronIcon size={12} className={collapsed ? 'collapsed' : ''} />
+                          <span>{category.name}</span>
+                          {category.staffOnly && <span className="category-lock" title="Restrita à staff">🔒</span>}
+                        </button>
+                        <CategorySettingsModal
+                          ref={(handle) => { categoryEditRefs.current[category.id] = handle; }}
+                          category={category} serverId={activeServerId ?? ''}
+                          onUpdated={(updated) => setCategories((current) => current.map((item) => item.id === updated.id ? updated : item))}
+                        />
+                        {!collapsed && <>
+                          {renderTextChannels(categoryText)}
+                          {renderVoiceChannels(categoryRooms)}
+                        </>}
+                      </div>
+                    );
+                  })}
+
+                  {canManageChannels && (
+                    <button ref={createCategoryButtonRef} type="button" className="create-category-button"
+                      onClick={() => setCreateCategoryOpen(true)}>
+                      <PlusIcon size={12} /> Criar categoria
                     </button>
-                    {canManageChannels && <RenameChannel channel={channel} kind="text" onRenamed={(updated) => setTextChannels((current) => current.map((item) => item.id === updated.id ? updated : item))} />}
-                    </div>
-                  );
-                })}
-              </div>
-              <div className="section-title">
-                <span>CANAIS DE VOZ</span>
-                <small>{rooms.reduce((sum, room) => sum + room.participants.length, 0)} online</small>
-                {canManageChannels && (
-                  <button
-                    ref={createVoiceChannelButtonRef}
-                    type="button"
-                    className="add-channel-button"
-                    onClick={() => setCreateVoiceChannelOpen(true)}
-                    aria-label="Criar canal de voz"
-                    title="Criar canal de voz"
-                  >
-                    <PlusIcon size={14} />
-                  </button>
-                )}
-              </div>
-              {!livekitAvailable && <div className="service-warning">LiveKit indisponível</div>}
-              {rooms.map((room) => (
-                <ChannelButton
-                  key={room.id}
-                  channel={room}
-                  onRename={canManageChannels ? (updated) => setRooms((current) => current.map((item) => item.id === updated.id ? { ...item, ...updated } : item)) : undefined}
-                  summary={room}
-                  active={voice.currentChannel?.id === room.id && voice.connected}
-                  loading={joiningId === room.id}
-                  onClick={() => void joinChannel(room)}
-                  chatOpen={chatOpen}
-                  onToggleChat={() => setChatOpen((open) => !open)}
-                  ownIdentity={session.id}
-                  ownAvatarUrl={session.avatarUrl}
-                  onOpenProfile={openUserProfile}
-                  speakingIds={voice.speakers}
-                  onDisconnectParticipant={(identity, name) => void disconnectParticipantFromVoice(identity, name)}
-                  disconnectingIdentity={disconnectingIdentity}
-                />
-              ))}
+                  )}
+                  <ContextMenu state={categoryMenu.state} onClose={categoryMenu.close} />
+                </>;
+              })()}
             </nav>
           </>
         ) : (

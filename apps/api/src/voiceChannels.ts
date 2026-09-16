@@ -1,13 +1,19 @@
-import type { VoiceChannel } from '@nexplay/shared';
+import type { ContentVisibility, VideoQuality, VoiceChannel } from '@nexplay/shared';
 import { db } from './db.js';
 import { slugify } from './slug.js';
 
 interface VoiceChannelRow {
   id: string;
   server_id: string;
+  category_id: string | null;
   name: string;
   description: string;
   position: number;
+  slow_mode_seconds: number;
+  content_visibility: ContentVisibility;
+  bitrate_kbps: number;
+  video_quality: VideoQuality;
+  user_limit: number;
   created_by: string | null;
   created_at: number;
 }
@@ -22,7 +28,7 @@ const selectChannelByNameStatement = db.prepare(
 );
 const selectMaxPositionStatement = db.prepare('SELECT MAX(position) AS maxPosition FROM voice_channels WHERE server_id = ?');
 const insertChannelStatement = db.prepare(
-  'INSERT INTO voice_channels (id, server_id, name, description, position, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  'INSERT INTO voice_channels (id, server_id, category_id, name, description, position, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
 );
 const deleteChannelStatement = db.prepare('DELETE FROM voice_channels WHERE id = ?');
 
@@ -30,8 +36,14 @@ function toChannel(row: VoiceChannelRow): VoiceChannel {
   return {
     id: row.id,
     serverId: row.server_id,
+    categoryId: row.category_id,
     name: row.name,
     description: row.description,
+    slowModeSeconds: row.slow_mode_seconds,
+    contentVisibility: row.content_visibility,
+    bitrateKbps: row.bitrate_kbps,
+    videoQuality: row.video_quality,
+    userLimit: row.user_limit,
     createdBy: row.created_by,
     createdAt: row.created_at,
   };
@@ -68,19 +80,32 @@ export function getVoiceChannelByName(serverId: string, name: string): VoiceChan
   return row && toChannel(row);
 }
 
-export function createVoiceChannel(serverId: string, name: string, description: string, creatorId: string): VoiceChannel {
+export function createVoiceChannel(
+  serverId: string,
+  name: string,
+  description: string,
+  creatorId: string,
+  categoryId: string | null = null,
+): VoiceChannel {
   const { maxPosition } = selectMaxPositionStatement.get(serverId) as { maxPosition: number | null };
   const channel: VoiceChannel = {
     id: channelSlug(name),
     serverId,
+    categoryId,
     name,
     description,
+    slowModeSeconds: 0,
+    contentVisibility: 'default',
+    bitrateKbps: 0,
+    videoQuality: 'auto',
+    userLimit: 0,
     createdBy: creatorId,
     createdAt: Date.now(),
   };
   insertChannelStatement.run(
     channel.id,
     channel.serverId,
+    channel.categoryId,
     channel.name,
     channel.description,
     (maxPosition ?? -1) + 1,
@@ -96,5 +121,46 @@ export function deleteVoiceChannel(id: string): boolean {
 
 export function renameVoiceChannel(serverId: string, id: string, name: string): VoiceChannel | undefined {
   db.prepare('UPDATE voice_channels SET name = ? WHERE id = ? AND server_id = ?').run(name, id, serverId);
+  return getVoiceChannelById(id);
+}
+
+export interface VoiceChannelSettingsPatch {
+  categoryId?: string | null | undefined;
+  slowModeSeconds?: number | undefined;
+  contentVisibility?: ContentVisibility | undefined;
+  bitrateKbps?: number | undefined;
+  videoQuality?: VideoQuality | undefined;
+  userLimit?: number | undefined;
+}
+
+export function updateVoiceChannelSettings(
+  serverId: string,
+  id: string,
+  patch: VoiceChannelSettingsPatch,
+): VoiceChannel | undefined {
+  const existing = getVoiceChannelById(id);
+  if (!existing || existing.serverId !== serverId) return undefined;
+  const next = {
+    categoryId: patch.categoryId !== undefined ? patch.categoryId : existing.categoryId,
+    slowModeSeconds: patch.slowModeSeconds ?? existing.slowModeSeconds,
+    contentVisibility: patch.contentVisibility ?? existing.contentVisibility,
+    bitrateKbps: patch.bitrateKbps ?? existing.bitrateKbps,
+    videoQuality: patch.videoQuality ?? existing.videoQuality,
+    userLimit: patch.userLimit ?? existing.userLimit,
+  };
+  db.prepare(
+    `UPDATE voice_channels
+     SET category_id = ?, slow_mode_seconds = ?, content_visibility = ?, bitrate_kbps = ?, video_quality = ?, user_limit = ?
+     WHERE id = ? AND server_id = ?`,
+  ).run(
+    next.categoryId,
+    next.slowModeSeconds,
+    next.contentVisibility,
+    next.bitrateKbps,
+    next.videoQuality,
+    next.userLimit,
+    id,
+    serverId,
+  );
   return getVoiceChannelById(id);
 }

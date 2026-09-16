@@ -16,10 +16,13 @@ import {
   BAN_REASON_MAX_LENGTH,
   BANNER_DATA_URL_MAX_LENGTH,
   BIO_MAX_LENGTH,
+  CATEGORY_NAME_MAX_LENGTH,
+  CHANNEL_TOPIC_MAX_LENGTH,
   CHAT_MESSAGE_MAX_LENGTH,
   DISPLAY_NAME_MAX_LENGTH,
   DISPLAY_NAME_MIN_LENGTH,
   hasPermission,
+  isStaffTier,
   MESSAGE_SEARCH_QUERY_MAX_LENGTH,
   MESSAGE_SEARCH_QUERY_MIN_LENGTH,
   MESSAGE_SEARCH_RESULTS_LIMIT,
@@ -37,6 +40,9 @@ import {
   TEXT_CHANNEL_DESCRIPTION_MAX_LENGTH,
   TEXT_CHANNEL_NAME_MAX_LENGTH,
   TIMEOUT_MAX_MINUTES,
+  VOICE_BITRATE_MAX_KBPS,
+  VOICE_BITRATE_MIN_KBPS,
+  VOICE_USER_LIMIT_MAX,
   type Channel,
   type ForwardedFromMeta,
   type LiveKitTokenResponse,
@@ -74,6 +80,7 @@ import {
   getTextMessageById,
   upsertMusicBotTextMessage,
   createTextChannel,
+  deleteTextChannel,
   renameTextChannel,
   createTextMessage,
   getMusicBotTextMessage,
@@ -85,8 +92,20 @@ import {
   listTextMessages,
   pinTextMessage,
   searchTextMessages,
+  slowModeRemainingSeconds,
   unpinTextMessage,
+  updateTextChannelSettings,
 } from './textChannels.js';
+import {
+  createCategory,
+  deleteCategory,
+  getCategoryById,
+  getCategoryPrefs,
+  listCategories,
+  listCategoryPrefsForUser,
+  setCategoryPrefs,
+  updateCategory,
+} from './categories.js';
 import { resolveForwardDestination } from './forwardDestination.js';
 import { addReaction, isValidReactionEmoji, removeReaction } from './reactions.js';
 import { authorizeMusicCommand } from './musicCommands.js';
@@ -101,6 +120,7 @@ import {
   getVoiceChannelByName,
   listAllVoiceChannels,
   listVoiceChannels,
+  updateVoiceChannelSettings,
 } from './voiceChannels.js';
 import { createSoundboardSound, deleteSoundboardSound, getSoundboardSoundById, listSoundboardSounds } from './soundboard.js';
 import {
@@ -356,13 +376,19 @@ const serverUpdateSchema = z.object({
 
 const inviteCodeSchema = z.string().trim().min(1).max(32);
 
+// \p{S} (Symbol) cobre emoji — canais/categorias podem levar um emoji no
+// nome (ex.: "🏠 — regras"), igual Discord real. React escapa texto ao
+// renderizar, então isto não é uma superfície de XSS: a lista só existia
+// pra manter nomes "limpos" de caracteres de controle.
+const CHANNEL_NAME_PATTERN = /^[\p{L}\p{N}\p{M}\p{Zs}\p{S}\p{P}]+$/u;
+
 const channelSchema = z.object({
   name: z
     .string()
     .trim()
     .min(1)
     .max(TEXT_CHANNEL_NAME_MAX_LENGTH)
-    .regex(/^[\p{L}\p{N} _-]+$/u),
+    .regex(CHANNEL_NAME_PATTERN),
   description: z.string().trim().max(TEXT_CHANNEL_DESCRIPTION_MAX_LENGTH).default(''),
 });
 
@@ -477,6 +503,25 @@ function requireServerPermission(flag: number) {
     }
     next();
   };
+}
+
+// Esconde canais de uma categoria staffOnly de quem não é staff (ver
+// isStaffTier em packages/shared) — a categoria em si nem aparece na lista
+// de categorias pra esse usuário (ver rota GET categories).
+function filterChannelsByCategoryAccess<T extends { categoryId: string | null }>(
+  serverId: string,
+  userId: string,
+  channels: T[],
+): T[] {
+  const staffOnlyIds = new Set(listCategories(serverId).filter((category) => category.staffOnly).map((category) => category.id));
+  if (staffOnlyIds.size === 0 || isStaffTier(getUserPermissionBitfield(userId, serverId))) return channels;
+  return channels.filter((channel) => !channel.categoryId || !staffOnlyIds.has(channel.categoryId));
+}
+
+function visibleCategories(serverId: string, userId: string) {
+  const categories = listCategories(serverId);
+  if (isStaffTier(getUserPermissionBitfield(userId, serverId))) return categories;
+  return categories.filter((category) => !category.staffOnly);
 }
 
 function activeTimeoutRemainingMs(timeoutUntil: number | null): number {
@@ -833,8 +878,107 @@ app.get('/api/music/thumbnail', requireSession, async (request, response) => {
 });
 
 app.get('/api/servers/:serverId/text-channels', requireSession, requireServerMembership, (_request, response) => {
-  response.json({ channels: listTextChannels(currentServerId(response)) });
+  const serverId = currentServerId(response);
+  const channels = filterChannelsByCategoryAccess(serverId, currentUser(response).id, listTextChannels(serverId));
+  response.json({ channels });
 });
+
+app.get('/api/servers/:serverId/categories', requireSession, requireServerMembership, (_request, response) => {
+  response.json({ categories: visibleCategories(currentServerId(response), currentUser(response).id) });
+});
+
+const categorySchema = z.object({
+  name: z.string().trim().min(1).max(CATEGORY_NAME_MAX_LENGTH).regex(CHANNEL_NAME_PATTERN),
+  staffOnly: z.boolean().default(false),
+});
+
+app.post(
+  '/api/servers/:serverId/categories',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_CHANNELS),
+  channelCreateLimiter,
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const body = categorySchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Informe um nome de categoria válido.' });
+      return;
+    }
+    const category = createCategory(serverId, body.data.name, body.data.staffOnly);
+    sendToServerMembers(serverId, { type: 'CATEGORY_CREATE', serverId, category });
+    response.status(201).json({ category });
+  },
+);
+
+app.patch(
+  '/api/servers/:serverId/categories/:categoryId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_CHANNELS),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const categoryId = request.params.categoryId;
+    const body = categorySchema.partial().safeParse(request.body);
+    if (!body.success || typeof categoryId !== 'string') {
+      response.status(400).json({ error: 'Dados de categoria inválidos.' });
+      return;
+    }
+    const result = updateCategory(serverId, categoryId, body.data);
+    if (!result.ok) {
+      response.status(404).json({ error: 'Categoria não encontrada.' });
+      return;
+    }
+    sendToServerMembers(serverId, { type: 'CATEGORY_UPDATE', serverId, category: result.category });
+    response.json({ category: result.category });
+  },
+);
+
+app.delete(
+  '/api/servers/:serverId/categories/:categoryId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_CHANNELS),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const categoryId = request.params.categoryId;
+    const existing = typeof categoryId === 'string' ? getCategoryById(categoryId) : undefined;
+    if (!existing || existing.serverId !== serverId) {
+      response.status(404).json({ error: 'Categoria não encontrada.' });
+      return;
+    }
+    deleteCategory(categoryId as string);
+    sendToServerMembers(serverId, { type: 'CATEGORY_DELETE', serverId, categoryId: categoryId as string });
+    response.status(204).end();
+  },
+);
+
+const categoryPrefsSchema = z.object({
+  collapsed: z.boolean().optional(),
+  notificationMode: z.enum(['all', 'mentions', 'none']).optional(),
+});
+
+app.get('/api/servers/:serverId/category-prefs', requireSession, requireServerMembership, (_request, response) => {
+  response.json({ prefs: listCategoryPrefsForUser(currentUser(response).id) });
+});
+
+app.patch(
+  '/api/servers/:serverId/categories/:categoryId/prefs',
+  requireSession,
+  requireServerMembership,
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const categoryId = request.params.categoryId;
+    const existing = typeof categoryId === 'string' ? getCategoryById(categoryId) : undefined;
+    const body = categoryPrefsSchema.safeParse(request.body);
+    if (!existing || existing.serverId !== serverId || !body.success) {
+      response.status(404).json({ error: 'Categoria não encontrada.' });
+      return;
+    }
+    const prefs = setCategoryPrefs(currentUser(response).id, categoryId as string, body.data);
+    response.json({ prefs });
+  },
+);
 
 app.patch(
   '/api/servers/:serverId/text-channels/:channelId',
@@ -861,6 +1005,41 @@ app.patch(
       return;
     }
     const channel = renameTextChannel(serverId, existing.id, name)!;
+    sendToServerMembers(serverId, { type: 'TEXT_CHANNEL_UPDATE', serverId, channel });
+    response.json({ channel });
+  },
+);
+
+const textChannelSettingsSchema = z.object({
+  categoryId: z.string().min(1).nullable().optional(),
+  topic: z.string().trim().max(CHANNEL_TOPIC_MAX_LENGTH).optional(),
+  slowModeSeconds: z.number().int().min(0).max(21_600).optional(),
+  contentVisibility: z.enum(['default', 'spoiler', 'age_restricted']).optional(),
+  isAnnouncement: z.boolean().optional(),
+});
+
+app.patch(
+  '/api/servers/:serverId/text-channels/:channelId/settings',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_CHANNELS),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const channelId = request.params.channelId;
+    const existing = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    const body = textChannelSettingsSchema.safeParse(request.body);
+    if (!existing || existing.serverId !== serverId || !body.success) {
+      response.status(existing ? 400 : 404).json({ error: existing ? 'Configurações inválidas.' : 'Canal não encontrado.' });
+      return;
+    }
+    if (body.data.categoryId) {
+      const category = getCategoryById(body.data.categoryId);
+      if (!category || category.serverId !== serverId) {
+        response.status(400).json({ error: 'Categoria inválida.' });
+        return;
+      }
+    }
+    const channel = updateTextChannelSettings(serverId, existing.id, body.data)!;
     sendToServerMembers(serverId, { type: 'TEXT_CHANNEL_UPDATE', serverId, channel });
     response.json({ channel });
   },
@@ -898,6 +1077,29 @@ app.post(
     );
     sendToServerMembers(serverId, { type: 'TEXT_CHANNEL_CREATE', serverId, channel });
     response.status(201).json({ channel });
+  },
+);
+
+app.delete(
+  '/api/servers/:serverId/text-channels/:channelId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_CHANNELS),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const channelId = request.params.channelId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== serverId) {
+      response.status(404).json({ error: 'Canal de texto não encontrado.' });
+      return;
+    }
+    if (listTextChannels(serverId).length <= 1) {
+      response.status(409).json({ error: 'O servidor precisa de pelo menos um canal de texto.' });
+      return;
+    }
+    deleteTextChannel(channelId as string);
+    sendToServerMembers(serverId, { type: 'TEXT_CHANNEL_DELETE', serverId, channelId: channelId as string });
+    response.status(204).end();
   },
 );
 
@@ -940,6 +1142,13 @@ app.post(
       return;
     }
     if (rejectIfTimedOut(serverId, currentUser(response).id, response)) return;
+
+    const canManageMessages = hasPermission(getUserPermissionBitfield(currentUser(response).id, serverId), Permission.MANAGE_MESSAGES);
+    const slowModeWait = slowModeRemainingSeconds(channelId as string, currentUser(response).id, canManageMessages);
+    if (slowModeWait > 0) {
+      response.status(429).json({ error: `Modo lento ativo: aguarde ${slowModeWait}s para enviar outra mensagem.` });
+      return;
+    }
 
     const message = createTextMessage(
       channelId as string,
@@ -1378,7 +1587,7 @@ async function computeRoomSummary(channel: VoiceChannel): Promise<RoomSummary> {
 
 app.get('/api/servers/:serverId/rooms', requireSession, requireServerMembership, async (_request, response) => {
   const serverId = currentServerId(response);
-  const channels = listVoiceChannels(serverId);
+  const channels = filterChannelsByCategoryAccess(serverId, currentUser(response).id, listVoiceChannels(serverId));
   try {
     const activeRoomNames = new Set(
       (await roomService.listRooms(channels.map((channel) => channel.id))).map(
@@ -1427,6 +1636,42 @@ app.patch(
       return;
     }
     const channel = renameVoiceChannel(serverId, existing.id, name)!;
+    sendToServerMembers(serverId, { type: 'VOICE_CHANNEL_UPDATE', serverId, channel });
+    response.json({ channel });
+  },
+);
+
+const voiceChannelSettingsSchema = z.object({
+  categoryId: z.string().min(1).nullable().optional(),
+  slowModeSeconds: z.number().int().min(0).max(21_600).optional(),
+  contentVisibility: z.enum(['default', 'spoiler', 'age_restricted']).optional(),
+  bitrateKbps: z.number().int().min(VOICE_BITRATE_MIN_KBPS).max(VOICE_BITRATE_MAX_KBPS).optional(),
+  videoQuality: z.enum(['auto', '720p']).optional(),
+  userLimit: z.number().int().min(0).max(VOICE_USER_LIMIT_MAX).optional(),
+});
+
+app.patch(
+  '/api/servers/:serverId/voice-channels/:channelId/settings',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_CHANNELS),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const channelId = request.params.channelId;
+    const existing = typeof channelId === 'string' ? getVoiceChannelById(channelId) : undefined;
+    const body = voiceChannelSettingsSchema.safeParse(request.body);
+    if (!existing || existing.serverId !== serverId || !body.success) {
+      response.status(existing ? 400 : 404).json({ error: existing ? 'Configurações inválidas.' : 'Canal não encontrado.' });
+      return;
+    }
+    if (body.data.categoryId) {
+      const category = getCategoryById(body.data.categoryId);
+      if (!category || category.serverId !== serverId) {
+        response.status(400).json({ error: 'Categoria inválida.' });
+        return;
+      }
+    }
+    const channel = updateVoiceChannelSettings(serverId, existing.id, body.data)!;
     sendToServerMembers(serverId, { type: 'VOICE_CHANNEL_UPDATE', serverId, channel });
     response.json({ channel });
   },
@@ -2277,6 +2522,20 @@ app.post(
   if (rejectIfTimedOut(serverId, currentUser(response).id, response)) return;
 
   const user = currentUser(response);
+
+  if (room.userLimit > 0) {
+    try {
+      const participants = await roomService.listParticipants(room.id);
+      const alreadyIn = participants.some((participant) => participant.identity === user.id);
+      if (!alreadyIn && participants.length >= room.userLimit) {
+        response.status(409).json({ error: 'Este canal de voz atingiu o limite de usuários.' });
+        return;
+      }
+    } catch {
+      // Sala ainda não existe no LiveKit (ninguém entrou ainda) — sem
+      // participantes, então nunca está no limite.
+    }
+  }
   const metadata: HumanParticipantMetadata = {
     app: 'nexplay',
     participantType: 'HUMAN',

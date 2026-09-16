@@ -213,6 +213,35 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_invites_server ON invites(server_id);
+
+  -- staff_only: categoria só listada pra membros com alguma permissão além
+  -- do @everyone padrão (ver isStaffTier em roles.ts) — reaproveita o
+  -- bitfield de cargos já existente em vez de inventar um segundo sistema de
+  -- visibilidade por canal/categoria (ver nota em Permission, packages/shared).
+  CREATE TABLE IF NOT EXISTS categories (
+    id TEXT PRIMARY KEY,
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    position INTEGER NOT NULL,
+    staff_only INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_categories_server ON categories(server_id);
+
+  -- Preferência por usuário+categoria: recolhida (UI) e modo de notificação
+  -- ("Silenciar categoria" é só notification_mode = 'none'). Sem "marcar como
+  -- lida" aqui de propósito — o app ainda não tem nenhum rastreio de
+  -- mensagem lida/não lida em lugar nenhum (nem em canal avulso), então
+  -- persistir isso só pra este menu seria um dado morto sem nenhuma UI que o
+  -- leia de volta (ver DISCORD_PARITY_PLAN.md).
+  CREATE TABLE IF NOT EXISTS category_prefs (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    category_id TEXT NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+    collapsed INTEGER NOT NULL DEFAULT 0,
+    notification_mode TEXT NOT NULL DEFAULT 'all' CHECK (notification_mode IN ('all', 'mentions', 'none')),
+    PRIMARY KEY (user_id, category_id)
+  );
 `);
 
 // O NexMusic mantém um único player persistente por canal de texto. Limpa
@@ -477,3 +506,36 @@ rebuildWithServerScopedUniqueName(
   )`,
   'id, server_id, name, color, position, hoist, permissions, created_at',
 );
+
+// Configurações de canal (ver DISCORD_PARITY_PLAN.md): content_visibility
+// guarda só o rótulo ('default'/'spoiler'/'age_restricted') — este app não
+// tem gate de confirmação de idade nem filtro de spoiler de fato, é
+// só o selo visual + o dado persistido, honesto sobre o que falta.
+// is_announcement idem: guarda a intenção, mas "outros servidores seguirem
+// este canal" não existe nesta instância única self-hosted.
+//
+// Rodam DEPOIS de rebuildWithServerScopedUniqueName acima de propósito: essa
+// reconstrução recria text_channels do zero com uma lista explícita de
+// colunas (a migração legada de nome único global -> por servidor) — se
+// estas chamadas rodassem antes, o rebuild apagaria category_id/topic/etc.
+// silenciosamente em qualquer banco que ainda não tivesse passado por ele
+// (ex.: banco novo), porque a lista de colunas do rebuild não as conhece.
+ensureColumns('text_channels', [
+  ['category_id', 'TEXT REFERENCES categories(id) ON DELETE SET NULL'],
+  ['position', 'INTEGER NOT NULL DEFAULT 0'],
+  ['topic', "TEXT NOT NULL DEFAULT ''"],
+  ['slow_mode_seconds', 'INTEGER NOT NULL DEFAULT 0'],
+  ['content_visibility', "TEXT NOT NULL DEFAULT 'default'"],
+  ['is_announcement', 'INTEGER NOT NULL DEFAULT 0'],
+]);
+
+ensureColumns('voice_channels', [
+  ['category_id', 'TEXT REFERENCES categories(id) ON DELETE SET NULL'],
+  ['slow_mode_seconds', 'INTEGER NOT NULL DEFAULT 0'],
+  ['content_visibility', "TEXT NOT NULL DEFAULT 'default'"],
+  // 0 = "Auto" (sem teto explícito) pros dois campos abaixo, mesma
+  // convenção do resto do schema pra "sem limite"/"usar padrão do LiveKit".
+  ['bitrate_kbps', 'INTEGER NOT NULL DEFAULT 0'],
+  ['video_quality', "TEXT NOT NULL DEFAULT 'auto'"],
+  ['user_limit', 'INTEGER NOT NULL DEFAULT 0'],
+]);

@@ -5,7 +5,11 @@ import { describe, it } from 'node:test';
 import { authorizeVoiceDisconnect } from './voiceModeration.js';
 
 const channels = [
-  { id: 'geral', serverId: 'server-1', name: 'Geral', description: 'Canal geral', createdBy: null, createdAt: 0 },
+  {
+    id: 'geral', serverId: 'server-1', categoryId: null, name: 'Geral', description: 'Canal geral',
+    slowModeSeconds: 0, contentVisibility: 'default' as const, bitrateKbps: 0, videoQuality: 'auto' as const,
+    userLimit: 0, createdBy: null, createdAt: 0,
+  },
 ];
 
 describe('authorizeVoiceDisconnect', () => {

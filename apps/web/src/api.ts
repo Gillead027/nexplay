@@ -2,7 +2,10 @@ import type {
   AccentColor,
   BanRecord,
   BlockedUserSummary,
+  Category,
+  CategoryPrefs,
   Channel,
+  ContentVisibility,
   DmChannel,
   DmMessage,
   ForwardDestination,
@@ -13,6 +16,7 @@ import type {
   MemberSummary,
   MessageAttachment,
   MusicCommandResponse,
+  NotificationMode,
   PublicConfig,
   Role,
   RoomSummary,
@@ -22,6 +26,7 @@ import type {
   TextChannel,
   TextMessage,
   UserSession,
+  VideoQuality,
   VoiceChannel,
 } from '@nexplay/shared';
 
@@ -131,6 +136,62 @@ export const api = {
     }),
   deleteVoiceChannel: (serverId: string, channelId: string) =>
     request<void>(`${s(serverId)}/voice-channels/${encodeURIComponent(channelId)}`, { method: 'DELETE' }),
+  deleteTextChannel: (serverId: string, channelId: string) =>
+    request<void>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}`, { method: 'DELETE' }),
+  getCategories: (serverId: string) => request<{ categories: Category[] }>(`${s(serverId)}/categories`),
+  createCategory: (serverId: string, name: string, staffOnly: boolean) =>
+    request<{ category: Category }>(`${s(serverId)}/categories`, {
+      method: 'POST',
+      body: JSON.stringify({ name, staffOnly }),
+    }),
+  updateCategory: (serverId: string, categoryId: string, patch: { name?: string; staffOnly?: boolean }) =>
+    request<{ category: Category }>(`${s(serverId)}/categories/${encodeURIComponent(categoryId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  deleteCategory: (serverId: string, categoryId: string) =>
+    request<void>(`${s(serverId)}/categories/${encodeURIComponent(categoryId)}`, { method: 'DELETE' }),
+  getCategoryPrefs: (serverId: string) => request<{ prefs: CategoryPrefs[] }>(`${s(serverId)}/category-prefs`),
+  setCategoryPrefs: (
+    serverId: string,
+    categoryId: string,
+    patch: { collapsed?: boolean; notificationMode?: NotificationMode },
+  ) =>
+    request<{ prefs: CategoryPrefs }>(`${s(serverId)}/categories/${encodeURIComponent(categoryId)}/prefs`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  updateTextChannelSettings: (
+    serverId: string,
+    channelId: string,
+    patch: {
+      categoryId?: string | null;
+      topic?: string;
+      slowModeSeconds?: number;
+      contentVisibility?: ContentVisibility;
+      isAnnouncement?: boolean;
+    },
+  ) =>
+    request<{ channel: TextChannel }>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/settings`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
+  updateVoiceChannelSettings: (
+    serverId: string,
+    channelId: string,
+    patch: {
+      categoryId?: string | null;
+      slowModeSeconds?: number;
+      contentVisibility?: ContentVisibility;
+      bitrateKbps?: number;
+      videoQuality?: VideoQuality;
+      userLimit?: number;
+    },
+  ) =>
+    request<{ channel: VoiceChannel }>(`${s(serverId)}/voice-channels/${encodeURIComponent(channelId)}/settings`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    }),
   getTextMessages: (serverId: string, channelId: string) =>
     request<{ messages: TextMessage[] }>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages`),
   sendTextMessage: (serverId: string, channelId: string, text: string, replyToMessageId?: string, attachmentIds?: string[]) =>

@@ -3,7 +3,11 @@ import { describe, it } from 'node:test';
 import { authorizeMusicCommand } from './musicCommands.js';
 
 const channels = [
-  { id: 'geral', serverId: 'server-1', name: 'Geral', description: 'Conversa livre', createdBy: null, createdAt: 0 },
+  {
+    id: 'geral', serverId: 'server-1', categoryId: null, name: 'Geral', description: 'Conversa livre',
+    slowModeSeconds: 0, contentVisibility: 'default' as const, bitrateKbps: 0, videoQuality: 'auto' as const,
+    userLimit: 0, createdBy: null, createdAt: 0,
+  },
 ];
 const requester = { id: 'user-canonical', displayName: 'Gillezin' };
 
