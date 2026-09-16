@@ -15,6 +15,7 @@ import {
   type TextChannel,
   type TextMessage,
   type UserSession,
+  type VoiceChannel,
 } from '@nexplay/shared';
 import { api } from '../api';
 import { routeTextChannelInput } from '../musicCommandRouting';
@@ -1040,14 +1041,22 @@ export function CreateTextChannelDialog({
   open,
   serverId,
   onClose,
-  onCreated,
+  onTextCreated,
+  onVoiceCreated,
   returnFocusRef,
+  initialType = 'text',
+  categoryName,
+  categoryStaffOnly,
 }: {
   open: boolean;
   serverId: string;
   onClose: () => void;
-  onCreated: (channel: TextChannel) => void;
+  onTextCreated: (channel: TextChannel) => void;
+  onVoiceCreated: (channel: VoiceChannel) => void;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
+  initialType?: 'text' | 'voice';
+  categoryName?: string | null | undefined;
+  categoryStaffOnly?: boolean | undefined;
 }) {
   const titleId = useId();
   const descriptionId = useId();
@@ -1057,8 +1066,13 @@ export function CreateTextChannelDialog({
   const nameInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [channelType, setChannelType] = useState<'text' | 'voice'>(initialType);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (open) setChannelType(initialType);
+  }, [open, initialType]);
 
   const close = useCallback(() => {
     onClose();
@@ -1117,10 +1131,15 @@ export function CreateTextChannelDialog({
     setSaving(true);
     setError('');
     try {
-      const { channel } = await api.createTextChannel(serverId, name, description);
+      if (channelType === 'text') {
+        const { channel } = await api.createTextChannel(serverId, name, description);
+        onTextCreated(channel);
+      } else {
+        const { channel } = await api.createVoiceChannel(serverId, name, description);
+        onVoiceCreated(channel);
+      }
       setName('');
       setDescription('');
-      onCreated(channel);
       close();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível criar o canal.');
@@ -1145,7 +1164,11 @@ export function CreateTextChannelDialog({
         <header>
           <div>
             <h2 id={titleId}>Criar canal</h2>
-            <p id={descriptionId}>Configure o novo espaço do seu servidor.</p>
+            <p id={descriptionId}>
+              {categoryName
+                ? <>em {categoryStaffOnly && '🔒 '}<strong>{categoryName}</strong></>
+                : 'Configure o novo espaço do seu servidor.'}
+            </p>
           </div>
           <button type="button" onClick={close} disabled={saving} aria-label="Fechar">
             <CloseIcon size={18} />
@@ -1153,19 +1176,20 @@ export function CreateTextChannelDialog({
         </header>
         <label>Tipo de canal</label>
         <div className="channel-type-grid" aria-label="Tipo de canal">
-          <button type="button" className="channel-type-card selected">
-            <MessageIcon size={21} /><span><strong>Texto</strong><small>Envie mensagens, imagens e arquivos</small></span><i>✓</i>
+          <button type="button" className={`channel-type-card ${channelType === 'text' ? 'selected' : ''}`}
+            onClick={() => setChannelType('text')}>
+            <MessageIcon size={21} /><span><strong>Texto</strong><small>Envie mensagens, imagens e arquivos</small></span>
+            {channelType === 'text' && <i>✓</i>}
           </button>
-          <button type="button" className="channel-type-card">
+          <button type="button" className={`channel-type-card ${channelType === 'voice' ? 'selected' : ''}`}
+            onClick={() => setChannelType('voice')}>
             <VoiceIcon size={21} /><span><strong>Voz</strong><small>Converse por voz e vídeo</small></span>
-          </button>
-          <button type="button" className="channel-type-card">
-            <span className="forum-glyph">▤</span><span><strong>Fórum</strong><small>Discussões organizadas por tópicos</small></span>
+            {channelType === 'voice' && <i>✓</i>}
           </button>
         </div>
         <label htmlFor="channel-name">Nome do canal</label>
         <div className="channel-name-field">
-          <span aria-hidden="true">#</span>
+          {channelType === 'text' ? <span aria-hidden="true">#</span> : <VoiceIcon size={14} />}
           <input
             ref={nameInputRef}
             id="channel-name"

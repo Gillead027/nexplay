@@ -1084,14 +1084,13 @@ body { letter-spacing: -.01em; }
 .channel-dialog header p { margin-top: 6px; font-size: 12px; }
 .channel-dialog > label { margin: 18px 0 9px; color: #959bb0; font-size: 10px; letter-spacing: .7px; }
 .channel-dialog > input, .channel-name-field { height: 45px; border-color: #30394c; border-radius: 10px; background: #0e131d; }
-.channel-type-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.channel-type-card { position: relative; min-height: 100px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 15px; border: 1px solid #2d3548; border-radius: 13px; color: #858ba0; background: #10151f; text-align: left; }
+.channel-type-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.channel-type-card { position: relative; min-height: 100px; display: flex; flex-direction: column; align-items: flex-start; gap: 10px; padding: 15px; border: 1px solid #2d3548; border-radius: 13px; color: #858ba0; background: #10151f; text-align: left; cursor: pointer; }
 .channel-type-card.selected { border-color: #48bca5; color: #69d0ba; background: #10221f; box-shadow: inset 0 0 0 1px rgba(79,198,173,.12); }
-.channel-type-card > span:not(.forum-glyph) { display: flex; flex-direction: column; gap: 4px; }
+.channel-type-card > span { display: flex; flex-direction: column; gap: 4px; }
 .channel-type-card strong { color: #e8e8f0; font-size: 12px; }
 .channel-type-card small { color: #767d91; font-size: 9px; line-height: 1.35; }
 .channel-type-card > i { position: absolute; top: 12px; right: 12px; width: 19px; height: 19px; display: grid; place-items: center; border-radius: 50%; color: #071612; background: #55cbb2; font-size: 11px; font-style: normal; font-weight: 900; }
-.forum-glyph { font-size: 20px; }
 .channel-static-option { display: flex; align-items: center; justify-content: space-between; gap: 18px; margin-top: 19px; padding: 15px 0; border-top: 1px solid #252c3c; border-bottom: 1px solid #252c3c; }
 .channel-static-option strong, .channel-static-option span { display: block; }
 .channel-static-option strong { color: #e8e8ef; font-size: 12px; }

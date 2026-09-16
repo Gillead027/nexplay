@@ -10,8 +10,6 @@ import {
   MUSIC_BOT_IDENTITY,
   parseParticipantMetadata,
   Permission,
-  TEXT_CHANNEL_DESCRIPTION_MAX_LENGTH,
-  TEXT_CHANNEL_NAME_MAX_LENGTH,
   type AccentColor,
   type Activity,
   type Category,
@@ -316,110 +314,6 @@ function IconSwap({ on, onIcon, offIcon }: { on: boolean; onIcon: ReactNode; off
   );
 }
 
-// Minimalista de propósito — nome + descrição, mesmo nível de simplicidade
-// que CreateTextChannelDialog tem hoje. Bitrate/permissões/região ficam pra
-// quando existir um sistema de permissões de verdade (ver DISCORD_PARITY_PLAN.md).
-function CreateVoiceChannelDialog({
-  open,
-  serverId,
-  onClose,
-  onCreated,
-  returnFocusRef,
-}: {
-  open: boolean;
-  serverId: string;
-  onClose: () => void;
-  onCreated: (channel: VoiceChannel) => void;
-  returnFocusRef: RefObject<HTMLButtonElement | null>;
-}) {
-  const titleId = useId();
-  const nameInputRef = useRef<HTMLInputElement>(null);
-  const [name, setName] = useState('');
-  const [description, setDescription] = useState('');
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-
-  const close = useCallback(() => {
-    onClose();
-    window.requestAnimationFrame(() => returnFocusRef.current?.focus());
-  }, [onClose, returnFocusRef]);
-
-  useEffect(() => {
-    if (!open) return;
-    nameInputRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !saving) close();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [close, open, saving]);
-
-  if (!open) return null;
-
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!name.trim() || saving) return;
-    setSaving(true);
-    setError('');
-    try {
-      const { channel } = await api.createVoiceChannel(serverId, name, description);
-      setName('');
-      setDescription('');
-      onCreated(channel);
-      close();
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Não foi possível criar o canal de voz.');
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  return (
-    <div className="dialog-overlay" onMouseDown={(event) => {
-      if (event.target === event.currentTarget && !saving) close();
-    }}>
-      <form className="channel-dialog" role="dialog" aria-modal="true" aria-labelledby={titleId} onSubmit={submit}>
-        <header>
-          <div>
-            <h2 id={titleId}>Criar canal de voz</h2>
-            <p>Um novo espaço de conversa por voz no servidor.</p>
-          </div>
-          <button type="button" onClick={close} disabled={saving} aria-label="Fechar">
-            <CloseIcon size={18} />
-          </button>
-        </header>
-        <label htmlFor="voice-channel-name">Nome do canal</label>
-        <div className="channel-name-field">
-          <VoiceIcon size={14} />
-          <input
-            ref={nameInputRef}
-            id="voice-channel-name"
-            maxLength={TEXT_CHANNEL_NAME_MAX_LENGTH}
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="canal-de-voz"
-            required
-          />
-        </div>
-        <label htmlFor="voice-channel-description">Descrição <span>(opcional)</span></label>
-        <input
-          id="voice-channel-description"
-          maxLength={TEXT_CHANNEL_DESCRIPTION_MAX_LENGTH}
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          placeholder="Sobre o que é este canal?"
-        />
-        {error && <p className="form-error" role="alert">{error}</p>}
-        <footer>
-          <button type="button" className="dialog-cancel" onClick={close} disabled={saving}>Cancelar</button>
-          <button type="submit" className="primary-button" disabled={saving || !name.trim()}>
-            {saving ? 'Criando…' : 'Criar canal'}
-          </button>
-        </footer>
-      </form>
-    </div>
-  );
-}
 
 function CreateCategoryDialog({
   open,
@@ -1921,10 +1815,20 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const [addServerOpen, setAddServerOpen] = useState(false);
   const [forwardingMessage, setForwardingMessage] = useState<ForwardSource | null>(null);
   const addServerButtonRef = useRef<HTMLButtonElement>(null);
-  const [createTextChannelOpen, setCreateTextChannelOpen] = useState(false);
-  const [createVoiceChannelOpen, setCreateVoiceChannelOpen] = useState(false);
+  const [createChannelOpen, setCreateChannelOpen] = useState(false);
+  const [createChannelInitialType, setCreateChannelInitialType] = useState<'text' | 'voice'>('text');
+  const [createChannelCategory, setCreateChannelCategory] = useState<Category | null>(null);
+  const createChannelReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const [createCategoryOpen, setCreateCategoryOpen] = useState(false);
   const createCategoryButtonRef = useRef<HTMLButtonElement>(null);
+
+  function openCreateChannel(type: 'text' | 'voice', category: Category | null, button: HTMLButtonElement | null) {
+    createChannelReturnFocusRef.current = button;
+    createChannelTargetCategoryRef.current = category?.id ?? null;
+    setCreateChannelInitialType(type);
+    setCreateChannelCategory(category);
+    setCreateChannelOpen(true);
+  }
 
   function categoryPrefFor(categoryId: string): CategoryPrefs {
     return categoryPrefs[categoryId] ?? { categoryId, collapsed: false, notificationMode: 'all' };
@@ -2014,8 +1918,6 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const [profileBanner, setProfileBanner] = useState(session.bannerUrl);
   const [savingProfile, setSavingProfile] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
-  const createTextChannelButtonRef = useRef<HTMLButtonElement>(null);
-  const createVoiceChannelButtonRef = useRef<HTMLButtonElement>(null);
   // Preenchido quando o "+" clicado é o de uma categoria específica (não o
   // topo/sem-categoria) — aplicado assim que o canal recém-criado chega em
   // handleTextChannelCreated/handleVoiceChannelCreated, sem passar pelo
@@ -2026,8 +1928,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const textChannelsInitializedRef = useRef(false);
 
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
-  const closeCreateTextChannel = useCallback(() => setCreateTextChannelOpen(false), []);
-  const closeCreateVoiceChannel = useCallback(() => setCreateVoiceChannelOpen(false), []);
+  const closeCreateChannel = useCallback(() => setCreateChannelOpen(false), []);
 
   function choosePerfMode(mode: PerfMode) {
     setPerfMode(mode);
@@ -2492,18 +2393,15 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         setNoiseSuppression={(enabled) => void voice.setNoiseSuppression(enabled)}
       />
       <CreateTextChannelDialog
-        open={createTextChannelOpen}
+        open={createChannelOpen}
         serverId={activeServerId ?? ''}
-        onClose={closeCreateTextChannel}
-        onCreated={handleTextChannelCreated}
-        returnFocusRef={createTextChannelButtonRef}
-      />
-      <CreateVoiceChannelDialog
-        open={createVoiceChannelOpen}
-        serverId={activeServerId ?? ''}
-        onClose={closeCreateVoiceChannel}
-        onCreated={handleVoiceChannelCreated}
-        returnFocusRef={createVoiceChannelButtonRef}
+        onClose={closeCreateChannel}
+        onTextCreated={handleTextChannelCreated}
+        onVoiceCreated={handleVoiceChannelCreated}
+        returnFocusRef={createChannelReturnFocusRef}
+        initialType={createChannelInitialType}
+        categoryName={createChannelCategory?.name}
+        categoryStaffOnly={createChannelCategory?.staffOnly}
       />
       <CreateCategoryDialog
         open={createCategoryOpen}
@@ -2719,8 +2617,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                         <div className="section-title">
                           <span>CANAIS DE TEXTO</span>
                           {canManageChannels && (
-                            <button ref={createTextChannelButtonRef} type="button" className="add-channel-button"
-                              onClick={() => { createChannelTargetCategoryRef.current = null; setCreateTextChannelOpen(true); }}
+                            <button type="button" className="add-channel-button"
+                              onClick={(event) => openCreateChannel('text', null, event.currentTarget)}
                               aria-label="Criar canal de texto" title="Criar canal de texto">
                               <PlusIcon size={14} />
                             </button>
@@ -2734,8 +2632,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                         <span>CANAIS DE VOZ</span>
                         <small>{onlineCount} online</small>
                         {canManageChannels && (
-                          <button ref={createVoiceChannelButtonRef} type="button" className="add-channel-button"
-                            onClick={() => { createChannelTargetCategoryRef.current = null; setCreateVoiceChannelOpen(true); }}
+                          <button type="button" className="add-channel-button"
+                            onClick={(event) => openCreateChannel('voice', null, event.currentTarget)}
                             aria-label="Criar canal de voz" title="Criar canal de voz">
                             <PlusIcon size={14} />
                           </button>
@@ -2763,15 +2661,10 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                           </button>
                           {canManageChannels && (
                             <span className="category-header-actions">
-                              <button type="button" className="add-channel-button" title="Criar canal de texto nesta categoria"
-                                aria-label="Criar canal de texto nesta categoria"
-                                onClick={() => { createChannelTargetCategoryRef.current = category.id; setCreateTextChannelOpen(true); }}>
-                                <PlusIcon size={12} />#
-                              </button>
-                              <button type="button" className="add-channel-button" title="Criar canal de voz nesta categoria"
-                                aria-label="Criar canal de voz nesta categoria"
-                                onClick={() => { createChannelTargetCategoryRef.current = category.id; setCreateVoiceChannelOpen(true); }}>
-                                <PlusIcon size={12} />🔊
+                              <button type="button" className="add-channel-button" title={`Criar canal em ${category.name}`}
+                                aria-label={`Criar canal em ${category.name}`}
+                                onClick={(event) => openCreateChannel('text', category, event.currentTarget)}>
+                                <PlusIcon size={13} />
                               </button>
                             </span>
                           )}
