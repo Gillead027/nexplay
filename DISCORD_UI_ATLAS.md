@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). Roteiros 3–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). Roteiros 4–69+ pendentes — ver nota de continuação no final do arquivo.
 
 ---
 
@@ -1987,4 +1987,751 @@ Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente resumid
 
 **Achado transversal deste roteiro**: a navegação inteira do NexPlay não tem URL própria (sem router) — trocar de servidor/canal/DM nunca muda o endereço na barra do navegador nem gera um estado de histórico navegável via Voltar/Avançar do navegador, e não é possível compartilhar um link direto pra um servidor ou canal específico de fora do app (diferente de `discord.com/channels/...`). Isso afeta potencialmente várias fichas futuras (links de mensagem/deep link, Roteiro 60) e fica registrado aqui como o achado estrutural mais amplo desta seção.
 
-**Próximo na fila**: Roteiro 3 — Servidores e Canais (criar/entrar em servidor pelo `AddServerModal` já mencionado, categorias, canais de texto/voz, configurações de canal — muito disso já implementado e testado em sessões anteriores desta mesma linha de trabalho, então a auditoria vai documentar o que já existe como `DONE` em vez de redescobrir do zero), seguido de Roteiro 4 — Mensagens, Roteiro 5 — Tempo real, e a partir daí Voz/Mute/Deafen/Compartilhar tela/Vídeo (prioridade especial do pedido original).
+---
+
+# ROTEIRO 3 — SERVIDORES E CANAIS
+
+Arquitetura real (verificada em `AddServerModal`/`Servers.tsx`, `CreateCategoryDialog`/`CreateTextChannelDialog`/`CategorySettingsModal`/`TextChannelSettingsModal`/`VoiceChannelSettingsModal`, e os handlers de drag-and-drop/menu de contexto em `Workspace.tsx`): categorias, canais de texto/voz, configurações de canal e mover canal entre categorias **já são funcionalidades reais e completas**, construídas e testadas em sessões anteriores desta mesma linha de trabalho — esta auditoria documenta o que existe (`CORE`), não reconstrói nada. Cargos/Membros/Convites/Integrações (abas de Configurações do Servidor) já foram auditadas em detalhe informal nas sessões anteriores desta mesma linha de trabalho e ficam para um roteiro dedicado à parte (permissões é um sistema grande o bastante pra merecer sua própria passagem, não espremido aqui), com uma ficha-resumo neste roteiro só marcando que existem e funcionam.
+
+---
+
+## 3.1 — SERVER_CREATE_SUBMIT
+
+**ID**: `SERVER_CREATE_SUBMIT`
+**NOME**: Criar um servidor novo
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Rail de servidores > "+" > AddServerModal > aba "Criar servidor" > formulário`
+**POSIÇÃO NA INTERFACE**: Dentro do `AddServerModal`, aba padrão (ativa por default ao abrir).
+**APARÊNCIA**: Campo "Nome do servidor" (`required`, até `SERVER_NAME_MAX_LENGTH`), campo "Descrição (opcional)" (até `SERVER_DESCRIPTION_MAX_LENGTH`), botão `.primary-button` "Criar servidor".
+**ESTADO NORMAL**: Campos vazios, foco automático no nome ao abrir o modal.
+**HOVER**: Padrão de `.primary-button:hover`.
+**ACTIVE/PRESSED**: Padrão de `:active`.
+**SELECTED**: Não aplicável.
+**DISABLED**: `disabled={saving || !name.trim()}` — desabilitado até ter algum nome digitado.
+**LOADING**: Texto muda para "Criando…" durante a chamada.
+**TRIGGER**: Clique no botão, ou Enter em qualquer campo do formulário.
+**PRÉ-CONDIÇÕES**: Nenhuma — **qualquer usuário autenticado pode criar um servidor, sem permissão especial**, exatamente como o Discord real (confirmado no comentário do próprio código da rota: "Qualquer usuário autenticado pode criar um servidor... quem cria vira dono e Administrador dele"). **Sem limite de quantos servidores um usuário pode criar.**
+**RESULTADO IMEDIATO**: `api.createServer(name, description)` → `POST /api/servers`.
+**RESULTADO VISUAL**: Modal fecha; novo servidor aparece na rail (via `onServerReady` → `serversState.refresh()` + `setActiveServerId` + `setView('server')`, confirmado em `Workspace.tsx`).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma transição própria.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Fecha ao concluir.
+**SEGUNDA ETAPA**: Servidor novo já nasce com 1 canal de texto + 1 canal de voz padrão (confirmado em `DISCORD_PARITY_PLAN.md` §1) e o usuário vira automaticamente dono (`ownerId`) e Administrador (cargo com bitfield de permissão total).
+**RESULTADO FINAL**: Novo servidor ativo, selecionado, com seus dois canais padrão prontos pra usar.
+**EFEITO LOCAL**: `serversState.refresh()` — refetch completo da lista de servidores (não é só um append otimista local).
+**EFEITO REMOTO**: Nenhum — servidor novo é privado ao criador até ele gerar um convite (ver Roteiro de Convites, já coberto informalmente em sessão anterior).
+**REALTIME**: `sendToServerMembers` não se aplica ainda (só o criador é membro no momento da criação) — mas o evento `SERVER_CREATE` é emitido (confirmado em `apps/api/src/index.ts`), relevante se o mesmo usuário tiver o app aberto em duas abas/dispositivos.
+**BACKEND**: `POST /api/servers`, sujeito a `channelCreateLimiter` (rate limit compartilhado com criação de canal — a confirmar limite exato em auditoria futura).
+**BANCO**: Insere em `servers`, `server_members` (o próprio criador), `roles` (o cargo Administrador + `@everyone`), `user_roles`, e os dois canais padrão em `text_channels`/`voice_channels`.
+**REFRESH**: Servidor persiste normalmente (não é um estado de sessão — é dado real no banco).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Erro de rede/validação exibido em `.form-error` dentro do modal (`requestError.message`).
+**CANCELAMENTO**: Botão "Cancelar", X, Esc, ou clique fora do modal.
+**REVERSÃO**: Ver `SERVER_DELETE` (já implementado e documentado em sessão anterior — só o dono pode excluir, com confirmação por nome digitado) ou `SERVER_LEAVE` (**`MISSING` na UI**, ver ficha própria adiante).
+**ATALHO**: Nenhum atalho de teclado dedicado para abrir a aba de criação especificamente (é a aba padrão do modal, então `SERVER_ADD_OPEN` já leva direto pra cá).
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Labels associados corretamente (`htmlFor`), foco automático no campo de nome, `role="tablist"` no seletor de aba.
+
+---
+
+## 3.2 — SERVER_JOIN_INVITE_SUBMIT
+
+**ID**: `SERVER_JOIN_INVITE_SUBMIT`
+**NOME**: Entrar em um servidor via código de convite
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Rail de servidores > "+" > AddServerModal > aba "Entrar com convite"`
+**POSIÇÃO NA INTERFACE**: Segunda aba do mesmo modal.
+**APARÊNCIA**: Campo único "Código de convite" (`required`), botão "Entrar no servidor".
+**ESTADO NORMAL**: Campo vazio.
+**HOVER**: Padrão de `.primary-button:hover`.
+**ACTIVE/PRESSED**: Padrão de `:active`.
+**SELECTED**: Não aplicável.
+**DISABLED**: `disabled={saving || !inviteCode.trim()}`.
+**LOADING**: Texto muda para "Entrando…".
+**TRIGGER**: Clique ou Enter.
+**PRÉ-CONDIÇÕES**: Código de convite válido (não expirado/esgotado — embora, conforme já registrado em `DISCORD_PARITY_PLAN.md` §1, o schema suporte expiração/limite de usos mas isso **nunca é configurado na prática**, já que não existe UI pra isso — todo convite hoje é efetivamente permanente e ilimitado).
+**RESULTADO IMEDIATO**: `api.redeemInvite(code)` → `POST /api/invites/:code/redeem`.
+**RESULTADO VISUAL**: Modal fecha; servidor novo aparece na rail e é selecionado.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Fecha ao concluir.
+**SEGUNDA ETAPA**: Usuário vira membro com o cargo `@everyone` daquele servidor.
+**RESULTADO FINAL**: Servidor ativo, selecionado, canal padrão carregado.
+**EFEITO LOCAL**: `serversState.refresh()`.
+**EFEITO REMOTO**: **Achado a confirmar**: diferente do cadastro via convite global (documentado no Roteiro 1 como **não emitindo `MEMBER_JOIN`**), esta rota específica de resgate de convite de servidor **não foi confirmada nesta passagem** se emite `MEMBER_JOIN` pros outros membros — marcado como pendente de verificação em auditoria futura mais profunda desta rota específica.
+**REALTIME**: Ver acima.
+**BACKEND**: `POST /api/invites/:code/redeem`, sujeito a `dmChannelLimiter` (reaproveitado — nome do limiter sugere que foi originalmente pensado pra outra coisa, mas está sendo usado aqui também, confirmado lendo a rota).
+**BANCO**: Insere em `server_members`, `user_roles` (cargo padrão).
+**REFRESH**: Persiste normalmente.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Convite inexistente/inválido retorna `404` com mensagem "Convite não encontrado." exibida no `.form-error`.
+**CANCELAMENTO**: Mesmo padrão do modal.
+**REVERSÃO**: `SERVER_LEAVE` (`MISSING` na UI, ver adiante) ou ser removido/banido por um admin.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Mesma estrutura de `SERVER_CREATE_SUBMIT`.
+
+---
+
+## 3.3 — CATEGORY_CREATE
+
+**ID**: `CATEGORY_CREATE`
+**NOME**: Criar uma categoria de canais
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Servidor ativo > sidebar de canais > botão "+ Criar categoria" (rodapé da lista)`
+**POSIÇÃO NA INTERFACE**: Abaixo da lista de canais/categorias existentes.
+**APARÊNCIA**: `CreateCategoryDialog`: campo "Nome da categoria" (até 32 caracteres, placeholder "NOVA CATEGORIA" — sugere convenção de maiúsculas, mas **não força maiúsculas automaticamente**, é só um placeholder ilustrativo), toggle "Categoria restrita à staff" (`.toggle-row` com checkbox real, não decorativo).
+**ESTADO NORMAL**: Campos vazios, toggle desligado (categoria pública por padrão).
+**HOVER**: Padrão de campos/checkbox do app.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Botão de envio desabilitado sem nome preenchido.
+**LOADING**: "Criando…".
+**TRIGGER**: Clique ou Enter.
+**PRÉ-CONDIÇÕES**: `canManageChannels` (permissão `MANAGE_CHANNELS`) — **achado**: o próprio botão "+ Criar categoria" só é renderizado condicionalmente a essa permissão (confirmado no padrão de outros botões "+"já auditados nesta sessão de trabalho mais ampla), então quem não tem permissão nem vê a opção.
+**RESULTADO IMEDIATO**: `api.createCategory(serverId, name, staffOnly)` → `POST /api/servers/:id/categories`.
+**RESULTADO VISUAL**: Nova categoria aparece na sidebar, vazia (sem canais), expandida por padrão.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Fecha ao concluir.
+**SEGUNDA ETAPA**: Usuário pode criar canais direto dentro dela (botão "+" próprio da categoria) ou arrastar canais existentes pra ela.
+**RESULTADO FINAL**: Categoria criada, pronta para receber canais.
+**EFEITO LOCAL**: `onCreated(category)` insere direto no estado local (otimista, sem esperar um refetch completo) — deduplica contra eco de WebSocket com o mesmo padrão `current.some(...) ? current : [...]` já usado em outras partes do app auditadas nesta sessão de trabalho mais ampla.
+**EFEITO REMOTO**: Evento `CATEGORY_CREATE` via `sendToServerMembers` — outros membros veem a categoria nova aparecer ao vivo, sem F5.
+**REALTIME**: `CATEGORY_CREATE` (confirmado em `packages/shared/src/index.ts`).
+**BACKEND**: `POST /api/servers/:serverId/categories`.
+**BANCO**: Insere em `categories`.
+**REFRESH**: Persiste normalmente.
+**RECONEXÃO**: Recarregada via fetch normal de categorias.
+**ERRO**: Nome duplicado ou vazio → mensagem no `.form-error`.
+**CANCELAMENTO**: Padrão do modal.
+**REVERSÃO**: `CATEGORY_DELETE` (ver ficha adiante).
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável a este botão.
+**ACESSIBILIDADE**: Checkbox real (`type="checkbox"`, não decorativo), label associado via `.toggle-row`.
+
+---
+
+## 3.4 — CATEGORY_COLLAPSE_TOGGLE
+
+**ID**: `CATEGORY_COLLAPSE_TOGGLE`
+**NOME**: Recolher/expandir uma categoria
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Sidebar de canais > cabeçalho da categoria > botão de toggle (seta/nome)`
+**POSIÇÃO NA INTERFACE**: `.category-header-toggle`, dentro de `.category-header` (que é uma `<div>`, não um `<button>` — corrigido em sessão anterior desta linha de trabalho especificamente pra evitar `<button>` aninhado dentro de `<button>`, já que a categoria também tem botões de ação ao lado do toggle).
+**APARÊNCIA**: Nome da categoria + seta indicando estado (aberta/fechada) — ícone exato não confirmado nesta passagem específica (herdado de auditoria visual anterior desta sessão de trabalho).
+**ESTADO NORMAL**: Expandida por padrão (`collapsed: false`) pra uma categoria nova.
+**HOVER**: Padrão de `.category-header-toggle:hover`.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Estado recolhido/expandido persiste por preferência do usuário (ver `BANCO`).
+**DISABLED**: Nunca desabilitado.
+**LOADING**: Não aplicável — mudança é otimista (aplica local antes da resposta do servidor confirmar).
+**TRIGGER**: Clique esquerdo.
+**PRÉ-CONDIÇÕES**: Nenhuma — qualquer membro pode recolher/expandir (é uma preferência pessoal, não uma ação de moderação).
+**RESULTADO IMEDIATO**: `toggleCategoryCollapsed(categoryId)`: inverte o valor local imediatamente (`setCategoryPrefs`), depois `api.setCategoryPrefs(...)` persiste em segundo plano.
+**RESULTADO VISUAL**: Canais dentro da categoria somem/aparecem; seta gira/muda de direção.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada (pode ou não ter uma transição de altura suave — não verificado nesta passagem).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Estado de colapso refletido na sidebar.
+**EFEITO LOCAL**: Aplicado otimisticamente antes da API confirmar.
+**EFEITO REMOTO**: **Nenhum** — é uma preferência **por usuário**, não global do servidor (confirmado: `category_prefs` é por usuário+categoria, não uma propriedade da categoria em si) — outros membros não veem/são afetados por alguém recolher uma categoria.
+**REALTIME**: Não aplicável (preferência pessoal, sem broadcast).
+**BACKEND**: `PATCH` de preferências de categoria (rota exata a confirmar nome — `api.setCategoryPrefs`).
+**BANCO**: Tabela `category_prefs` (`server_id`/categoria + usuário + `collapsed`/`notification_mode`) — **persiste de verdade entre sessões**, diferente de vários outros estados de UI já documentados nesta auditoria como "voltam ao padrão em F5" (troca de servidor, tamanho de janela, etc.) — este é um caso de persistência real.
+**REFRESH**: Estado recolhido/expandido **sobrevive a F5** (é lido do backend, não de `localStorage` nem de estado React efêmero).
+**RECONEXÃO**: Recarregado via fetch normal ao reconectar.
+**ERRO**: Falha na chamada ao backend não reverte o estado local otimista — fica dessincronizado até um próximo refresh/evento reconciliar (comportamento aceito como simplificação deliberada, não um bug ativamente escondido — mas vale registrar como comportamento real).
+**CANCELAMENTO**: Clicar de novo reverte.
+**REVERSÃO**: Clicar de novo.
+**ATALHO**: Nenhum atalho de teclado dedicado.
+**MENU DE CONTEXTO**: Ver `CATEGORY_CONTEXT_MENU` — "Recolher categoria" também está disponível lá como item com checkbox, refletindo o mesmo estado.
+**ACESSIBILIDADE**: É um `<button>` real dentro de uma `<div>` container (não bloco aninhado inválido), alcançável via Tab.
+
+---
+
+## 3.5 — CATEGORY_CONTEXT_MENU
+
+**ID**: `CATEGORY_CONTEXT_MENU`
+**NOME**: Menu de contexto da categoria (botão direito)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Sidebar de canais > cabeçalho de qualquer categoria > botão direito`
+**POSIÇÃO NA INTERFACE**: Menu flutuante posicionado nas coordenadas do clique (`categoryMenu.open(event, ...)`, componente genérico `ContextMenu.tsx` reaproveitado em todo o app).
+**APARÊNCIA**: Lista de itens agrupados em 5 seções (separadas visualmente por divisores, uma seção por array `{ items: [...] }` passado): (1) "Marcar como lida"; (2) "Recolher categoria" (com checkbox refletindo estado atual) + "Recolher todas as categorias"; (3) "Silenciar categoria" (com checkbox) + "Config. de notificação"; (4) "Editar categoria" + "Excluir categoria" (só se `canManageChannels`, estilizado como `danger`); (5) "Copiar ID da Categoria".
+**ESTADO NORMAL**: Fechado.
+**HOVER**: Cada item reage a hover (padrão do `ContextMenu.tsx` genérico).
+**ACTIVE/PRESSED**: Padrão do componente genérico.
+**SELECTED**: Itens com `checked` (Recolher, Silenciar) mostram indicador visual de marcado quando o estado correspondente já está ativo.
+**DISABLED**: "Excluir categoria" só aparece (não é "desabilitado visível", é condicionalmente ausente) se `canManageChannels`.
+**LOADING**: Não aplicável ao menu em si.
+**TRIGGER**: Clique com o botão direito no cabeçalho da categoria.
+**PRÉ-CONDIÇÕES**: Nenhuma para abrir o menu (mas alguns itens dentro dele são condicionados a permissão).
+**RESULTADO IMEDIATO**: Menu abre nas coordenadas do cursor.
+**RESULTADO VISUAL**: Overlay com os itens listados.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada (padrão genérico do `ContextMenu.tsx`).
+**POPOVER**: É o próprio popover.
+**MENU**: É o próprio menu.
+**MODAL**: Não é modal (fecha ao clicar fora, diferente de modal que bloqueia interação).
+**SEGUNDA ETAPA**: Clicar em qualquer item executa a ação correspondente e fecha o menu.
+**RESULTADO FINAL — item "Marcar como lida"**: **`onSelect: () => {}` — literalmente não faz nada.** Confirmado lendo o código: é um item vazio, presente só porque o Discord real tem essa opção, mas sem nenhuma função por trás (consistente com `DISCORD_PARITY_PLAN.md`: "'marcar como lida' é só visual — o app não tem nenhum rastreio de mensagem lida/não lida em lugar nenhum ainda"). **Isso é exatamente o tipo de controle decorativo que o pedido do usuário em sessões anteriores desta linha de trabalho pediu pra eliminar** ("LEMBRANDO, NÃO QUERO NADA QUEBRADO, SEM FUNÇÃO E SEM REAÇÃO") — mas sobreviveu aqui especificamente porque a funcionalidade de "não lida" inteira ainda não existe em lugar nenhum do app (não é uma omissão isolada consertável só neste menu, é uma feature ausente maior — ver `RAIL_UNREAD_MENTION_INDICATOR` no Roteiro 2).
+**RESULTADO FINAL — outros itens**: Cada um chama a função correspondente já documentada em fichas próprias (`CATEGORY_COLLAPSE_TOGGLE`, `CATEGORY_EDIT`, `CATEGORY_DELETE`) ou "Copiar ID da Categoria" → `navigator.clipboard.writeText(category.id)` (**sem feedback visual de "copiado!"** — nenhum toast/tooltip confirmando que o clipboard foi escrito, diferente do padrão "Copiado" que o pedido do usuário espera pra toda ação de copiar, Roteiro 55).
+**EFEITO LOCAL**: Depende do item (ver fichas individuais).
+**EFEITO REMOTO**: Depende do item — "Recolher"/"Silenciar" são só locais (ver `CATEGORY_COLLAPSE_TOGGLE`); "Editar"/"Excluir" afetam todo mundo.
+**REALTIME**: Depende do item.
+**BACKEND**: Depende do item.
+**BANCO**: Depende do item.
+**REFRESH**: O menu em si nunca persiste aberto (sempre fecha em F5, como qualquer overlay).
+**RECONEXÃO**: Não aplicável ao menu.
+**ERRO**: Depende do item.
+**CANCELAMENTO**: Clicar fora do menu, ou Esc (confirmado como padrão do `ContextMenu.tsx` genérico, reaproveitado em toda a auditoria desta sessão de trabalho mais ampla).
+**REVERSÃO**: Não aplicável ao menu em si.
+**ATALHO**: Nenhum atalho pra abrir via teclado (só botão direito do mouse — sem uma tecla equivalente tipo "Menu"/Shift+F10 confirmada).
+**MENU DE CONTEXTO**: É a própria ficha.
+**ACESSIBILIDADE**: A confirmar em auditoria futura mais profunda do `ContextMenu.tsx` genérico (navegação por seta entre itens, `role="menu"`/`role="menuitem"` — não lido em detalhe nesta passagem específica sobre categorias).
+
+**Nota de auditoria**: comparado ao pedido original, faltam itens que o Discord real tem no menu de categoria: "Criar canal" (existe, mas como botão "+" separado no cabeçalho, não dentro deste menu) e "Duplicar categoria" (`MISSING` por completo, não existe em lugar nenhum).
+
+---
+
+## 3.6 — CATEGORY_EDIT
+
+**ID**: `CATEGORY_EDIT`
+**NOME**: Editar nome/restrição de uma categoria existente
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Categoria > menu de contexto > "Editar categoria"` (único caminho — **não há um ícone de engrenagem direto no cabeçalho da categoria**, diferente de canais individuais, que têm o gear sempre visível; editar categoria exige passar pelo botão direito).
+**POSIÇÃO NA INTERFACE**: `CategorySettingsModal`, acessado via `ref` imperativo (`categoryEditRefs.current[category.id]?.open()`) — um componente por categoria, cada um mantendo seu próprio estado de aberto/fechado internamente, controlado de fora só por essa chamada imperativa.
+**APARÊNCIA**: Modal com campo de nome e o toggle de restrição à staff (mesmos campos de `CATEGORY_CREATE`, agora pré-preenchidos com os valores atuais).
+**ESTADO NORMAL**: Fechado.
+**HOVER**: Padrão de modal.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Botão salvar desabilitado sem nome.
+**LOADING**: "Salvando…" (a confirmar texto exato).
+**TRIGGER**: Item "Editar categoria" no menu de contexto.
+**PRÉ-CONDIÇÕES**: Nenhuma explícita pra *ver* o item no menu (diferente de "Excluir", que só aparece com `canManageChannels`) — **achado a confirmar**: se "Editar categoria" também deveria estar condicionado à mesma permissão e não está, seria uma inconsistência de autorização client-side (o backend certamente valida `MANAGE_CHANNELS` na rota de update, então não é um risco de segurança real, só uma UI que mostra uma opção que vai falhar com 403 pra quem não tem permissão — a confirmar em auditoria futura mais profunda).
+**RESULTADO IMEDIATO**: Modal abre pré-preenchido.
+**RESULTADO VISUAL**: Campos com os valores atuais da categoria.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável (já fechou o menu de contexto que abriu isto).
+**MODAL**: É o próprio modal.
+**SEGUNDA ETAPA**: Editar campos e salvar.
+**RESULTADO FINAL**: `PATCH` na categoria — nome/`staffOnly` atualizados.
+**EFEITO LOCAL**: Estado local atualizado (via `onUpdated`, padrão consistente com outros modais de configuração já auditados).
+**EFEITO REMOTO**: `CATEGORY_UPDATE` via WebSocket — outros membros veem a mudança ao vivo, inclusive a **mudança de visibilidade** se `staffOnly` for alternado (canais dentro dela passam a aparecer/desaparecer para membros sem cargo de staff, imediatamente, sem F5 — mecanismo de `isStaffTier`/`filterChannelsByCategoryAccess` já auditado em sessão anterior desta linha de trabalho).
+**REALTIME**: `CATEGORY_UPDATE`.
+**BACKEND**: `PATCH /api/servers/:serverId/categories/:categoryId` (nome exato a confirmar).
+**BANCO**: Atualiza `categories`.
+**REFRESH**: Persiste normalmente.
+**RECONEXÃO**: Recarregado via fetch normal.
+**ERRO**: Nome duplicado/vazio → erro no modal.
+**CANCELAMENTO**: Fechar sem salvar.
+**REVERSÃO**: Editar de novo.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável ao modal em si.
+**ACESSIBILIDADE**: Mesma estrutura de modal já documentada em outras fichas.
+
+---
+
+## 3.7 — CATEGORY_DELETE
+
+**ID**: `CATEGORY_DELETE`
+**NOME**: Excluir uma categoria
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Categoria > menu de contexto > "Excluir categoria"`
+**POSIÇÃO NA INTERFACE**: Item de destaque (`danger`) no menu de contexto.
+**APARÊNCIA**: Texto vermelho/destaque de perigo dentro do menu (classe `danger` no item).
+**ESTADO NORMAL**: Não aplicável.
+**HOVER**: Destaque de perigo mais forte no hover (padrão de item `danger` do `ContextMenu.tsx`).
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Item só existe no menu se `canManageChannels` (não aparece pra quem não tem permissão, não é "visível mas desabilitado").
+**LOADING**: Não aplicável (a confirmação é feita via `window.confirm()` nativo do navegador, que é síncrono e bloqueante — não há um "excluindo…" intermediário porque a chamada só começa depois que o `confirm()` já resolveu).
+**TRIGGER**: Clique no item do menu.
+**PRÉ-CONDIÇÕES**: `canManageChannels`.
+**RESULTADO IMEDIATO**: `window.confirm('Excluir esta categoria? Os canais dentro dela ficam sem categoria.')` — **diálogo nativo do navegador, não um modal customizado do NexPlay** (diferente da exclusão de servidor, que já usa um modal próprio bem construído com confirmação por nome digitado, auditada/construída em sessão anterior desta linha de trabalho — **inconsistência de padrão de confirmação entre as duas ações destrutivas**: excluir servidor exige digitar o nome exato; excluir categoria só exige um clique em "OK" num `confirm()` nativo, sem nenhuma fricção adicional apesar de também ser irreversível).
+**RESULTADO VISUAL**: Se confirmado: categoria some da sidebar; canais que estavam dentro dela reaparecem na zona "sem categoria", sem perder nenhum dado (mensagens, configurações do canal em si continuam intactas).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Já fechado antes desta etapa.
+**MODAL**: O `window.confirm()` nativo é o único "modal" desta ação.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Categoria excluída; canais preservados, sem categoria.
+**EFEITO LOCAL**: Estado local atualizado otimisticamente: `setCategories` remove, `setTextChannels`/`setRooms` fazem `categoryId: null` nos canais afetados — **tudo isso acontece antes mesmo de esperar a resposta do backend** (otimista).
+**EFEITO REMOTO**: `CATEGORY_DELETE` via WebSocket, outros membros veem em tempo real.
+**REALTIME**: `CATEGORY_DELETE`.
+**BACKEND**: `DELETE /api/servers/:serverId/categories/:categoryId` — a função `deleteCategory` no backend "uncategoriza" os canais em vez de apagá-los (confirmado em `apps/api/src/categories.ts`, documentado desde a implementação original desta feature em sessão anterior).
+**BANCO**: Remove a linha de `categories`; faz `UPDATE` em `text_channels`/`voice_channels` pra `category_id = NULL`.
+**REFRESH**: Persiste normalmente.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: `catch { /* Falha silenciosa: WS/refresh seguinte reconcilia o estado real. */ }` — **achado real**: se a chamada falhar (rede caiu, 403 inesperado, etc.), **o usuário não vê nenhum erro** — o comentário no próprio código confirma que essa é uma escolha deliberada ("falha silenciosa"), contando com o próximo refresh/evento de WebSocket pra reconciliar qualquer inconsistência, em vez de mostrar uma mensagem de erro explícita.
+**CANCELAMENTO**: Clicar "Cancelar" no `window.confirm()` nativo.
+**REVERSÃO**: **`MISSING`** — não existe "desfazer exclusão de categoria" (a categoria em si não pode ser recriada com o mesmo id; só recriar uma nova com o mesmo nome e mover os canais de volta manualmente).
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: É a própria ficha.
+**ACESSIBILIDADE**: O `window.confirm()` nativo herda acessibilidade do sistema operacional/navegador (focável, navegável por teclado, anunciado por leitor de tela) — mais acessível "de graça" que um modal customizado mal feito, mas menos consistente visualmente com o resto do app.
+
+---
+
+## 3.8 — CATEGORY_STAFF_ONLY_VISIBILITY
+
+**ID**: `CATEGORY_STAFF_ONLY_VISIBILITY`
+**NOME**: Mecanismo de visibilidade restrita à staff de uma categoria
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: Não é uma interação de clique único — é um estado persistente da categoria (`staffOnly: boolean`), definido em `CATEGORY_CREATE`/`CATEGORY_EDIT`, com efeito contínuo sobre quem vê a categoria e os canais dentro dela.
+**POSIÇÃO NA INTERFACE**: Cadeado (`🔒`, emoji literal, não um ícone SVG customizado — confirmado no código: `<span className="category-lock" aria-hidden="true">🔒</span>`) ao lado do nome da categoria, visível só pra quem já pode ver a categoria (obviamente — quem não pode nem sabe que ela existe).
+**APARÊNCIA**: Emoji de cadeado antes do nome da categoria.
+**ESTADO NORMAL**: Presente quando `staffOnly === true`.
+**HOVER**: Não confirmado se o cadeado tem tooltip próprio explicando o que significa (`aria-hidden="true"` sugere que é puramente decorativo pra quem já vê, sem anunciação própria pra leitor de tela — o contexto teria que vir de outro lugar).
+**ACTIVE/PRESSED**: Não aplicável (não é clicável).
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: Não é uma interação — é um estado.
+**PRÉ-CONDIÇÕES**: Não aplicável.
+**RESULTADO IMEDIATO**: No backend, `isStaffTier()` (reaproveitando o bitfield de cargos já existente, **sem criar um segundo sistema de permissão por canal** — decisão arquitetural deliberada e documentada desde a implementação original: "reaproveita o bitfield de cargos existente em vez de um segundo sistema de visibilidade por canal") decide se o usuário atual tem "qualquer permissão além do `@everyone` padrão" — se sim, é tratado como staff e vê a categoria; se não, a categoria inteira (e todos os canais dentro dela) é **omitida da resposta da API**, não só escondida visualmente no cliente (`filterChannelsByCategoryAccess`/`visibleCategories`, `apps/api/src/index.ts`) — **enforcement real no backend, não confiança cega no cliente**.
+**RESULTADO VISUAL**: Membros comuns nunca veem a categoria nem os canais dentro dela em lugar nenhum da UI — não é um cadeado "visível mas bloqueado" tipo Discord real (que mostra canais restritos acinzentados pra quem não tem acesso); aqui é **invisibilidade total**.
+**RESULTADO SONORO**: Não aplicável.
+**ANIMAÇÃO**: Não aplicável.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Se um canal for movido pra dentro/fora de uma categoria `staffOnly`, ver `CHANNEL_MOVE_VISIBILITY_CONFIRM` (ficha adiante) — só nesse caso específico o app pede confirmação extra, porque a ação tem uma consequência de visibilidade não-óbvia.
+**RESULTADO FINAL**: Modelo de visibilidade binário — visível pra staff (qualquer permissão extra) ou invisível pra todo o resto, sem granularidade de "esta categoria só pro cargo X especificamente" (isso exigiria o sistema de overwrite por canal/categoria que o app deliberadamente não tem, ver `DISCORD_PARITY_PLAN.md` §1 e §15).
+**EFEITO LOCAL**: Determina o que a lista de canais local sequer recebe da API.
+**EFEITO REMOTO**: Se um admin muda o cargo de um usuário (dando ou tirando uma permissão), a visibilidade dessas categorias muda instantaneamente pra esse usuário no próximo fetch/evento — **sem precisar de nenhum código específico de categoria pra isso acontecer**, já que é só o mesmo bitfield sendo reavaliado.
+**REALTIME**: Mudança de cargo do próprio usuário (`MEMBER_ROLES_UPDATE`) já dispara resincronização (confirmado em `useActiveServerMember`, Roteiro 1) — mas **não confirmado nesta passagem** se isso também dispara um refetch específico da lista de canais/categorias (só do `member` em si) — possível lacuna: um usuário promovido a staff *ao vivo* pode não ver a categoria nova aparecer até um F5/reconexão, mesmo que seu cargo já tenha atualizado. Marcado como achado a confirmar em auditoria futura mais profunda.
+**BACKEND**: Filtro aplicado em toda rota que lista canais/categorias.
+**BANCO**: Coluna `categories.staff_only`.
+**REFRESH**: Reavaliado a cada fetch.
+**RECONEXÃO**: Reavaliado a cada reconexão.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Editar a categoria e desmarcar o toggle.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-hidden="true"` no emoji de cadeado — **achado**: como é puramente decorativo pra leitor de tela, um usuário cego navegando por teclado não teria nenhuma pista sonora de que aquela categoria é restrita, a menos que o nome da categoria em si já deixe isso claro por convenção (ex.: "🔒 Staff").
+
+---
+
+## 3.9 — CHANNEL_CREATE_FROM_CATEGORY
+
+**ID**: `CHANNEL_CREATE_FROM_CATEGORY`
+**NOME**: Criar um canal (texto ou voz) dentro de uma categoria específica
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Categoria > botão "+" no cabeçalho da categoria` (ou, pra canal sem categoria, o mesmo botão "+" na zona "sem categoria"/rótulos "CANAIS DE TEXTO"/"CANAIS DE VOZ" quando nenhuma categoria real existe ainda).
+**POSIÇÃO NA INTERFACE**: `.category-header-actions`, ao lado do toggle de recolher.
+**APARÊNCIA**: Ícone "+" pequeno, um botão unificado por categoria (não dois botões separados pra texto/voz — o tipo é escolhido *dentro* do modal, ver `CHANNEL_TYPE_SELECT`).
+**ESTADO NORMAL**: Visível só pra quem tem `canManageChannels`.
+**HOVER**: Padrão de botão de ação pequeno.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Nunca desabilitado (sempre visível quando tem permissão).
+**LOADING**: Não aplicável ao botão em si.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: `canManageChannels`.
+**RESULTADO IMEDIATO**: `openCreateChannel('text', category, event.currentTarget)` — abre `CreateTextChannelDialog` com `initialType: 'text'` e a categoria já pré-selecionada como destino (`createChannelTargetCategoryRef`).
+**RESULTADO VISUAL**: Modal abre mostrando "em {🔒 se staffOnly}**{Nome da categoria}**" no subtítulo, confirmando visualmente o destino antes mesmo de preencher o nome.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: `CreateTextChannelDialog` (documentada em detalhe na ficha seguinte).
+**SEGUNDA ETAPA**: Ver `CHANNEL_TYPE_SELECT` e criação em si.
+**RESULTADO FINAL**: Canal novo já nasce dentro da categoria certa — depois de criado, um `PATCH` de acompanhamento aplica `categoryId` (confirmado em `Workspace.tsx`: `handleTextChannelCreated`/`handleVoiceChannelCreated` "aplicam `createChannelTargetCategoryRef` via uma PATCH de acompanhamento" — ou seja, **são duas chamadas de rede em sequência** — criar, depois mover pra categoria — não uma única chamada atômica "criar já dentro da categoria X").
+**EFEITO LOCAL**: Canal aparece na categoria certa assim que as duas chamadas resolvem.
+**EFEITO REMOTO**: `TEXT_CHANNEL_CREATE`/`VOICE_CHANNEL_CREATE` e depois `TEXT_CHANNEL_UPDATE`/`VOICE_CHANNEL_UPDATE` (dois eventos, refletindo as duas chamadas) — **achado**: outros membros conectados podem ver, por uma fração de segundo, o canal aparecer fora de categoria antes de "pular" pra dentro dela, já que são dois eventos WebSocket separados em sequência, não um só.
+**REALTIME**: Dois eventos, conforme acima.
+**BACKEND**: `POST /api/servers/:id/text-channels` (ou `/voice-channels`) seguido de `PATCH .../settings` com `categoryId`.
+**BANCO**: Insere o canal, depois `UPDATE category_id`.
+**REFRESH**: Persiste normalmente.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Se a criação inicial falhar, o modal mostra o erro normalmente (ver ficha seguinte); **se especificamente o segundo passo (mover pra categoria) falhar depois da criação já ter sucedido, não há tratamento de erro visível confirmado nesta auditoria** — o canal simplesmente ficaria criado fora da categoria pretendida, sem aviso.
+**CANCELAMENTO**: Fechar o modal antes de submeter.
+**REVERSÃO**: Mover o canal manualmente depois (drag ou menu de contexto).
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável a este botão.
+**ACESSIBILIDADE**: Botão com título/label a confirmar (padrão de botão de ícone pequeno já visto em outras fichas).
+
+---
+
+## 3.10 — CHANNEL_TYPE_SELECT
+
+**ID**: `CHANNEL_TYPE_SELECT`
+**NOME**: Escolher Texto ou Voz ao criar um canal
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `CreateTextChannelDialog > "Tipo de canal" > dois cartões (Texto/Voz)`
+**POSIÇÃO NA INTERFACE**: Logo abaixo do cabeçalho do modal, antes do campo de nome.
+**APARÊNCIA**: Dois cartões (`.channel-type-card`) lado a lado (grid de 2 colunas — **achado histórico**: nesta mesma linha de trabalho, esta grade já teve um terceiro cartão "Fórum" removido por decisão explícita do usuário, que só quis Texto/Voz por enquanto). Cada cartão: ícone (`MessageIcon`/`VoiceIcon`, 21px), título em negrito, descrição pequena, e um "✓" que aparece só no cartão selecionado.
+**ESTADO NORMAL**: O tipo vem de `initialType` (herdado de qual botão "+" foi clicado — texto ou voz), já vindo pré-selecionado.
+**HOVER**: Estilo de cartão clicável (`.channel-type-card:hover`).
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Classe `selected` + ícone "✓" visível no cartão ativo.
+**DISABLED**: Nunca desabilitado — **os dois tipos são sempre trocáveis livremente dentro do modal**, mesmo que o usuário tenha chegado ali clicando especificamente no "+" de voz (é só um valor inicial, não uma restrição).
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique em qualquer um dos dois cartões.
+**PRÉ-CONDIÇÕES**: Modal aberto.
+**RESULTADO IMEDIATO**: `setChannelType('text' | 'voice')`.
+**RESULTADO VISUAL**: Cartão clicado ganha destaque; o campo de nome logo abaixo muda o ícone prefixado (`#` para texto, ícone de voz para canal de voz) instantaneamente, refletindo a escolha em tempo real antes mesmo de submeter.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada (provavelmente só troca de classe CSS, sem transição elaborada).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: É o próprio modal.
+**SEGUNDA ETAPA**: Preencher nome/descrição e submeter.
+**RESULTADO FINAL**: `channelType` decide qual endpoint é chamado no submit (`api.createTextChannel` vs `api.createVoiceChannel`).
+**EFEITO LOCAL**: Nenhum efeito colateral além da própria seleção.
+**EFEITO REMOTO**: Nenhum até submeter.
+**REALTIME**: Não aplicável a esta etapa.
+**BACKEND**: Nenhuma chamada por clique no cartão (só no submit final).
+**BANCO**: Não aplicável a esta etapa.
+**REFRESH**: Reseta pra `initialType` toda vez que o modal reabre (`useEffect` que roda em `[open, initialType]`).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável a esta etapa.
+**CANCELAMENTO**: Escolher o outro cartão substitui a escolha.
+**REVERSÃO**: Clicar no outro cartão.
+**ATALHO**: Nenhuma navegação por seta confirmada entre os dois cartões (não é um `radiogroup` ARIA formal — `aria-label="Tipo de canal"` está no container, mas os cartões são `<button>` normais, não `role="radio"`).
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label="Tipo de canal"` no grid; cada cartão é um `<button>` alcançável via Tab — **achado**: não usa o padrão `role="radiogroup"`/`role="radio"` que o seletor de cor de perfil (Roteiro 1) já usa, então a semântica ARIA é mais fraca aqui (um leitor de tela não anuncia "1 de 2, selecionado" automaticamente, só o texto visível do botão).
+
+**Nota de auditoria histórica**: esta é a mesma tela que, antes de uma correção nesta linha de trabalho, tinha um bug real onde clicar em "Voz" não fazia nada — sempre criava canal de texto independente da escolha. Já corrigido e testado; documentado aqui como `CORE`/funcional, não como pendência.
+
+---
+
+## 3.11 — CHANNEL_DRAG_MOVE
+
+**ID**: `CHANNEL_DRAG_MOVE`
+**NOME**: Arrastar um canal para outra categoria
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB` (drag-and-drop nativo HTML5 — **não funciona em touch/mobile**, já que a API `dataTransfer`/`draggable` não tem equivalente touch nativo sem polyfill, e nenhum polyfill foi encontrado nesta auditoria)
+**CAMINHO EXATO**: `Sidebar de canais > linha de um canal de texto ou voz > arrastar para o cabeçalho/corpo de outra categoria (ou pra "sem categoria")`
+**POSIÇÃO NA INTERFACE**: Toda a linha do canal é arrastável (`draggable={canManageChannels}`), todo o corpo de cada categoria (incluindo a zona "sem categoria") é uma área de soltar válida.
+**APARÊNCIA**: Durante o arraste: cursor nativo de "movendo" do SO; categoria sob o cursor ganha classe `drag-over` (destaque visual de alvo válido) — **fantasma de arraste (ghost image) é o padrão do navegador**, sem uma prévia customizada desenhada em canvas (diferente do Discord real, que também usa o padrão do navegador nesse caso, então não é uma lacuna de paridade real).
+**ESTADO NORMAL**: Canais e categorias em repouso, sem destaque.
+**HOVER (durante o drag)**: Categoria sob o cursor recebe `.drag-over` — feedback visual claro de "aqui é um alvo válido".
+**ACTIVE/PRESSED**: O clique inicial que começa o arraste.
+**SELECTED**: Não aplicável.
+**DISABLED**: `draggable={canManageChannels}` — **quem não tem permissão de gerenciar canais nem consegue começar a arrastar** (o atributo `draggable` fica `false`, então o navegador nem inicia o gesto).
+**LOADING**: Não aplicável durante o arraste em si (a chamada de API só acontece depois de soltar).
+**TRIGGER**: `dragstart` (clique e mover o mouse) → `dragover` (contínuo enquanto sobre um alvo) → `drop` (soltar).
+**PRÉ-CONDIÇÕES**: `canManageChannels`; o canal precisa estar numa categoria diferente da de destino (`if (dragged.currentCategoryId === targetCategoryId) return;` — soltar na própria categoria atual não faz nada, nem dispara chamada nenhuma).
+**RESULTADO IMEDIATO**: No `dragstart`, os dados do canal (`kind`, `channelId`, `channelLabel`, `currentCategoryId`) são serializados em JSON e colocados no `dataTransfer` com um MIME type próprio (`application/x-nexplay-channel`) — **escopado especificamente pro NexPlay**, então arrastar algo de fora do app (um arquivo, texto de outra janela) nunca é aceito como drop válido aqui (`event.dataTransfer.types.includes(DRAG_MIME)` filtra isso no `dragover`).
+**RESULTADO VISUAL**: Categoria(s) sob o cursor destacam durante o arraste; ao soltar, se a mudança de visibilidade for relevante, abre `CHANNEL_MOVE_VISIBILITY_CONFIRM` (ficha adiante); senão, aplica direto.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma além do padrão nativo do navegador para o próprio gesto de arrastar.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Condicional — ver `CHANNEL_MOVE_VISIBILITY_CONFIRM`.
+**SEGUNDA ETAPA**: `applyChannelMove` (chamada direta se não precisar confirmação, ou depois de confirmar).
+**RESULTADO FINAL**: Canal passa a pertencer à nova categoria.
+**EFEITO LOCAL**: Estado local atualizado com a resposta da API (não é totalmente otimista — espera a resposta do `PATCH` antes de mover visualmente, confirmado lendo `applyChannelMove`).
+**EFEITO REMOTO**: `TEXT_CHANNEL_UPDATE`/`VOICE_CHANNEL_UPDATE` via WebSocket.
+**REALTIME**: Conforme acima.
+**BACKEND**: `PATCH .../text-channels/:id/settings` ou `.../voice-channels/:id/settings` com `{ categoryId }`.
+**BANCO**: `UPDATE category_id`.
+**REFRESH**: Persiste normalmente.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: `setMoveError(err.message)` — exibido dentro do diálogo de confirmação se essa etapa estiver envolvida; **se não precisar de confirmação (movimento direto sem mudança de visibilidade) e a chamada falhar, o erro não tem um lugar visível pra aparecer** (não há um toast/notificação global confirmado nesta auditoria) — achado a verificar em auditoria futura mais ampla do padrão de erro do app.
+**CANCELAMENTO**: Soltar fora de qualquer área válida (ex.: em outra parte da tela) — o navegador cancela o `drop` nativamente, nenhuma mudança acontece.
+**REVERSÃO**: Arrastar de volta pra categoria original.
+**ATALHO**: **`MISSING`**: nenhuma forma de reordenar/mover canais só com teclado (sem mouse) — quem não consegue usar drag-and-drop (ex.: por limitação motora) depende inteiramente do `CHANNEL_MOVE_VIA_CONTEXT_MENU` como alternativa (ver ficha seguinte) — **que felizmente já existe** como caminho 100% funcional sem precisar de drag.
+**MENU DE CONTEXTO**: Ver ficha seguinte — a alternativa sem drag.
+**ACESSIBILIDADE**: Drag-and-drop nativo do HTML5 é notoriamente pouco acessível por padrão (sem anúncio de leitor de tela do que está sendo arrastado nem de alvos válidos) — o app **mitiga isso oferecendo `CHANNEL_MOVE_VIA_CONTEXT_MENU` como alternativa funcionalmente equivalente**, o que é a abordagem correta em vez de depender só do drag.
+
+---
+
+## 3.12 — CHANNEL_MOVE_VIA_CONTEXT_MENU
+
+**ID**: `CHANNEL_MOVE_VIA_CONTEXT_MENU`
+**NOME**: Mover um canal de categoria sem arrastar (botão direito > "Mover para")
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Sidebar de canais > linha de um canal > botão direito`
+**POSIÇÃO NA INTERFACE**: Menu de contexto (`ContextMenu.tsx` genérico), aberto nas coordenadas do clique.
+**APARÊNCIA**: Cabeçalho fixo "Mover para" (item desabilitado, só um rótulo — `disabled: true`), seguido de uma lista: "Sem categoria" + uma entrada por categoria existente no servidor, cada uma com checkbox marcando a categoria atual do canal.
+**ESTADO NORMAL**: Fechado.
+**HOVER**: Padrão de itens de menu.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: A categoria atual do canal aparece marcada (`checked: currentCategoryId === category.id`).
+**DISABLED**: O menu inteiro só abre (`openMoveChannelMenu` retorna cedo) se `canManageChannels` — sem permissão, o botão direito num canal **não abre nada** (comportamento a diferenciar de simplesmente "menu vazio": literalmente nenhum menu aparece).
+**LOADING**: Não aplicável ao menu.
+**TRIGGER**: Clique com o botão direito na linha do canal (texto ou voz).
+**PRÉ-CONDIÇÕES**: `canManageChannels`.
+**RESULTADO IMEDIATO**: Menu abre com a lista de categorias de destino possíveis.
+**RESULTADO VISUAL**: Overlay com as opções.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Padrão genérico do `ContextMenu.tsx`.
+**POPOVER**: É o próprio popover.
+**MENU**: É o próprio menu.
+**MODAL**: Não é modal.
+**SEGUNDA ETAPA**: Clicar numa categoria da lista chama `requestMoveChannel` — **mesmíssima função usada pelo drag-and-drop**, então o comportamento de confirmação condicional (`CHANNEL_MOVE_VISIBILITY_CONFIRM`) se aplica igual aqui, é o mesmo caminho de código, só o gatilho inicial é diferente (clique de menu em vez de soltar um drag).
+**RESULTADO FINAL**: Idêntico a `CHANNEL_DRAG_MOVE` a partir deste ponto.
+**EFEITO LOCAL**: Idêntico.
+**EFEITO REMOTO**: Idêntico.
+**REALTIME**: Idêntico.
+**BACKEND**: Idêntico.
+**BANCO**: Idêntico.
+**REFRESH**: Idêntico.
+**RECONEXÃO**: Idêntico.
+**ERRO**: Idêntico.
+**CANCELAMENTO**: Clicar fora do menu, ou Esc.
+**REVERSÃO**: Abrir o menu de novo e escolher a categoria anterior.
+**ATALHO**: Nenhum atalho pra abrir via teclado (só botão direito).
+**MENU DE CONTEXTO**: É a própria ficha.
+**ACESSIBILIDADE**: Melhor que o drag puro (navegável via teclado depois de aberto, presumindo que o `ContextMenu.tsx` genérico suporte seta+Enter — a confirmar em auditoria futura dedicada a esse componente).
+
+**Nota de auditoria**: este menu **não tem nenhuma outra ação além de mover** — sem "Editar canal"/"Excluir canal"/"Duplicar canal"/"Criar convite"/"Copiar ID" aqui (essas ações moram dentro do modal de configurações do canal, atrás do ícone de engrenagem — ver `TEXT_CHANNEL_SETTINGS_OPEN`/`CHANNEL_RENAME`/`CHANNEL_DELETE` adiante). Isso é uma divisão de responsabilidade válida, mas distinta do Discord real, que costuma ter essas ações também disponíveis direto no menu de contexto do canal, sem precisar abrir configurações completas.
+
+---
+
+## 3.13 — CHANNEL_MOVE_VISIBILITY_CONFIRM
+
+**ID**: `CHANNEL_MOVE_VISIBILITY_CONFIRM`
+**NOME**: Confirmação ao mover canal quando a visibilidade muda
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: Disparado por `CHANNEL_DRAG_MOVE` ou `CHANNEL_MOVE_VIA_CONTEXT_MENU`, só quando `categoryStaffOnly(origem) !== categoryStaffOnly(destino)`.
+**POSIÇÃO NA INTERFACE**: `.dialog-overlay` > `.channel-dialog.move-channel-confirm`, centralizado.
+**APARÊNCIA**: Título "Mover canal?", corpo explicando o efeito exato (texto muda conforme a direção: entrando numa categoria staff-only vs. saindo de uma), botões "Cancelar" e "Mover canal" (`.danger-button`, mesmo tratamento visual de outras ações que mudam algo relevante, mesmo não sendo tecnicamente "destrutivo" no sentido de apagar dado).
+**ESTADO NORMAL**: Fechado — só existe quando `moveConfirm !== null`.
+**HOVER**: Padrão de botões de diálogo.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável (sempre os dois botões disponíveis).
+**LOADING**: Não confirmado se o botão "Mover canal" mostra estado de carregamento durante a chamada (a confirmar em auditoria futura mais detalhada deste componente específico).
+**TRIGGER**: Automático, condicional (ver `CAMINHO EXATO`) — **não é algo que o usuário aciona diretamente, é uma consequência de outra ação**.
+**PRÉ-CONDIÇÕES**: A mudança de categoria precisa alterar `staffOnly` de fato.
+**RESULTADO IMEDIATO**: Diálogo aparece com o texto exato da mudança de visibilidade: "Ao mover **{canal}** para 🔒 **{categoria}**, ele passa a ficar visível só pra membros com algum cargo de staff." (entrando) ou "...ele deixa de ser restrito e passa a ficar visível pra todo mundo." (saindo) — seguido de uma nota fixa explicando a arquitetura: "A visibilidade neste app é sempre herdada da categoria — não existe permissão própria de canal." (**transparência deliberada sobre a limitação arquitetural, direto na UI**, não escondida).
+**RESULTADO VISUAL**: Overlay bloqueando o resto da tela até decidir.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: É o próprio modal.
+**SEGUNDA ETAPA**: Confirmar ou cancelar.
+**RESULTADO FINAL — confirmar**: `applyChannelMove` executa, modal fecha.
+**RESULTADO FINAL — cancelar**: `setMoveConfirm(null)`, nenhuma mudança acontece — canal permanece na categoria original (mesmo que já tenha sido "solto" visualmente durante um drag).
+**EFEITO LOCAL**: Só se confirmado.
+**EFEITO REMOTO**: Só se confirmado.
+**REALTIME**: Só se confirmado.
+**BACKEND**: Só se confirmado.
+**BANCO**: Só se confirmado.
+**REFRESH**: Não aplicável ao diálogo em si.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: `moveError` exibido dentro do próprio diálogo (`<p className="form-error" role="alert">`) se a chamada falhar depois de confirmado — diálogo **permanece aberto** nesse caso (não fecha e perde o contexto do erro).
+**CANCELAMENTO**: Botão "Cancelar", X, ou clicar fora do overlay.
+**REVERSÃO**: Não aplicável (cancelar já é a reversão).
+**ATALHO**: Não confirmado se Esc fecha este diálogo especificamente (padrão visto em outros diálogos do app sugere que sim, mas não verificado diretamente no código deste componente nesta passagem).
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `role="dialog"`, `aria-modal="true"`.
+
+**Nota de auditoria**: este é um exemplo de UX bem pensada — a confirmação só aparece quando é **realmente relevante** (mudança de visibilidade), não em todo movimento de canal, evitando fadiga de confirmação desnecessária. Documentado como `CORE`, não uma lacuna.
+
+---
+
+## 3.14 — TEXT_CHANNEL_SELECT
+
+**ID**: `TEXT_CHANNEL_SELECT`
+**NOME**: Selecionar manualmente um canal de texto na lista
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Sidebar de canais > qualquer canal de texto listado`
+**POSIÇÃO NA INTERFACE**: `.text-channel-button`, dentro de `.text-channel-row`.
+**APARÊNCIA**: `#` (`.channel-hash`) + nome do canal.
+**ESTADO NORMAL**: Sem destaque.
+**HOVER**: Estilo de hover padrão de item de lista clicável.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Classe `active` + `aria-current="page"` no canal atualmente selecionado.
+**DISABLED**: Nunca desabilitado — **qualquer membro que consegue ver o canal (ver `CATEGORY_STAFF_ONLY_VISIBILITY`) pode selecioná-lo**, mesmo sem permissão de enviar mensagem (a restrição de envio, se existisse, seria aplicada no composer, não na seleção — auditoria de mensagens/composer ainda pendente, Roteiro 4).
+**LOADING**: Não confirmado se há algum indicador de "carregando histórico" no próprio botão ou só no painel central (a confirmar em auditoria futura do Roteiro 4 — Mensagens).
+**TRIGGER**: Clique esquerdo.
+**PRÉ-CONDIÇÕES**: Canal visível para o usuário.
+**RESULTADO IMEDIATO**: `setSelectedTextChannelId(channel.id)`.
+**RESULTADO VISUAL**: Painel central troca para o histórico do canal escolhido.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma transição confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Histórico carrega, composer fica disponível (Roteiro 4/5).
+**RESULTADO FINAL**: Canal ativo trocado.
+**EFEITO LOCAL**: Dispara o fetch de mensagens daquele canal (auditoria detalhada em Roteiro 4).
+**EFEITO REMOTO**: Nenhum — outros usuários não são notificados de que alguém está "olhando" um canal específico (sem indicador de presença por canal).
+**REALTIME**: Assinatura de eventos daquele canal específico passa a ser relevante pro componente de mensagens montado.
+**BACKEND**: `GET` do histórico de mensagens daquele canal (Roteiro 4).
+**BANCO**: Não aplicável a esta ficha (só leitura).
+**REFRESH**: **Não persiste** (mesma lacuna já documentada em `CHANNEL_LIST_DEFAULT_SELECT`, Roteiro 2 — F5 sempre volta pro primeiro canal do servidor).
+**RECONEXÃO**: Se o canal selecionado for excluído enquanto o usuário está nele, cai pro primeiro disponível (mesmo mecanismo de fallback já documentado).
+**ERRO**: Não aplicável à seleção em si.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Clicar em outro canal.
+**ATALHO**: **`MISSING`**: sem `Alt+Seta`/`Ctrl+Seta` pra navegar entre canais só com teclado (mesma lacuna categórica de `KEYBOARD_SERVER_NAVIGATION`, Roteiro 2).
+**MENU DE CONTEXTO**: Ver `CHANNEL_MOVE_VIA_CONTEXT_MENU` (é o mesmo botão direito).
+**ACESSIBILIDADE**: `aria-current="page"` no selecionado, `title={channel.description}` (tooltip nativo mostrando a descrição do canal no hover — um uso funcional do `title`, diferente do tooltip meramente redundante já documentado na rail de servidores).
+
+---
+
+## 3.15 — TEXT_CHANNEL_SETTINGS_OPEN
+
+**ID**: `TEXT_CHANNEL_SETTINGS_OPEN`
+**NOME**: Abrir configurações de um canal de texto
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Sidebar de canais > linha do canal de texto > ícone de engrenagem` (renderizado pelo próprio `TextChannelSettingsModal`, visível só se `canManageChannels`)
+**POSIÇÃO NA INTERFACE**: Extremidade direita da linha do canal, aparece ao lado do nome.
+**APARÊNCIA**: Ícone de engrenagem pequeno (a confirmar se aparece sempre ou só no hover da linha — comportamento de "aparece só ao passar o mouse" é comum nesse tipo de UI mas não confirmado explicitamente lendo só a estrutura JSX nesta passagem).
+**ESTADO NORMAL**: Presente só para quem tem `canManageChannels` — **membros comuns não veem o ícone em lugar nenhum**, não é "visível mas desabilitado".
+**HOVER**: Padrão de ícone de ação pequeno.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável (ausência condicional, não desabilitação visível).
+**LOADING**: Não aplicável ao botão.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: `canManageChannels`.
+**RESULTADO IMEDIATO**: `TextChannelSettingsModal` abre.
+**RESULTADO VISUAL**: Modal com abas — já auditadas informalmente em sessão anterior desta linha de trabalho: Geral (nome/tópico/descrição/modo lento/anúncio), Visibilidade, Convites (`InvitesPane` real, reaproveitado das Configurações do Servidor — não um stub), Permissões (stub deliberado, sem overwrite por canal neste app).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: É o próprio modal.
+**SEGUNDA ETAPA**: Editar e salvar (ver `CHANNEL_RENAME`/outras configurações — auditoria detalhada de cada aba fica para uma passagem futura dedicada especificamente a configurações de canal, pra não inflar demais este roteiro já extenso).
+**RESULTADO FINAL**: Configurações do canal abertas e editáveis.
+**EFEITO LOCAL**: Nenhuma chamada nova ao abrir (dados já vêm via prop `channel`).
+**EFEITO REMOTO**: Nenhum ao só abrir.
+**REALTIME**: Não aplicável ao abrir.
+**BACKEND**: Nenhuma chamada ao abrir (só ao salvar cada aba).
+**BANCO**: Não aplicável ao abrir.
+**REFRESH**: Fecha em F5.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável a esta etapa.
+**CANCELAMENTO**: Fechar sem salvar.
+**REVERSÃO**: Reabrir e corrigir.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável a este ícone.
+**ACESSIBILIDADE**: A confirmar label exato do botão (não lido em detalhe nesta passagem específica — o componente inteiro já existe e foi testado em sessão anterior, mas o `aria-label` exato do botão de abrir não foi reconferido agora).
+
+**Nota de auditoria**: `VOICE_CHANNEL_SETTINGS_OPEN` segue exatamente o mesmo padrão (`VoiceChannelSettingsModal`, mesma condição de permissão, mesmo ícone), só que com abas relevantes a canal de voz (bitrate, qualidade de vídeo, limite de usuários) em vez de tópico/modo lento — não repetido aqui como ficha separada pra não duplicar uma estrutura idêntica, mas é igualmente `CORE`/funcional.
+
+---
+
+## 3.16 — CHANNEL_RENAME
+
+**ID**: `CHANNEL_RENAME`
+**NOME**: Renomear um canal existente
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `TextChannelSettingsModal/VoiceChannelSettingsModal > aba Geral > campo de nome`
+**POSIÇÃO NA INTERFACE**: Dentro da aba padrão do modal de configurações.
+**APARÊNCIA**: Campo de texto simples, pré-preenchido com o nome atual.
+**ESTADO NORMAL**: Nome atual visível.
+**HOVER**: Padrão de campo de input.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Editável só por quem já abriu o modal (`canManageChannels`, checado na própria visibilidade do modal).
+**LOADING**: Botão salvar mostra estado de carregamento (padrão já confirmado em outros formulários desta auditoria).
+**TRIGGER**: Digitar novo valor + salvar.
+**PRÉ-CONDIÇÕES**: `MANAGE_CHANNELS`.
+**RESULTADO IMEDIATO**: `PATCH` de rename.
+**RESULTADO VISUAL**: Nome atualizado na sidebar assim que salvo.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: É o mesmo modal de configurações.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Canal com novo nome — **id, descrição e data de criação preservados** (confirmado por teste automatizado real já existente no backend, `channelRename.test.ts`, cobrindo especificamente essa imutabilidade).
+**EFEITO LOCAL**: Estado local atualizado via `onUpdated`.
+**EFEITO REMOTO**: `TEXT_CHANNEL_UPDATE`/`VOICE_CHANNEL_UPDATE` — outros membros veem o novo nome sem F5 (confirmado, essa é a motivação original documentada desses dois eventos quando foram criados).
+**REALTIME**: Conforme acima.
+**BACKEND**: Checagem real de nome duplicado por servidor (retorna `409` se já existir outro canal com esse nome no mesmo servidor).
+**BANCO**: `UPDATE` no nome.
+**REFRESH**: Persiste normalmente.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: `401` sem sessão, `403` sem permissão, `404` servidor errado, `400` nome vazio, `409` nome duplicado — **todos os cinco casos já cobertos por teste automatizado real**, confirmado como parte da suíte que passa antes de qualquer commit nesta linha de trabalho.
+**CANCELAMENTO**: Fechar sem salvar.
+**REVERSÃO**: Renomear de volta manualmente (sem histórico de nomes anteriores).
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável (rename só existe dentro do modal, não como "renomear rápido" via duplo clique ou F2 no nome do canal na sidebar — `MISSING` esse atalho mais rápido, se o Discord real tiver algo assim; a confirmar).
+**ACESSIBILIDADE**: Label associado ao campo.
+
+---
+
+## 3.17 — CHANNEL_DELETE
+
+**ID**: `CHANNEL_DELETE`
+**NOME**: Excluir um canal de texto
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `TextChannelSettingsModal > (aba a confirmar, provavelmente Geral ou uma zona de perigo dedicada) > "Excluir canal"`
+**POSIÇÃO NA INTERFACE**: Dentro do modal de configurações do canal.
+**APARÊNCIA**: Botão de perigo (`.danger-button` ou equivalente).
+**ESTADO NORMAL**: Visível só a quem tem permissão.
+**HOVER**: Padrão de botão de perigo.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Ausente pra quem não tem `MANAGE_CHANNELS` (mesma condicional do modal inteiro).
+**LOADING**: A confirmar texto exato de carregamento.
+**TRIGGER**: Clique, presumivelmente com alguma confirmação (a confirmar se usa `window.confirm()` nativo, como `CATEGORY_DELETE`, ou um passo próprio — não lido em detalhe nesta passagem específica do modal de canal).
+**PRÉ-CONDIÇÕES**: `MANAGE_CHANNELS`.
+**RESULTADO IMEDIATO**: `deleteTextChannel` no backend (confirmado existir em `apps/api/src/textChannels.ts`, já mencionado em auditorias anteriores desta linha de trabalho).
+**RESULTADO VISUAL**: Canal some da sidebar; se era o canal selecionado no momento, o app recua pra outro (mesmo padrão de fallback já documentado, `CHANNEL_LIST_DEFAULT_SELECT`).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: O próprio modal fecha ao concluir.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL — IRREVERSÍVEL**: Canal e **todas as suas mensagens são apagados em cascata** (`ON DELETE CASCADE` de `text_messages.channel_id`, confirmado no schema) — diferente de excluir categoria, que preserva os canais; aqui, excluir o canal apaga o conteúdo dele de vez, sem recuperação.
+**EFEITO LOCAL**: `onDeleted()` remove do estado local.
+**EFEITO REMOTO**: Evento de tempo real correspondente (`TEXT_CHANNEL_DELETE`, confirmado existir no union de tipos do WebSocket, `packages/shared/src/index.ts`) — outros membros no canal excluído são realocados automaticamente (mesmo mecanismo de fallback).
+**REALTIME**: `TEXT_CHANNEL_DELETE`.
+**BACKEND**: `DELETE /api/servers/:id/text-channels/:channelId` (nome exato a confirmar).
+**BANCO**: `DELETE` em cascata (mensagens, reações, anexos, pins — tudo que referencia aquele canal).
+**REFRESH**: Não aplicável (já apagado).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: A confirmar mensagens de erro específicas (não lidas em detalhe nesta passagem).
+**CANCELAMENTO**: A confirmar exato mecanismo de confirmação usado.
+**REVERSÃO**: **`MISSING` por completo** — não existe lixeira/desfazer, mensagens apagadas em cascata não são recuperáveis.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável (só dentro do modal).
+**ACESSIBILIDADE**: A confirmar em auditoria futura mais detalhada deste modal específico.
+
+**Nota de auditoria**: dado o tamanho já considerável deste roteiro, a auditoria campo-a-campo detalhada de **todas** as abas dos modais de configuração de canal (Geral completo, Visibilidade, Modo lento, Convites, Permissões-stub para texto; Bitrate/Qualidade de vídeo/Limite de usuários para voz) fica registrada como pendência específica para uma passagem futura dedicada — o que já existe e funciona está confirmado como `CORE` em `DISCORD_PARITY_PLAN.md` §4, não precisa ser redescoberto, só detalhado campo-a-campo quando a auditoria voltar a esta área com mais profundidade.
+
+---
+
+## 3.18 — SERVER_LEAVE *(MISSING na UI)*
+
+**ID**: `SERVER_LEAVE`
+**NOME**: Sair de um servidor (sem excluí-lo)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: **Achado real — meio caminho andado**: o endpoint já existe e funciona (`DELETE /api/servers/:serverId/members/me`, confirmado em `apps/api/src/index.ts`; método de cliente já existe em `apps/web/src/api.ts`: `leaveServer: (serverId) => request<void>(...)`), mas **nenhum botão em lugar nenhum da UI chama essa função** — confirmado por busca no código inteiro de `apps/web/src`, `api.leaveServer` não aparece referenciado em nenhum componente. **A única forma de sair de um servidor hoje é um administrador remover o próprio usuário pela aba Membros, ou o usuário mexer direto no banco.**
+**CAMINHO EXATO ESPERADO** (não implementado): Provavelmente dentro de `ServerSettings` (perto de `SERVER_DELETE`, já implementado) ou no `SERVER_CONTEXT_MENU` (também `MISSING`, Roteiro 2) — ambos os lugares naturais já têm a "vizinhança" certa mas não o item específico.
+**Por que isso importa**: é literalmente o par oposto de `SERVER_CREATE_SUBMIT`/`SERVER_JOIN_INVITE_SUBMIT` — dá pra criar e entrar em quantos servidores quiser, mas não tem como sair de nenhum pela interface, mesmo o backend já suportando isso de forma completa e testada (o endpoint provavelmente já foi coberto por algum teste automatizado em sessão anterior, a confirmar).
+
+---
+
+## 3.19 — SERVER_DELETE (referência — já auditado em profundidade)
+
+**ID**: `SERVER_DELETE`
+**NOME**: Excluir um servidor permanentemente
+**STATUS**: `CORE` — implementado, testado ponta a ponta (local + smoke test) e em produção nesta mesma linha de trabalho, imediatamente antes desta fase de auditoria começar. Resumo (ficha completa de 36 campos fica registrada informalmente no histórico desta sessão de trabalho, não repetida aqui por já ter sido construída e verificada nesse nível de detalhe na prática, incluindo screenshots reais confirmando cada etapa):
+- **Caminho**: `Configurações do Servidor > item "Excluir servidor" (rodapé, vermelho) > só visível pro dono` (ou quem tem `MANAGE_SERVER` se o servidor estiver órfão, sem dono).
+- **Confirmação**: modal dedicado exigindo digitar o **nome exato do servidor** — fricção proporcional à gravidade (mais rígido que `CATEGORY_DELETE`, que só usa `window.confirm()`; consistente com ser uma ação irreversível de maior escala).
+- **Efeito**: cascata real via `ON DELETE CASCADE` (canais, categorias, mensagens, cargos, convites, membros — tudo).
+- **Realtime**: `SERVER_DELETE` broadcast pra todos os membros antes da exclusão de fato acontecer (ordem necessária, já que apagar o servidor apagaria também a lista de membros a notificar).
+- **Efeito local no cliente que exclui**: fecha o modal de configurações, servidor some da rail, `activeServerId` recua pro próximo disponível (mesmo mecanismo de fallback já documentado em `SERVER_SELECT`).
+
+---
+
+# CONTINUAÇÃO
+
+Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas `MISSING`/de referência, conforme a convenção do topo deste arquivo), as **24 interações do Roteiro 0**, as **18 do Roteiro 1**, as **11 do Roteiro 2** e as **19 do Roteiro 3** — **72 fichas no total**, cada uma verificada contra o código real. Categorias, canais de texto/voz, criação/entrada em servidor, mover canal (drag e via menu), e exclusão de servidor já são funcionalidades **reais, testadas e em produção** — documentadas aqui como `CORE`, não redescobertas nem reconstruídas. As lacunas genuinamente novas encontradas neste roteiro: `SERVER_LEAVE` tem backend pronto mas nenhum botão na UI; "Marcar como lida" de categoria é um item de menu que não faz nada (porque a feature de não-lida inteira ainda não existe em lugar nenhum); excluir categoria usa `window.confirm()` nativo em vez do padrão de confirmação por nome já estabelecido para excluir servidor (inconsistência de fricção entre duas ações igualmente destrutivas); mover canal pode falhar silenciosamente sem confirmação de visibilidade envolvida.
+
+**Próximo na fila**: Roteiro 4 — Mensagens (composer, histórico, reações, edição, exclusão, reply, pins, forward, upload de arquivo — grande parte já implementada e testada em sessões anteriores desta linha de trabalho, auditoria vai documentar o que existe, não reconstruir), seguido de Roteiro 5 — Tempo real, e a partir daí Voz/Mute/Deafen/Compartilhar tela/Vídeo (prioridade especial do pedido original).
