@@ -2016,6 +2016,12 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const chatEndRef = useRef<HTMLDivElement>(null);
   const createTextChannelButtonRef = useRef<HTMLButtonElement>(null);
   const createVoiceChannelButtonRef = useRef<HTMLButtonElement>(null);
+  // Preenchido quando o "+" clicado é o de uma categoria específica (não o
+  // topo/sem-categoria) — aplicado assim que o canal recém-criado chega em
+  // handleTextChannelCreated/handleVoiceChannelCreated, sem passar pelo
+  // fluxo de confirmação de mover (o admin acabou de escolher a categoria de
+  // propósito, não há nada a confirmar).
+  const createChannelTargetCategoryRef = useRef<string | null>(null);
   const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const textChannelsInitializedRef = useRef(false);
 
@@ -2344,12 +2350,26 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   function handleTextChannelCreated(channel: TextChannel) {
     setTextChannels((current) => current.some(({ id }) => id === channel.id) ? current : [...current, channel]);
     setSelectedTextChannelId(channel.id);
+    const targetCategoryId = createChannelTargetCategoryRef.current;
+    createChannelTargetCategoryRef.current = null;
+    if (targetCategoryId && activeServerId) {
+      void api.updateTextChannelSettings(activeServerId, channel.id, { categoryId: targetCategoryId })
+        .then((result) => setTextChannels((current) => current.map((item) => item.id === channel.id ? result.channel : item)))
+        .catch(() => {});
+    }
   }
 
   function handleVoiceChannelCreated(channel: VoiceChannel) {
     setRooms((current) =>
       current.some((room) => room.id === channel.id) ? current : [...current, { ...channel, participants: [] }],
     );
+    const targetCategoryId = createChannelTargetCategoryRef.current;
+    createChannelTargetCategoryRef.current = null;
+    if (targetCategoryId && activeServerId) {
+      void api.updateVoiceChannelSettings(activeServerId, channel.id, { categoryId: targetCategoryId })
+        .then((result) => setRooms((current) => current.map((item) => item.id === channel.id ? { ...item, ...result.channel } : item)))
+        .catch(() => {});
+    }
   }
 
   async function submitChat(event: FormEvent<HTMLFormElement>) {
@@ -2678,31 +2698,50 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                   />
                 ));
 
+                const onlineCount = rooms.reduce((sum, room) => sum + room.participants.length, 0);
+                const hasUncategorizedText = uncategorizedText.length > 0;
+                const hasUncategorizedVoice = uncategorizedRooms.length > 0;
+                // Só mostra os cabeçalhos soltos "CANAIS DE TEXTO"/"CANAIS DE VOZ" quando
+                // ainda há canal sem categoria neles, ou quando o servidor não usa
+                // categoria nenhuma ainda (mantém o comportamento de sempre pra quem
+                // nunca criou uma) — uma vez tudo organizado, cada categoria já tem seu
+                // próprio "+" pra criar direto nela, então o cabeçalho vazio era só
+                // sobra visual sem nenhuma função que as categorias não cobrissem.
+                const showUncategorizedText = hasUncategorizedText || categories.length === 0;
+                const showUncategorizedVoice = hasUncategorizedVoice || categories.length === 0;
                 return <>
                   <div className={`uncategorized-zone ${dragOverTarget === 'root' ? 'drag-over' : ''}`}
                     onDragOver={(event) => handleCategoryDragOver(event, null)}
                     onDragLeave={() => setDragOverTarget((current) => current === 'root' ? 'none' : current)}
                     onDrop={(event) => handleCategoryDrop(event, null, 'Sem categoria')}>
-                    <div className="section-title">
-                      <span>CANAIS DE TEXTO</span>
-                      {canManageChannels && (
-                        <button ref={createTextChannelButtonRef} type="button" className="add-channel-button"
-                          onClick={() => setCreateTextChannelOpen(true)} aria-label="Criar canal de texto" title="Criar canal de texto">
-                          <PlusIcon size={14} />
-                        </button>
-                      )}
-                    </div>
-                    {renderTextChannels(uncategorizedText)}
-                    <div className="section-title">
-                      <span>CANAIS DE VOZ</span>
-                      <small>{rooms.reduce((sum, room) => sum + room.participants.length, 0)} online</small>
-                      {canManageChannels && (
-                        <button ref={createVoiceChannelButtonRef} type="button" className="add-channel-button"
-                          onClick={() => setCreateVoiceChannelOpen(true)} aria-label="Criar canal de voz" title="Criar canal de voz">
-                          <PlusIcon size={14} />
-                        </button>
-                      )}
-                    </div>
+                    {showUncategorizedText && (
+                      <>
+                        <div className="section-title">
+                          <span>CANAIS DE TEXTO</span>
+                          {canManageChannels && (
+                            <button ref={createTextChannelButtonRef} type="button" className="add-channel-button"
+                              onClick={() => { createChannelTargetCategoryRef.current = null; setCreateTextChannelOpen(true); }}
+                              aria-label="Criar canal de texto" title="Criar canal de texto">
+                              <PlusIcon size={14} />
+                            </button>
+                          )}
+                        </div>
+                        {renderTextChannels(uncategorizedText)}
+                      </>
+                    )}
+                    {showUncategorizedVoice && (
+                      <div className="section-title">
+                        <span>CANAIS DE VOZ</span>
+                        <small>{onlineCount} online</small>
+                        {canManageChannels && (
+                          <button ref={createVoiceChannelButtonRef} type="button" className="add-channel-button"
+                            onClick={() => { createChannelTargetCategoryRef.current = null; setCreateVoiceChannelOpen(true); }}
+                            aria-label="Criar canal de voz" title="Criar canal de voz">
+                            <PlusIcon size={14} />
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {!livekitAvailable && <div className="service-warning">LiveKit indisponível</div>}
                     {renderVoiceChannels(uncategorizedRooms)}
                   </div>
@@ -2716,13 +2755,27 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                         onDragOver={(event) => handleCategoryDragOver(event, category.id)}
                         onDragLeave={() => setDragOverTarget((current) => current === category.id ? 'none' : current)}
                         onDrop={(event) => handleCategoryDrop(event, category.id, category.name)}>
-                        <button type="button" className="category-header"
-                          onClick={() => toggleCategoryCollapsed(category.id)}
-                          onContextMenu={(event) => openCategoryMenu(event, category)}>
-                          <ChevronIcon size={12} className={collapsed ? 'collapsed' : ''} />
-                          <span>{category.name}</span>
-                          {category.staffOnly && <span className="category-lock" title="Restrita à staff">🔒</span>}
-                        </button>
+                        <div className="category-header" onContextMenu={(event) => openCategoryMenu(event, category)}>
+                          <button type="button" className="category-header-toggle" onClick={() => toggleCategoryCollapsed(category.id)}>
+                            <ChevronIcon size={12} className={collapsed ? 'collapsed' : ''} />
+                            <span>{category.name}</span>
+                            {category.staffOnly && <span className="category-lock" title="Restrita à staff">🔒</span>}
+                          </button>
+                          {canManageChannels && (
+                            <span className="category-header-actions">
+                              <button type="button" className="add-channel-button" title="Criar canal de texto nesta categoria"
+                                aria-label="Criar canal de texto nesta categoria"
+                                onClick={() => { createChannelTargetCategoryRef.current = category.id; setCreateTextChannelOpen(true); }}>
+                                <PlusIcon size={12} />#
+                              </button>
+                              <button type="button" className="add-channel-button" title="Criar canal de voz nesta categoria"
+                                aria-label="Criar canal de voz nesta categoria"
+                                onClick={() => { createChannelTargetCategoryRef.current = category.id; setCreateVoiceChannelOpen(true); }}>
+                                <PlusIcon size={12} />🔊
+                              </button>
+                            </span>
+                          )}
+                        </div>
                         <CategorySettingsModal
                           ref={(handle) => { categoryEditRefs.current[category.id] = handle; }}
                           category={category} serverId={activeServerId ?? ''}
