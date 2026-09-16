@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). Roteiros 9–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). Roteiros 10–69+ pendentes — ver nota de continuação no final do arquivo.
 
 ---
 
@@ -4781,4 +4781,516 @@ Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropri
 
 **Achado mais valioso desta seção**: `DISCORD_PARITY_PLAN.md` §6 registrava suporte a múltiplas transmissões simultâneas como `PARTIAL` ("não testada/implementada") — **esta auditoria encontrou que já está implementado e funcional** (`SCREEN_SHARE_MULTI_HERO`), uma correção de registro que deveria ser propagada de volta ao arquivo de paridade.
 
-**Próximo na fila**: com Voz/Vídeo suficientemente mapeado, a auditoria segue pra Servidores/Configurações completas (Cargos, Permissões, Membros, Convites, Integrações — já `CORE` mas sem ficha campo-a-campo), Amigos/DMs, Configurações do app inteiras, e a partir daí os três documentos ainda não criados (`DISCORD_NAVIGATION_TREE.md`, `DISCORD_INTERACTION_MATRIX.md`, `DISCORD_USER_JOURNEYS.md`).
+---
+
+# ROTEIRO 9 — CARGOS, PERMISSÕES, MEMBROS E MODERAÇÃO
+
+Arquitetura real (verificada em `apps/web/src/components/ServerSettings.tsx`, funções `RolesPane`/`MembersPane`/`InvitesPane`, lidas por completo nesta passagem): sistema de cargos/permissões/moderação **real e funcional de ponta a ponta**, com hierarquia por posição aplicada consistentemente em cada ação (criar, editar, atribuir, remover, moderar). Esta auditoria encontrou, no meio de tudo isso, **um achado direto do tipo que o próprio usuário já pediu pra caçar e eliminar em sessões anteriores desta linha de trabalho**: uma caixa de busca decorativa, sem função nenhuma, na aba Cargos.
+
+---
+
+## 9.1 — ROLE_LIST_SEARCH_FAKE *(achado — busca decorativa)*
+
+**ID**: `ROLE_LIST_SEARCH_FAKE`
+**NOME**: Campo de busca de cargos (não-funcional)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: **Achado real — elemento decorativo sem função**, exatamente a categoria de problema que o usuário já pediu explicitamente pra eliminar em uma instrução anterior desta mesma linha de trabalho ("LEMBRANDO, NÃO QUERO NADA QUEBRADO, SEM FUNÇÃO E SEM REAÇÃO, QUERO QUE TUDO FUNCIONE!"). Este caso específico não tinha sido pego na auditoria/correção anterior.
+**CAMINHO EXATO**: `Configurações do Servidor > Cargos > coluna esquerda (lista de cargos) > campo "Buscar cargos"`
+**POSIÇÃO NA INTERFACE**: Topo de `.roles-list`, acima da contagem de cargos.
+**APARÊNCIA**: Idêntica a qualquer outro campo de busca do app — ícone de lupa (`SearchIcon`) + `<input placeholder="Buscar cargos">` — **visualmente indistinguível de um campo de busca funcional**.
+**ESTADO NORMAL**: Campo vazio, com placeholder.
+**CONFIRMAÇÃO NO CÓDIGO**: `<input readOnly placeholder="Buscar cargos" />` — **o atributo `readOnly` está presente, sem `value` nem `onChange` associados a nenhum estado.** Não existe um `roleSearch`/`setRoleSearch` em lugar nenhum de `RolesPane` (diferente da busca "Buscar membro" dentro da aba "Gerenciar membros" do mesmo componente, que **é** funcional — `value={memberSearch} onChange={...}`, filtrando a lista de fato).
+**TRIGGER**: Clicar/tentar digitar no campo.
+**RESULTADO IMEDIATO**: **Nada acontece** — `readOnly` impede literalmente digitar qualquer caractere; o cursor pode até piscar no campo, mas nenhuma tecla tem efeito.
+**RESULTADO VISUAL**: Nenhuma mudança — a lista de cargos abaixo nunca filtra, não importa o que o usuário tente digitar (ou tentaria, se o campo permitisse).
+**IMPACTO PRÁTICO**: Em um servidor com poucos cargos, a ausência de filtro passa despercebida; em um servidor com muitos cargos, o usuário clicaria nesse campo esperando filtrar a lista (é exatamente isso que o campo idêntico "Buscar membro", duas telas ao lado, já faz) e descobriria que não funciona — inconsistência direta e visível entre duas buscas com a mesma aparência dentro da mesma tela de Configurações.
+**Correção recomendada**: ou (a) tornar funcional — reaproveitar exatamente o mesmo padrão já usado em `memberSearch` (`useState` + filtro em `roles.filter(...)`), trabalho pequeno já que o padrão de referência está a poucas linhas de distância no mesmo arquivo; ou (b) remover o campo por completo se a lista de cargos for considerada pequena o bastante pra nunca precisar de busca — mas manter como está (presente, com aparência funcional, sem fazer nada) é exatamente o padrão que o usuário já disse não querer.
+
+---
+
+## 9.2 — ROLE_CREATE
+
+**ID**: `ROLE_CREATE`
+**NOME**: Criar um novo cargo
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Configurações do Servidor > Cargos > "Criar cargo"`
+**POSIÇÃO NA INTERFACE**: Botão de destaque (`.violet-primary`) no cabeçalho da página, só visível com `canManageRoles`.
+**APARÊNCIA**: `PlusIcon` + "Criar cargo"; ao clicar, revela uma linha inline (`.role-create-row`) com campo de nome + botão "Criar" — **não abre um modal separado**, expande inline na própria página.
+**ESTADO NORMAL**: Linha de criação fechada.
+**HOVER**: Padrão de botão de destaque.
+**ACTIVE/PRESSED**: Alterna a visibilidade da linha inline (`setCreating(!creating)` — é um toggle, clicar de novo esconde sem criar nada).
+**SELECTED**: Não aplicável.
+**DISABLED**: Botão "Criar cargo" ausente (não desabilitado) sem `MANAGE_ROLES`.
+**LOADING**: Não confirmado indicador de carregamento durante a chamada.
+**TRIGGER**: Clique em "Criar cargo" (abre a linha), depois Enter no campo de nome ou clique em "Criar".
+**PRÉ-CONDIÇÕES**: `MANAGE_ROLES`; nome não vazio (`newRoleName.trim()`).
+**RESULTADO IMEDIATO**: `api.createRole(serverId, nome, cor, 0, false)` — **cor escolhida automaticamente** de uma paleta fixa de 8 cores, ciclando por índice (`ROLE_COLOR_SWATCHES[roles.length % 8]`) — o usuário não escolhe a cor no momento da criação, só depois editando; posição sempre `0` (novo cargo sempre nasce na posição mais baixa da hierarquia, precisa ser reordenado depois — **mas não existe reordenação de posição na UI, ver nota de auditoria**); `hoist` sempre `false` inicialmente.
+**RESULTADO VISUAL**: Cargo novo aparece na lista, já ordenado por posição (`sort((a,b) => b.position - a.position)`); torna-se automaticamente o cargo selecionado, aba "Exibição" ativa.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não é modal — inline na própria página.
+**SEGUNDA ETAPA**: Editar nome/cor/permissões/membros do cargo recém-criado (fichas seguintes).
+**RESULTADO FINAL**: Novo cargo criado, pronto para configuração.
+**EFEITO LOCAL**: Estado local atualizado imediatamente com a resposta.
+**EFEITO REMOTO**: `ROLE_CREATE` via WebSocket — outros administradores com a tela de Cargos aberta veem o cargo novo aparecer ao vivo.
+**REALTIME**: `ROLE_CREATE`.
+**BACKEND**: `POST /api/servers/:id/roles`.
+**BANCO**: Insere em `roles`.
+**REFRESH**: Persiste normalmente.
+**RECONEXÃO**: Recarregado via fetch normal.
+**ERRO**: `setError(...)` exibido acima da área de trabalho de cargos.
+**CANCELAMENTO**: Clicar em "Criar cargo" de novo (fecha a linha sem criar) — **achado**: não há um botão "Cancelar" explícito na própria linha inline, só o toggle do botão que a abriu.
+**REVERSÃO**: `ROLE_DELETE` depois.
+**ATALHO**: Enter no campo de nome.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Campo sem `<label>` associado explicitamente (só `placeholder`) — mesma lacuna comum de acessibilidade já notada em outros campos desta auditoria mais ampla.
+
+**Nota de auditoria — sem reordenação de posição**: confirmado por ausência: não existe nenhum mecanismo de arrastar/subir/descer cargos na lista pra mudar sua posição hierárquica na UI — cargos novos sempre nascem na posição `0` (mais baixa) e **não há como reordenar depois pela interface**, mesmo que a posição seja central pra hierarquia de moderação/edição (`ownPosition`/`canEditSelected`/`canModerate` em toda esta auditoria). Já registrado de forma adjacente em `DISCORD_PARITY_PLAN.md` §1 ("Sem hierarquia de 'dono' separada nem reordenação manual de posição — redução deliberada").
+
+---
+
+## 9.3 — ROLE_SELECT
+
+**ID**: `ROLE_SELECT`
+**NOME**: Selecionar um cargo na lista para editar
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Configurações do Servidor > Cargos > lista à esquerda > um cargo`
+**POSIÇÃO NA INTERFACE**: `.roles-list`, um botão por cargo.
+**APARÊNCIA**: Ponto colorido (`<i style={{background: role.color}}>`) + nome + contagem de membros ("N membros").
+**ESTADO NORMAL**: Nenhum destaque.
+**HOVER**: Padrão de item de lista clicável.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Classe `active` no cargo atualmente sendo editado.
+**DISABLED**: Nunca — qualquer cargo é selecionável pra visualização, mesmo que não editável (ver `ROLE_HIERARCHY_ENFORCEMENT`).
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Nenhuma.
+**RESULTADO IMEDIATO**: `setSelectedRoleId(role.id)` + `setTab('display')` (sempre volta pra aba "Exibição" ao trocar de cargo, mesmo que estivesse em "Permissões"/"Gerenciar membros" no cargo anterior).
+**RESULTADO VISUAL**: Painel à direita (`.role-editor`) recarrega com os dados do novo cargo.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Navegar pelas três abas do editor.
+**RESULTADO FINAL**: Editor mostrando o cargo escolhido.
+**EFEITO LOCAL**: Nenhuma chamada de rede nova (dados já carregados de uma vez no `useEffect` inicial).
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável à seleção em si.
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: `selectedRoleId` reseta a cada F5 (volta ao primeiro cargo da lista, `roles[0]?.id`).
+**RECONEXÃO**: Se o cargo selecionado for excluído por outra pessoa enquanto você o edita, `ROLE_DELETE` recebido reseta `selectedRoleId` pra `null`, mostrando "Selecione um cargo à esquerda."
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Selecionar outro cargo.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: **`MISSING`** — sem botão direito na lista de cargos (Discord real geralmente permite duplicar cargo via menu de contexto ali).
+**ACESSIBILIDADE**: Sem indicação de contagem de membros em formato acessível além do texto visível (já é texto, então funciona pra leitor de tela normalmente).
+
+---
+
+## 9.4 — ROLE_EDIT_DISPLAY
+
+**ID**: `ROLE_EDIT_DISPLAY`
+**NOME**: Editar nome, cor e exibição separada de um cargo
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Editor de cargo > aba "Exibição"` (padrão ao selecionar qualquer cargo)
+**POSIÇÃO NA INTERFACE**: `.role-fields-grid` + `.role-static-toggle`.
+**APARÊNCIA**: Campo de nome; grade de 8 cores fixas (`ROLE_COLOR_SWATCHES`, mesma paleta usada pra atribuir cor automática na criação) com anel de seleção na cor atual; toggle "Exibir membros do cargo separadamente".
+**ESTADO NORMAL**: Campos preenchidos com os valores atuais.
+**HOVER**: Padrão de campo/swatch.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Swatch com classe `selected` na cor atual.
+**DISABLED**: Todo o formulário (`disabled={!canEditSelected}`) — nome, swatches de cor, e o toggle de exibição separada ficam travados se a hierarquia não permitir editar aquele cargo específico. **O cargo `@everyone` tem uma restrição adicional**: nome sempre desabilitado (`disabled={!canEditSelected || selectedRole.isEveryone}`) mesmo com permissão — não dá pra renomear `@everyone`; o toggle "exibir separadamente" nem aparece pra `@everyone` (`{!selectedRole.isEveryone && (...)}`).
+**LOADING**: Não confirmado indicador durante o salvamento.
+**TRIGGER**: Editar nome + `onBlur` salva (não salva a cada tecla, só ao sair do campo); clicar numa cor salva imediatamente; clicar no toggle salva imediatamente.
+**PRÉ-CONDIÇÕES**: `canEditSelected` (posição do cargo abaixo da posição mais alta do próprio editor).
+**RESULTADO IMEDIATO — nome**: `onChange` atualiza o estado local instantaneamente (edição otimista, visível enquanto digita), `onBlur` dispara `patchSelectedRole({ name: valor.trim() || nomeAntigo })` — **se o campo for deixado vazio, reverte pro nome antigo em vez de salvar vazio** (proteção no próprio cliente).
+**RESULTADO IMEDIATO — cor**: Clique aplica na hora, sem etapa de confirmação.
+**RESULTADO IMEDIATO — toggle "exibir separadamente"**: Clique aplica na hora.
+**RESULTADO VISUAL**: Mudanças refletidas imediatamente na lista de cargos à esquerda (ponto colorido, nome) e em qualquer lugar do app que mostre aquele cargo (ex.: `role-chip` na aba Membros, mesma sessão).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Cargo atualizado.
+**EFEITO LOCAL**: Estado local sincronizado com a resposta da API.
+**EFEITO REMOTO**: `ROLE_UPDATE` via WebSocket — outros veem a mudança ao vivo (inclusive membros comuns que tenham esse cargo, se a cor aparecer no nome deles em algum lugar da UI deles — a confirmar alcance exato em auditoria futura de perfil/mini-perfil).
+**REALTIME**: `ROLE_UPDATE`.
+**BACKEND**: `PATCH /api/servers/:id/roles/:roleId`.
+**BANCO**: `UPDATE roles`.
+**REFRESH**: Persiste.
+**RECONEXÃO**: Recarregado via fetch.
+**ERRO**: `setError(...)`.
+**CANCELAMENTO**: Não aplicável (sem modo de edição com "descartar" — cada campo salva independentemente ao interagir).
+**REVERSÃO**: Editar de novo.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label="Cor {valor hex}"` em cada swatch (anuncia o código de cor, não um nome amigável — mesma característica já notada no seletor de cor de perfil de usuário, Roteiro 1).
+
+---
+
+## 9.5 — ROLE_EDIT_PERMISSIONS
+
+**ID**: `ROLE_EDIT_PERMISSIONS`
+**NOME**: Editar as permissões concedidas por um cargo
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Editor de cargo > aba "Permissões"`
+**POSIÇÃO NA INTERFACE**: `.permission-group`, uma seção por categoria de permissão (`PERMISSION_DEFINITIONS` agrupado por `category`, de `packages/shared`).
+**APARÊNCIA**: Lista de linhas (`.permission-row`), cada uma com o rótulo da permissão (`title` com a descrição completa no hover) + um switch (`.static-switch`) ligado/desligado.
+**ESTADO NORMAL**: Switches refletindo o bitfield atual do cargo.
+**HOVER**: `title` no rótulo mostra a descrição completa da permissão.
+**ACTIVE/PRESSED**: Padrão de switch.
+**SELECTED**: Classe `on` no switch quando o bit está setado.
+**DISABLED**: `disabled={!canEditSelected}` em cada switch individualmente.
+**LOADING**: Não confirmado.
+**TRIGGER**: Clique em qualquer switch.
+**PRÉ-CONDIÇÕES**: `canEditSelected`.
+**RESULTADO IMEDIATO**: `patchSelectedRole({ permissions: bitfield com o bit ligado/desligado })` — operação bit a bit local (`| flag` ou `& ~flag`) antes de enviar o bitfield inteiro atualizado.
+**RESULTADO VISUAL — nota especial**: se `ADMINISTRATOR` já estiver ligado, um aviso aparece acima da lista: "Administrador concede todas as permissões — as demais opções abaixo ficam irrelevantes." — **mas as demais opções continuam clicáveis/editáveis mesmo assim** (o aviso é só informativo, não desabilita as outras — tecnicamente redundante ter Administrador + outras permissões específicas ligadas, mas o app não impede).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma — cada switch é independente, sem botão "Salvar" em lote.
+**RESULTADO FINAL**: Bitfield de permissões do cargo atualizado.
+**EFEITO LOCAL**: Mudança imediata.
+**EFEITO REMOTO**: `ROLE_UPDATE` via WebSocket — **membros com aquele cargo ganham/perdem a permissão em tempo real**, sem precisar relogar (backend valida permissão a cada requisição, não em cache de sessão — confirmado consistente com toda a arquitetura de permissões já auditada nesta linha de trabalho).
+**REALTIME**: `ROLE_UPDATE`.
+**BACKEND**: `PATCH /api/servers/:id/roles/:roleId`.
+**BANCO**: `UPDATE roles.permissions`.
+**REFRESH**: Persiste.
+**RECONEXÃO**: Recarregado.
+**ERRO**: `setError(...)`.
+**CANCELAMENTO**: Não aplicável (sem lote/confirmação — cada clique já é definitivo).
+**REVERSÃO**: Clicar de novo no mesmo switch.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `title` fornece a descrição completa, mas só em hover — **achado**: sem `aria-describedby` explícito conectando o switch à descrição completa, um leitor de tela focando o switch provavelmente só anuncia o rótulo curto, não a descrição detalhada que aparece no `title`.
+
+**Nota de auditoria — sem overwrite por canal**: confirmado consistente com o resto desta auditoria (`DISCORD_PARITY_PLAN.md` §1/§15, já citado em várias fichas anteriores): permissões são só por cargo, servidor inteiro — não existe "negar esta permissão só neste canal específico". Decisão arquitetural deliberada, não uma lacuna acidental.
+
+---
+
+## 9.6 — ROLE_EDIT_MEMBERS
+
+**ID**: `ROLE_EDIT_MEMBERS`
+**NOME**: Atribuir/remover um cargo de membros específicos
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Editor de cargo > aba "Gerenciar membros"`
+**POSIÇÃO NA INTERFACE**: `.role-member-list`, uma linha por membro do servidor (não só os que já têm o cargo).
+**APARÊNCIA**: Campo de busca **funcional** (`memberSearch`, contraste direto com `ROLE_LIST_SEARCH_FAKE`) + lista de todos os membros, cada um com nome + switch ligado/desligado.
+**ESTADO NORMAL**: Switch ligado pra quem já tem o cargo, desligado pra quem não tem.
+**HOVER**: Padrão de switch/campo.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Classe `on` refletindo posse do cargo.
+**DISABLED**: `disabled={!canEditSelected}`; **cargo `@everyone` bloqueia a aba inteira** com uma nota explicativa em vez da lista: "Todo mundo tem @everyone automaticamente — não dá pra atribuir ou remover manualmente."
+**LOADING**: Não confirmado.
+**TRIGGER**: Clique no switch de um membro.
+**PRÉ-CONDIÇÕES**: `canEditSelected`; cargo não é `@everyone`.
+**RESULTADO IMEDIATO**: `api.assignRole`/`api.unassignRole` conforme o estado atual.
+**RESULTADO VISUAL**: Switch alterna; contagem de membros do cargo (mostrada na lista à esquerda e no cabeçalho do editor) atualiza.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Cargo atribuído/removido daquele membro.
+**EFEITO LOCAL**: Estado local atualizado.
+**EFEITO REMOTO**: `MEMBER_ROLES_UPDATE` via WebSocket — **para o próprio membro afetado, isso já é confirmado disparando resincronização em tempo real** (`useActiveServerMember`, Roteiro 1) — se acabou de ganhar uma permissão nova, ela já vale imediatamente, sem relogar.
+**REALTIME**: `MEMBER_ROLES_UPDATE`.
+**BACKEND**: `POST`/`DELETE` de atribuição de cargo.
+**BANCO**: `INSERT`/`DELETE` em `user_roles`.
+**REFRESH**: Persiste.
+**RECONEXÃO**: Recarregado.
+**ERRO**: `setError(...)`.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Clicar de novo.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Busca funcional com `<input>` real (contraste positivo com `ROLE_LIST_SEARCH_FAKE`).
+
+---
+
+## 9.7 — ROLE_DELETE
+
+**ID**: `ROLE_DELETE`
+**NOME**: Excluir um cargo
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Editor de cargo > cabeçalho > ícone de lixeira`
+**POSIÇÃO NA INTERFACE**: `.role-editor-heading`, ao lado do nome do cargo selecionado.
+**APARÊNCIA**: `TrashIcon` (14px).
+**ESTADO NORMAL**: Visível só se `canEditSelected && !selectedRole.isEveryone` — **`@everyone` nunca pode ser excluído**, e a hierarquia se aplica igual às outras edições.
+**HOVER**: `aria-label="Apagar cargo"`.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Ausente (não desabilitado-visível) quando não aplicável.
+**LOADING**: Não confirmado.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: `canEditSelected`; cargo não é `@everyone`.
+**RESULTADO IMEDIATO**: `window.confirm('Apagar o cargo "{nome}"? Essa ação não pode ser desfeita.')` — mesma técnica simples de confirmação nativa já vista em `CATEGORY_DELETE` (Roteiro 3), não um modal customizado com confirmação por nome digitado como `SERVER_DELETE` tem.
+**RESULTADO VISUAL**: Se confirmado: cargo some da lista; editor volta pro estado "Selecione um cargo à esquerda."
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: O `window.confirm()` nativo.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL — IRREVERSÍVEL**: Cargo apagado; membros que o tinham simplesmente perdem essas permissões (sem precisar de uma ação explícita de "remover de todo mundo" — é implícito à exclusão, via `ON DELETE CASCADE` em `user_roles`, consistente com o resto do schema já auditado).
+**EFEITO LOCAL**: Lista atualizada.
+**EFEITO REMOTO**: `ROLE_DELETE` via WebSocket — membros que tinham o cargo perdem as permissões em tempo real.
+**REALTIME**: `ROLE_DELETE`.
+**BACKEND**: `DELETE /api/servers/:id/roles/:roleId`.
+**BANCO**: `DELETE roles` + cascata em `user_roles`.
+**REFRESH**: Não aplicável (já apagado).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: `setError(...)`.
+**CANCELAMENTO**: "Cancelar" no `window.confirm()`.
+**REVERSÃO**: **`MISSING`** — sem desfazer; recriar um cargo com o mesmo nome não restaura quem o tinha automaticamente.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label="Apagar cargo"`.
+
+**Nota de auditoria — inconsistência de confirmação, terceira ocorrência**: esta é a **terceira** ação destrutiva nesta auditoria a usar `window.confirm()` nativo simples em vez do padrão de confirmação por nome digitado que `SERVER_DELETE` estabeleceu (as outras duas: `CATEGORY_DELETE`, Roteiro 3, e agora `ROLE_DELETE`) — um cargo mal apagado pode ter consequência tão séria quanto excluir uma categoria (perda de acesso/permissões pra vários membros de uma vez), então vale reconsiderar se o padrão de fricção deveria ser mais uniforme entre essas três ações.
+
+---
+
+## 9.8 — ROLE_HIERARCHY_ENFORCEMENT (referência — mecanismo transversal)
+
+**ID**: `ROLE_HIERARCHY_ENFORCEMENT`
+**NOME**: Regra de hierarquia por posição aplicada a toda ação de cargo/moderação
+**STATUS**: `CORE` — mecanismo consistente confirmado em `RolesPane` e `MembersPane`: `ownPosition = highestPosition(member.roleIds, roles)` (a posição do cargo mais alto que o **próprio usuário logado** tem) é comparada contra a posição do alvo (`selectedRole.position` pra edição de cargo, `targetPosition(candidate)` pra moderação de membro) — só é permitido agir sobre algo estritamente **abaixo** da própria posição (`<`, nunca `<=`), nunca sobre si mesmo (`candidate.id !== member.userId` em `canModerate`) e nunca sobre igual/acima. **Mesma regra, reaproveitada em todo lugar relevante**: editar cargo (`canEditSelected`), atribuir/remover cargo de membro, timeout, ban, kick de voz. Já confirmado por teste automatizado real em sessão anterior desta linha de trabalho (`authorizeModerationAction`, citado no Roteiro de fundação de testes desta auditoria mais ampla: "rejeita quando o solicitante tenta agir sobre si mesmo", "rejeita quando o alvo tem posição igual à do solicitante", "rejeita quando o alvo tem posição maior que a do solicitante"). Documentado aqui como confirmação positiva consolidada, não repetido campo-a-campo em cada ficha individual de moderação para evitar redundância.
+
+---
+
+## 9.9 — MEMBER_VOICE_KICK
+
+**ID**: `MEMBER_VOICE_KICK`
+**NOME**: Expulsar um membro da chamada de voz (a partir da lista de membros do servidor)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Configurações do Servidor > Membros > linha do membro > "Expulsar da voz"`
+**POSIÇÃO NA INTERFACE**: `.member-roster-actions`.
+**APARÊNCIA**: `.secondary-pill` com o texto "Expulsar da voz".
+**ESTADO NORMAL**: Visível se `canModerate(candidate) && canKick` (`KICK_MEMBERS`).
+**HOVER**: Padrão de pill.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Ausente sem permissão/hierarquia adequada.
+**LOADING**: Não confirmado durante a chamada.
+**TRIGGER**: Clique — **sem confirmação prévia**, diferente de `VOICE_MODERATOR_DISCONNECT_PARTICIPANT` (Roteiro 7), que usa `window.confirm()` — **este caminho alternativo pra essencialmente a mesma ação (desconectar alguém da voz) não pede confirmação**, uma inconsistência real entre dois lugares da UI que levam ao mesmo resultado.
+**PRÉ-CONDIÇÕES**: `KICK_MEMBERS`; hierarquia (`canModerate`); **não exige que o membro esteja de fato numa call no momento** — clicar em alguém que não está em nenhuma chamada de voz presumivelmente não teria efeito visível (a rota provavelmente só age se houver algo pra desconectar, mas o botão não desaparece condicionalmente a isso).
+**RESULTADO IMEDIATO**: `api.voiceKickMember(serverId, userId)`.
+**RESULTADO VISUAL**: Mensagem de feedback inline: "{nome} foi expulso da chamada de voz." (`runAction`, exibida em `role="status"` mas com a classe visual `form-error` — **inconsistência de estilo confirmada**: uma mensagem de **sucesso** usa a mesma classe CSS reservada pra erros em todo o resto do app).
+**RESULTADO SONORO**: Nenhum pro moderador; o membro afetado teria o mesmo efeito sonoro de qualquer desconexão de voz forçada (Roteiro 7).
+**ANIMAÇÃO**: Não aplicável.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Nenhum (ver `TRIGGER`).
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Efeito idêntico a `VOICE_MODERATOR_DISCONNECT_PARTICIPANT` (Roteiro 7) — mesmo endpoint de backend provavelmente reaproveitado (`voiceKickMember`/`disconnectVoiceParticipant`, a confirmar se são literalmente a mesma rota ou duas rotas distintas com o mesmo efeito).
+**EFEITO LOCAL**: Mensagem de feedback.
+**EFEITO REMOTO**: Membro desconectado da call.
+**REALTIME**: Mesma família de eventos de `VOICE_MODERATOR_DISCONNECT_PARTICIPANT`.
+**BACKEND**: `POST` de kick de voz.
+**BANCO**: Não aplicável diretamente (ação de sala LiveKit).
+**REFRESH**: Não aplicável.
+**RECONEXÃO**: Membro pode reentrar na call imediatamente (não é um ban, só uma ejeção pontual — mesma característica já documentada no Roteiro 7).
+**ERRO**: Mensagem de erro na mesma área de feedback (`runAction` unifica sucesso/erro no mesmo elemento visual).
+**CANCELAMENTO**: **`MISSING`** — sem confirmação, não há nada a cancelar.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `role="status"` na mensagem de feedback (anúncio não-intrusivo, apropriado pra uma confirmação de sucesso, apesar do `className` visualmente sugerir erro).
+
+---
+
+## 9.10 — MEMBER_TIMEOUT
+
+**ID**: `MEMBER_TIMEOUT`
+**NOME**: Aplicar timeout (silenciar temporariamente) a um membro
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Membros > linha do membro > "Timeout" > menu inline com presets`
+**POSIÇÃO NA INTERFACE**: `.moderation-inline-menu`, aparece abaixo da linha do membro ao clicar "Timeout".
+**APARÊNCIA**: 5 botões de preset (5 min, 10 min, 1 hora, 1 dia, 7 dias — `TIMEOUT_PRESETS`) + "Cancelar".
+**ESTADO NORMAL**: Menu fechado; botão "Timeout" visível só se `canTimeout && !isTimedOut`.
+**HOVER**: Padrão de pill.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Ausente sem `MODERATE_MEMBERS`/hierarquia; **ausente também se o membro já estiver em timeout** (nesse caso mostra "Remover timeout" em vez disso, ver ficha seguinte).
+**LOADING**: Não confirmado.
+**TRIGGER**: Clique em "Timeout" abre o menu de presets; clique num preset aplica direto — **sem duração customizada livre**, só os 5 valores fixos (diferente do Discord real, que permite escolher uma data/hora específica além dos presets).
+**PRÉ-CONDIÇÕES**: `MODERATE_MEMBERS`; `canModerate(candidate)`.
+**RESULTADO IMEDIATO**: `api.timeoutMember(serverId, userId, minutos)`, menu fecha imediatamente (`setMenu(null)` já no `onClick`, antes mesmo da chamada assíncrona resolver).
+**RESULTADO VISUAL**: Feedback inline "{nome} está em timeout por {duração}."; selo `role-chip role-chip-timeout` "Silenciado até {data/hora}" aparece ao lado do nome do membro.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: É o próprio `.moderation-inline-menu`.
+**MODAL**: Não é modal (inline).
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Membro impedido de enviar mensagens/comandos de voz até o horário indicado (enforcement real já confirmado em `TIMEOUT_COMPOSER_LOCK`, Roteiro 4, e `authorizeModerationAction`, testado automaticamente).
+**EFEITO LOCAL**: Feedback + selo.
+**EFEITO REMOTO**: `MEMBER_TIMEOUT_UPDATE` via WebSocket — **o próprio membro afetado tem o composer travado em tempo real**, imediatamente, mesmo no meio de uma sessão ativa (já confirmado em `TIMEOUT_COMPOSER_LOCK`).
+**REALTIME**: `MEMBER_TIMEOUT_UPDATE`.
+**BACKEND**: `POST /api/moderation/timeout`.
+**BANCO**: `UPDATE server_members.timeout_until`.
+**REFRESH**: Persiste (é dado real, não sessão).
+**RECONEXÃO**: Recarregado.
+**ERRO**: Feedback de erro na mesma área.
+**CANCELAMENTO**: Botão "Cancelar" no menu de presets, antes de escolher.
+**REVERSÃO**: `MEMBER_TIMEOUT_CLEAR` (ficha seguinte), ou esperar o prazo expirar naturalmente.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Cada preset é um `<button>` real, texto descritivo completo (não só números).
+
+---
+
+## 9.11 — MEMBER_TIMEOUT_CLEAR
+
+**ID**: `MEMBER_TIMEOUT_CLEAR`
+**NOME**: Remover o timeout de um membro antes do prazo expirar
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Membros > linha do membro já em timeout > "Remover timeout"`
+**POSIÇÃO NA INTERFACE**: Mesmo lugar de `MEMBER_TIMEOUT`, texto do botão muda conforme o estado.
+**APARÊNCIA**: `.secondary-pill` "Remover timeout".
+**ESTADO NORMAL**: Visível só se `canTimeout && isTimedOut`.
+**TRIGGER**: Clique direto — **sem confirmação, sem menu intermediário** (diferente de aplicar o timeout, que abre um menu de presets primeiro).
+**RESULTADO IMEDIATO**: `api.clearMemberTimeout(serverId, userId)`.
+**RESULTADO VISUAL**: Feedback "Timeout de {nome} removido."; selo de timeout desaparece.
+**RESULTADO FINAL**: Composer do membro destravado imediatamente, em tempo real.
+**EFEITO REMOTO**: `MEMBER_TIMEOUT_UPDATE` com `timeoutUntil: null`.
+**Demais campos**: idênticos a `MEMBER_TIMEOUT` (mesma família de backend/banco/realtime, na direção oposta).
+
+---
+
+## 9.12 — MEMBER_BAN
+
+**ID**: `MEMBER_BAN`
+**NOME**: Banir um membro da instância
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Membros > linha do membro > "Banir" > menu inline com campo de motivo`
+**POSIÇÃO NA INTERFACE**: `.moderation-inline-menu`, variante "ban".
+**APARÊNCIA**: Botão "Banir" em vermelho (`.danger-pill`); menu expandido: campo "Motivo do banimento (opcional)" + botão "Confirmar banimento" (`.violet-primary.danger-pill` — combinação de classes que mistura destaque roxo com estilo de perigo) + "Cancelar".
+**ESTADO NORMAL**: Menu fechado.
+**HOVER**: Padrão de pill de perigo.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Ausente sem `BAN_MEMBERS`/hierarquia.
+**LOADING**: Não confirmado.
+**TRIGGER**: Clique em "Banir" abre o menu; preencher motivo (opcional) e clicar "Confirmar banimento".
+**PRÉ-CONDIÇÕES**: `BAN_MEMBERS`; `canModerate(candidate)`.
+**RESULTADO IMEDIATO**: `api.banMember(serverId, userId, motivo)`.
+**RESULTADO VISUAL**: Feedback "{nome} foi banido."; membro **desaparece da lista de membros ativos** (`MEMBER_BANNED` já filtra `members` em `MembersPane`, não só em quem recebe o sign-out forçado documentado no Roteiro 1) e passa a aparecer na seção "Membros banidos" no rodapé da página (só visível a quem tem `BAN_MEMBERS`).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: `.moderation-inline-menu`, variante ban.
+**MODAL**: Não é modal.
+**SEGUNDA ETAPA**: Nenhuma pro moderador; do lado do banido, ver `SESSION_FORCE_LOGOUT_BAN`/`BAN_FORCE_DISCONNECT` (Roteiros 1/5).
+**RESULTADO FINAL — de instância inteira**: consistente com a nota de auditoria já registrada no Roteiro 1 — banir aqui bane da instância toda, não só deste servidor, apesar da ação estar dentro das configurações de um servidor específico.
+**EFEITO LOCAL**: Feedback + membro removido da lista.
+**EFEITO REMOTO**: `broadcast({type: 'MEMBER_BANNED'})` (instância inteira, Roteiro 5) + `disconnectUser` força o socket do banido a cair.
+**REALTIME**: `MEMBER_BANNED`.
+**BACKEND**: `POST /api/moderation/bans`.
+**BANCO**: Insere em `bans`; provavelmente remove de `server_members` também (a confirmar exatamente quais tabelas são afetadas na auditoria futura de moderação mais aprofundada).
+**REFRESH**: Persiste.
+**RECONEXÃO**: Não aplicável ao moderador.
+**ERRO**: Feedback de erro na mesma área.
+**CANCELAMENTO**: "Cancelar" no menu, antes de confirmar.
+**REVERSÃO**: `MEMBER_UNBAN` (ficha seguinte).
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Campo de motivo com `placeholder` (sem `<label>` explícito).
+
+---
+
+## 9.13 — MEMBER_UNBAN
+
+**ID**: `MEMBER_UNBAN`
+**NOME**: Desbanir um usuário
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Membros > seção "Membros banidos" (rodapé, só com BAN_MEMBERS) > linha do banido > "Desbanir"`
+**POSIÇÃO NA INTERFACE**: `.banned-members-section`, listando motivo do banimento e quem baniu (`ban.bannedByName`, se disponível).
+**APARÊNCIA**: Nome + selo com o motivo (ou "Sem motivo informado") + selo "banido por {nome}" (se conhecido) + botão "Desbanir".
+**TRIGGER**: Clique — **sem confirmação**, diferente do próprio ato de banir, que pede confirmação explícita via o menu de duas etapas.
+**RESULTADO IMEDIATO**: `api.unbanMember(serverId, userId)`.
+**RESULTADO VISUAL**: Feedback "{nome} foi desbanido."; linha removida da seção de banidos localmente (`setBans(current => current.filter(...))`, aplicado direto no cliente, **sem esperar confirmação do servidor nem reagir a um evento `MEMBER_UNBANNED`** — atualização puramente otimista aqui, diferente de outras ações desta mesma tela que esperam a resposta).
+**RESULTADO FINAL**: Usuário pode logar/entrar de novo na instância.
+**EFEITO REMOTO**: `broadcast({type: 'MEMBER_UNBANNED'})` (inferido pela simetria com `MEMBER_BANNED`, já confirmado existir no union de eventos).
+**Demais campos**: mesma família de `MEMBER_BAN`, na direção oposta.
+
+**Nota de auditoria**: a seção de banidos só aparece "se `canBan && bans.length > 0`" — **um moderador com `MODERATE_MEMBERS`/`KICK_MEMBERS` mas sem `BAN_MEMBERS` nunca vê quem está banido**, mesmo que pudesse querer saber — comportamento correto do ponto de vista de permissão granular, só registrado aqui como confirmação do escopo exato.
+
+---
+
+## 9.14 — MEMBER_SERVER_KICK *(MISSING)*
+
+**ID**: `MEMBER_SERVER_KICK`
+**NOME**: Expulsar um membro do servidor (sem banir permanentemente)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: **`MISSING` — achado real, uma lacuna funcional concreta, não só de UI.** O Discord real distingue claramente **Kick** (remove a pessoa do servidor; ela pode voltar com um convite novo) de **Ban** (remove e impede a volta). Nesta auditoria da aba Membros, `canKick = hasPermission(member.permissions, Permission.KICK_MEMBERS)` **existe como permissão**, mas a única ação que ela desbloqueia na UI é "Expulsar da voz" (`MEMBER_VOICE_KICK`) — **que é só desconectar de uma call, não remover a filiação ao servidor**. Não há nenhum botão "Expulsar do servidor" em lugar nenhum de `MembersPane`. As únicas duas formas de um membro deixar de fazer parte de um servidor hoje são: (a) ele mesmo sair (`SERVER_LEAVE`, também já confirmado `MISSING` na UI no Roteiro 3, apesar do endpoint existir) ou (b) ser banido (`MEMBER_BAN`, permanente e de instância inteira).
+**CAMINHO EXATO ESPERADO** (não implementado): `Membros > linha do membro > "Expulsar do servidor"` (deveria conviver ao lado de "Timeout" e "Banir").
+**Impacto prático**: hoje, a única ferramenta de moderação "removível" disponível é o banimento — desproporcional pra situações onde o objetivo é só remover alguém do servidor específico sem impedi-lo de usar o resto da instância ou de ser reconvidado depois. Isso é coerente com `KICK_MEMBERS` já existir como bit de permissão (sugerindo que a intenção original de design já prevía essa ação) mas nunca ter sido conectado a uma rota/UI de "remover do servidor" de fato — só foi reaproveitado pro kick de voz, que é uma ação bem menor em escopo.
+**Pré-requisito de implementação, caso venha a ser feito**: backend precisaria de uma rota `DELETE /api/servers/:id/members/:userId` (distinta de `.../members/me`, que já existe só pra auto-remoção) fazendo o mesmo `removeServerMember` já usado internamente, mais um evento de tempo real (`MEMBER_LEAVE` já existe e já é emitido pra auto-saída — reaproveitável) pra notificar o membro expulso e os demais.
+
+---
+
+## 9.15 — INVITE_CODE_VIEW_COPY_REGENERATE
+
+**ID**: `INVITE_CODE_VIEW_COPY_REGENERATE`
+**NOME**: Ver, copiar e regenerar o código de convite do servidor
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Configurações do Servidor > Convites`
+**POSIÇÃO NA INTERFACE**: `.invite-code-card`.
+**APARÊNCIA**: Código em `<code>` (fonte monoespaçada); botão "Copiar" (`CopyIcon`); texto "Usado N vez(es) — sem limite de usos nem expiração por enquanto." (honesto sobre a limitação, não finge ter controles que não existem); botão "Gerar novo código".
+**ESTADO NORMAL**: Visível só a quem tem `MANAGE_SERVER` — quem não tem vê só o título "Convites" com a explicação "Só quem gerencia o servidor pode ver e gerar convites." em vez do código em si (**não é um card vazio/quebrado, é uma mensagem clara do motivo** — bom padrão, consistente com o resto desta auditoria de UI honesta sobre limitações).
+**HOVER**: Padrão de botão pill.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Card inteiro ausente sem permissão (não é "visível mas cinza").
+**LOADING**: "Carregando…" enquanto busca o convite.
+**TRIGGER — copiar**: Clique em "Copiar".
+**TRIGGER — regenerar**: Clique em "Gerar novo código".
+**PRÉ-CONDIÇÕES**: `MANAGE_SERVER`.
+**RESULTADO IMEDIATO — copiar**: `navigator.clipboard.writeText(invite.code)` → `setCopied(true)`, texto do botão muda pra "Copiado!" por 2 segundos (`window.setTimeout`) — **esta é uma das poucas ações de copiar em todo o app auditado até agora que dá feedback visual real** (contraste direto com `MESSAGE_COPY_TEXT`, Roteiro 4, e "Copiar ID da Categoria", Roteiro 3, que não dão feedback nenhum) — **inconsistência a corrigir**: o padrão "Copiado!" já existe e funciona aqui, só precisaria ser replicado nos outros lugares que copiam sem avisar.
+**RESULTADO IMEDIATO — regenerar**: `window.confirm('Gerar um novo código invalida o código atual. Continuar?')` — se confirmado, `api.regenerateServerInvite(serverId)`.
+**RESULTADO VISUAL — regenerar**: Novo código substitui o antigo na tela; **qualquer link/código antigo já compartilhado para de funcionar imediatamente** (mensagem do próprio `confirm()` já avisa isso antes de agir).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: `window.confirm()` nativo (regenerar).
+**SEGUNDA ETAPA**: Compartilhar o código copiado com quem se deseja convidar (fora do app).
+**RESULTADO FINAL**: Convite ativo, código no clipboard ou regenerado.
+**EFEITO LOCAL**: Nenhuma mudança pro próprio servidor além do código em si.
+**EFEITO REMOTO**: Regenerar invalida o código pra qualquer pessoa que ainda não tenha usado o antigo — **sem aviso pra quem já tinha o link antigo salvo** (não há como avisar, já que convites não são rastreados por destinatário).
+**REALTIME**: Não confirmado se `regenerateServerInvite` emite algum evento de WebSocket (provavelmente não precisa, já que o código só importa pra quem ainda vai entrar, não pra membros já conectados).
+**BACKEND**: `POST /api/servers/:id/invite` (buscar/criar) e `.../invite/regenerate`.
+**BANCO**: `invites` — schema já suporta `max_uses`/`expires_at`, mas **nunca configurados por essa UI** (sempre `NULL`, confirmado consistente com `DISCORD_PARITY_PLAN.md` §1).
+**REFRESH**: Código persiste (é dado real).
+**RECONEXÃO**: Recarregado via fetch normal.
+**ERRO**: `setError(...)`.
+**CANCELAMENTO**: "Cancelar" no `confirm()` de regenerar.
+**REVERSÃO**: Regenerar de novo, se necessário.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Botão de copiar com texto que muda de estado (não só ícone), bom para leitores de tela.
+
+**Nota de auditoria — sem convite por link direto**: o "código" é sempre um código curto pra colar manualmente na tela "Entrar com convite" (`SERVER_JOIN_INVITE_SUBMIT`, Roteiro 3) — não é um link clicável tipo `https://.../invite/ABCD1234` que abriria o app direto na tela de resgate (algo que dependeria do roteamento por URL já confirmado ausente no Roteiro 2). Convite hoje é sempre "copie o código, cole na tela de entrar."
+
+---
+
+# CONTINUAÇÃO
+
+Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas `MISSING`/de referência), as **24 interações do Roteiro 0**, **18 do Roteiro 1**, **11 do Roteiro 2**, **19 do Roteiro 3**, **23 do Roteiro 4**, **8 do Roteiro 5**, **9 do Roteiro 6**, **12 do Roteiro 7**, **8 do Roteiro 8** e **15 do Roteiro 9** — **147 fichas no total**. Cargos, permissões, moderação (timeout/ban/kick de voz) e convites são um sistema **real, testado e consistente**, com hierarquia por posição aplicada uniformemente — documentado como `CORE`.
+
+**Achados novos mais importantes desta seção**: (1) **busca de cargos decorativa** (`readOnly`, sem função) — exatamente o tipo de problema que o usuário já tinha pedido pra caçar e eliminar numa instrução anterior desta linha de trabalho, mas que sobreviveu escondido na aba Cargos; (2) **falta "Expulsar do servidor"** como ação distinta de banir — hoje só existe remover-se a si mesmo (sem botão de UI) ou banir permanentemente, sem meio-termo, mesmo a permissão `KICK_MEMBERS` já existindo (só é usada pra kick de *voz*, não de servidor); (3) **inconsistência de confirmação**: excluir cargo/categoria usa `confirm()` nativo, excluir servidor exige digitar o nome — três níveis de fricção diferentes pra ações de gravidade parecida; (4) **inconsistência de feedback de cópia**: convites já mostram "Copiado!", mas mensagens/IDs em outros lugares do app não — o padrão certo já existe em algum lugar, só não foi replicado.
+
+**Próximo na fila**: Configurações do aplicativo (Conta e segurança, Privacidade, Aparência — já com achados parciais dispersos, mas sem ficha campo-a-campo completa ainda), Amigos/DMs, e a partir daí os três documentos de síntese ainda não criados (`DISCORD_NAVIGATION_TREE.md`, `DISCORD_INTERACTION_MATRIX.md`, `DISCORD_USER_JOURNEYS.md`), já que a superfície do app está mapeada em profundidade suficiente pra alimentá-los sem generalizar.
