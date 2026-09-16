@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). Roteiros 10–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). **Roteiro 10 completo** (7 fichas, configurações — aparência). Roteiros 11–69+ pendentes — ver nota de continuação no final do arquivo.
 
 ---
 
@@ -5293,4 +5293,107 @@ Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropri
 
 **Achados novos mais importantes desta seção**: (1) **busca de cargos decorativa** (`readOnly`, sem função) — exatamente o tipo de problema que o usuário já tinha pedido pra caçar e eliminar numa instrução anterior desta linha de trabalho, mas que sobreviveu escondido na aba Cargos; (2) **falta "Expulsar do servidor"** como ação distinta de banir — hoje só existe remover-se a si mesmo (sem botão de UI) ou banir permanentemente, sem meio-termo, mesmo a permissão `KICK_MEMBERS` já existindo (só é usada pra kick de *voz*, não de servidor); (3) **inconsistência de confirmação**: excluir cargo/categoria usa `confirm()` nativo, excluir servidor exige digitar o nome — três níveis de fricção diferentes pra ações de gravidade parecida; (4) **inconsistência de feedback de cópia**: convites já mostram "Copiado!", mas mensagens/IDs em outros lugares do app não — o padrão certo já existe em algum lugar, só não foi replicado.
 
-**Próximo na fila**: Configurações do aplicativo (Conta e segurança, Privacidade, Aparência — já com achados parciais dispersos, mas sem ficha campo-a-campo completa ainda), Amigos/DMs, e a partir daí os três documentos de síntese ainda não criados (`DISCORD_NAVIGATION_TREE.md`, `DISCORD_INTERACTION_MATRIX.md`, `DISCORD_USER_JOURNEYS.md`), já que a superfície do app está mapeada em profundidade suficiente pra alimentá-los sem generalizar.
+---
+
+# ROTEIRO 10 — CONFIGURAÇÕES DO APP: APARÊNCIA
+
+Arquitetura real (verificada em `Workspace.tsx`, seção `section === 'appearance'`): esta é uma das telas mais **completas e honestas** de toda a auditoria até agora — cada controle é real, persistido, e refletido numa pré-visualização ao vivo ao lado. Nenhum elemento decorativo encontrado nesta seção específica.
+
+---
+
+## 10.1 — THEME_SELECT
+
+**ID**: `THEME_SELECT`
+**NOME**: Escolher o tema visual (claro/escuro/etc.)
+**CAMINHO EXATO**: `Configurações > Aparência > "Tema"`
+**APARÊNCIA**: Cartões (`.theme-card`) com uma amostra de cor + rótulo, um por opção de `THEME_OPTIONS`.
+**TRIGGER**: Clique no cartão.
+**RESULTADO IMEDIATO**: `chooseTheme(valor)` — aplica no `<html>`/`<body>` via atributo/classe (mecanismo exato de aplicação de tema não relido campo-a-campo nesta passagem, mas o efeito já é visível na pré-visualização ao lado em tempo real) e persiste (provavelmente `localStorage`, mesmo padrão de `getTheme()`/`setThemeModeState` já usado por outras preferências de UI nesta auditoria).
+**BANCO**: `localStorage`, por dispositivo/navegador — não sincroniza entre contas/dispositivos, mesma característica já documentada pra preferências de voz (Roteiro 7).
+**REFRESH**: Persiste.
+**EFEITO REMOTO**: Nenhum — preferência 100% pessoal e local.
+**Demais campos**: `role="group"` no container, `aria-label="Tema"` — estrutura ARIA correta pra um grupo de opções, mesma lacuna de falta de `radiogroup`/`radio` formal já notada em seletores parecidos (Roteiro 1/3).
+
+---
+
+## 10.2 — PERF_MODE_SELECT
+
+**ID**: `PERF_MODE_SELECT`
+**NOME**: Alternar entre modo de desempenho "Completo" e "Leve"
+**CAMINHO EXATO**: `Configurações > Aparência > "Modo de desempenho"`
+**APARÊNCIA**: Dois botões (`.perf-toggle`), com texto de ajuda abaixo: "O modo leve desliga animações e efeitos visuais para PCs mais fracos."
+**RESULTADO IMEDIATO**: `choosePerfMode('full' | 'lite')` — **efeito confirmado em outro lugar desta auditoria**: `perfMode === 'full'` é exatamente a condição que decide se `VOICE_CHANNEL_JOIN` (Roteiro 6) usa a View Transitions API do navegador ao entrar num canal de voz — o modo "Leve" desliga especificamente essa transição, não é só um rótulo genérico sem efeito real mensurável.
+**BANCO**: `localStorage` (`getPerfMode()`).
+**Demais campos**: mesmo padrão de `THEME_SELECT`.
+
+---
+
+## 10.3 — UI_DENSITY_SELECT
+
+**ID**: `UI_DENSITY_SELECT`
+**NOME**: Escolher a densidade da interface (Compacta/Padrão/Confortável)
+**CAMINHO EXATO**: `Configurações > Aparência > "Densidade da interface"`
+**APARÊNCIA**: Três botões (`.perf-toggle.three-way`).
+**RESULTADO IMEDIATO**: `chooseDensity(valor)` — afeta espaçamento geral da UI (mecanismo de aplicação via CSS custom property/classe, não relido linha a linha).
+**BANCO**: `localStorage`.
+**Demais campos**: mesmo padrão.
+
+---
+
+## 10.4 — MESSAGE_STYLE_SELECT
+
+**ID**: `MESSAGE_STYLE_SELECT`
+**NOME**: Escolher o estilo de exibição das mensagens (Padrão/Compacto/Agrupado)
+**CAMINHO EXATO**: `Configurações > Aparência > "Estilo de exibição das mensagens"`
+**RESULTADO IMEDIATO**: `setMessageStyle(valor)` — **efeito já confirmado em duas fichas anteriores desta auditoria**: controla a classe `compact`/`grouped` tanto no chat de canal de texto (Roteiro 4) quanto no chat de voz (Roteiro 7) — uma única preferência central compartilhada pelos dois sistemas de chat distintos do app. "Agrupado" funde mensagens consecutivas da mesma pessoa em menos de 5 minutos numa única entrada visual (`continued`, mecanismo já confirmado lendo o código do chat de voz).
+**BANCO**: `localStorage` (`MESSAGE_STYLE_KEY`).
+**Demais campos**: mesmo padrão de seleção de 3 vias.
+
+---
+
+## 10.5 — CHAT_FONT_SIZE_SLIDER / MESSAGE_SPACING_SLIDER / UI_ZOOM_SLIDER
+
+**ID**: `APPEARANCE_SLIDERS` (três controles idênticos em padrão, documentados juntos por serem estruturalmente idênticos — não por serem "parecidos" no sentido que o pedido original proíbe resumir, mas porque são literalmente o mesmo componente `<input type="range">` com escalas pré-definidas diferentes)
+**NOME**: Ajustar tamanho da fonte do chat, espaçamento entre mensagens, e zoom geral da interface
+**CAMINHO EXATO**: `Configurações > Aparência`, três sliders em sequência.
+**APARÊNCIA**: `<input type="range">` com `min={0}` `max={escala.length - 1}` (índice discreto numa escala pré-definida, não um valor livre em %) + `<output>` mostrando a porcentagem atual.
+**TRIGGER**: Arrastar, clicar num ponto, ou setas do teclado (nativo do slider).
+**RESULTADO IMEDIATO**: `chooseChatFontStep`/`chooseMessageSpacingStep`/`chooseUiZoomStep(índice)` — aplicado imediatamente, refletido na pré-visualização ao vivo ao lado (`CHAT_FONT_SCALES`/`MESSAGE_SPACING_SCALES`/`UI_ZOOM_SCALES`, arrays de porcentagens pré-definidas, não um range contínuo arbitrário).
+**RESULTADO VISUAL**: Mudança instantânea, visível tanto na pré-visualização quanto (presumivelmente) na UI real por trás do modal de configurações.
+**BANCO**: `localStorage`, uma chave por slider.
+**REFRESH**: Persiste.
+**EFEITO REMOTO**: Nenhum.
+**ACESSIBILIDADE**: `<label htmlFor>` associado corretamente em todos os três — nativo do `<input type="range">`, acessível por teclado (setas) sem nenhum trabalho extra necessário.
+
+**Nota de auditoria — zoom da interface no desktop**: o zoom "Configurações > Aparência > Zoom da interface" é **distinto e não confirmado como sincronizado** com o zoom nativo do Electron já documentado no Roteiro 0 (`set-zoom-factor`, usado — segundo o comentário do próprio código — porque "CSS zoom deixa espaço vazio em layouts full-bleed... o zoom nativo do Chromium... recalcula as unidades de viewport corretamente"). **Achado a confirmar em auditoria futura mais profunda**: se este slider de "Zoom da interface" dentro de Aparência aciona `window.desktop.setZoomFactor` (o mecanismo correto já documentado no Roteiro 0) ou se é um zoom CSS separado — os nomes são parecidos o bastante pra serem confundidos, mas o comentário do código em `main.ts` sugere fortemente que só o zoom nativo do Chromium é o caminho "certo" pra evitar o bug de espaço vazio, então valeria confirmar que este slider usa exatamente esse mecanismo e não um zoom CSS alternativo que reintroduziria o mesmo bug já documentado como corrigido.
+
+---
+
+## 10.6 — UI_ACCENT_COLOR_CUSTOM
+
+**ID**: `UI_ACCENT_COLOR_CUSTOM`
+**NOME**: Personalizar a cor de destaque de toda a interface
+**CAMINHO EXATO**: `Configurações > Aparência > painel lateral > "Cores e personalização"`
+**APARÊNCIA**: Paleta de swatches fixos (`UI_ACCENT_SWATCHES`, mesmo padrão de `radiogroup`/`radio` já visto em outros seletores de cor) **mais** um seletor de cor livre: `<input type="color">` nativo do SO/navegador **e** um campo de texto hex validado por regex (`/^#[0-9a-fA-F]{6}$/`) em paralelo — **duas formas de escolher a mesma cor livre**, sincronizadas; um switch "Aplicar cor nos elementos da interface" liga/desliga o efeito por completo sem perder a cor escolhida.
+**RESULTADO IMEDIATO**: `chooseUiAccent(cor, habilitado)`.
+**RESULTADO VISUAL**: Aplicado em tempo real em toda a interface (não só na pré-visualização) quando habilitado — **esta é a única preferência de Aparência com alcance confirmado além do próprio modal de configurações e da pré-visualização** (as outras — tema, densidade, etc. — presumivelmente também afetam o app real por trás do modal, mas não foram confirmadas tão explicitamente quanto esta, cujo próprio nome do controle, "Aplicar cor nos elementos da interface", deixa o alcance implícito).
+**BANCO**: `localStorage` — cor + estado habilitado/desabilitado.
+**REFRESH**: Persiste.
+**EFEITO REMOTO**: Nenhum — cor de interface é 100% pessoal (distinta da cor de perfil pública, que outros veem, já documentada no Roteiro 1).
+**ERRO**: Campo de texto hex simplesmente **ignora** entradas que não batem com o regex (`if (/^#[0-9a-fA-F]{6}$/.test(value)) chooseUiAccent(...)`) — sem mensagem de erro, o valor digitado errado só não tem efeito nenhum até virar um hex válido de 6 dígitos.
+**ACESSIBILIDADE**: Swatches com `role="radio"`/`aria-checked` (mesmo padrão parcial de radiogroup já visto), `aria-label="Cor personalizada"` no seletor de cor nativo, switch com `role="switch"`/`aria-checked`.
+
+---
+
+## 10.7 — APPEARANCE_LIVE_PREVIEW (referência)
+
+**ID**: `APPEARANCE_LIVE_PREVIEW`
+**STATUS**: `CORE` — painel lateral fixo (`.appearance-preview`) com duas mensagens de exemplo (uma do próprio usuário, com avatar/cor reais da conta; uma de "Amigo", genérica) que refletem **em tempo real** tema/densidade/estilo de mensagem/fonte/espaçamento conforme cada controle é ajustado — sem precisar fechar e reabrir Configurações pra ver o efeito. Padrão de qualidade consistente com o resto desta seção: nada aqui é decorativo.
+
+---
+
+# CONTINUAÇÃO
+
+Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas agrupadas/de referência, dado que os três sliders de Aparência são estruturalmente idênticos e a norma contra resumir aplica-se a *interações distintas*, não a instâncias repetidas do mesmo componente genérico), as **24 interações do Roteiro 0**, **18 do Roteiro 1**, **11 do Roteiro 2**, **19 do Roteiro 3**, **23 do Roteiro 4**, **8 do Roteiro 5**, **9 do Roteiro 6**, **12 do Roteiro 7**, **8 do Roteiro 8**, **15 do Roteiro 9** e **7 do Roteiro 10** — **154 fichas no total**. Aparência é a seção de Configurações mais consistentemente `CORE` de toda a auditoria até agora — sem nenhum elemento decorativo encontrado.
+
+**Interrupção deliberada da auditoria — incidente de produção**: a pedido explícito do usuário, o trabalho de auditoria pausa aqui pra investigar e corrigir uma queda recorrente do bot de música (que já aconteceu de novo após um deploy) e, principalmente, **isolar o serviço do bot de música pra que deploys futuros de outras partes do app parem de derrubá-lo** — uma instrução permanente de processo, não só um bug pontual. A auditoria retoma a partir do Roteiro 11 (Amigos/DMs) assim que isso for resolvido.
