@@ -109,6 +109,8 @@ export const api = {
     request<{ server: Server }>('/api/servers', { method: 'POST', body: JSON.stringify({ name, description }) }),
   updateServer: (serverId: string, patch: { name?: string; description?: string; iconDataUrl?: string; accentColor?: AccentColor | null }) =>
     request<{ server: Server }>(s(serverId), { method: 'PATCH', body: JSON.stringify(patch) }),
+  deleteServer: (serverId: string, confirmName: string) =>
+    request<void>(s(serverId), { method: 'DELETE', body: JSON.stringify({ confirmName }) }),
   getServerMember: (serverId: string) => request<{ member: ServerMember }>(`${s(serverId)}/members/me`),
   leaveServer: (serverId: string) => request<void>(`${s(serverId)}/members/me`, { method: 'DELETE' }),
   getChannels: (serverId: string) => request<{ channels: Channel[] }>(`${s(serverId)}/channels`),

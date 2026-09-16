@@ -149,7 +149,7 @@ import {
 } from './roles.js';
 import { authorizeModerationAction, banUser, isBanned, listBans, unbanUser } from './moderation.js';
 import { getDefaultServerId } from './db.js';
-import { createServer, getServerById, listServersForUser, updateServer } from './servers.js';
+import { createServer, deleteServer, getServerById, listServersForUser, updateServer } from './servers.js';
 import {
   addServerMember,
   getServerMember,
@@ -374,6 +374,10 @@ const serverUpdateSchema = z.object({
     .refine((value) => value === '' || dataUrlPattern.test(value), 'Ícone inválido.')
     .optional(),
   accentColor: z.enum(ACCENT_COLORS).nullable().optional(),
+});
+
+const serverDeleteSchema = z.object({
+  confirmName: z.string(),
 });
 
 const inviteCodeSchema = z.string().trim().min(1).max(32);
@@ -815,6 +819,37 @@ app.patch(
     }
     sendToServerMembers(result.server.id, { type: 'SERVER_UPDATE', server: result.server });
     response.json({ server: result.server });
+  },
+);
+
+// Só o dono exclui o servidor (mesmo padrão do Discord real) — Gerenciar
+// Servidor sozinho não basta, já que isso é irreversível e apaga tudo em
+// cascata (canais, categorias, mensagens, cargos, convites). owner_id nulo
+// (servidor órfão, dono com a conta já excluída) cai pra quem tiver Gerenciar
+// Servidor, senão o servidor ficaria travado pra sempre sem dono.
+app.delete(
+  '/api/servers/:serverId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_SERVER),
+  (request, response) => {
+    const server = getServerById(currentServerId(response));
+    if (!server) {
+      response.status(404).json({ error: 'Servidor não encontrado.' });
+      return;
+    }
+    if (server.ownerId && server.ownerId !== currentUser(response).id) {
+      response.status(403).json({ error: 'Só o dono do servidor pode excluí-lo.' });
+      return;
+    }
+    const body = serverDeleteSchema.safeParse(request.body);
+    if (!body.success || body.data.confirmName !== server.name) {
+      response.status(400).json({ error: 'Digite o nome do servidor exatamente igual para confirmar.' });
+      return;
+    }
+    sendToServerMembers(server.id, { type: 'SERVER_DELETE', serverId: server.id });
+    deleteServer(server.id);
+    response.status(204).end();
   },
 );
 

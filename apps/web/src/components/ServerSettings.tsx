@@ -48,15 +48,22 @@ export function ServerSettings({
   server,
   member,
   onServerUpdated,
+  onServerDeleted,
 }: {
   open: boolean;
   onClose: () => void;
   server: Server;
   member: ServerMember;
   onServerUpdated: (server: Server) => void;
+  onServerDeleted: () => void;
 }) {
   const [section, setSection] = useState<ServerSettingsSection>('profile');
+  const [deleteOpen, setDeleteOpen] = useState(false);
   const canManageServer = hasPermission(member.permissions, Permission.MANAGE_SERVER);
+  // Só dono exclui, igual Discord real — servidor órfão (dono com conta
+  // excluída) libera pra quem tiver Gerenciar Servidor, senão ninguém mais
+  // conseguiria excluí-lo.
+  const canDeleteServer = server.ownerId ? server.ownerId === member.userId : canManageServer;
 
   useEffect(() => {
     if (!open) return;
@@ -94,6 +101,14 @@ export function ServerSettings({
         <button type="button" className={section === 'integrations' ? 'active' : ''} onClick={() => setSection('integrations')}>
           <span className="nav-glyph">◉</span> Integrações
         </button>
+        {canDeleteServer && (
+          <>
+            <div className="server-settings-nav-spacer" />
+            <button type="button" className="server-settings-danger" onClick={() => setDeleteOpen(true)}>
+              <TrashIcon size={17} /> Excluir servidor
+            </button>
+          </>
+        )}
       </nav>
 
       <div className="server-settings-content">
@@ -110,7 +125,88 @@ export function ServerSettings({
       <button type="button" className="server-settings-close" onClick={onClose} aria-label="Fechar configurações do servidor">
         <CloseIcon size={20} /><span>ESC</span>
       </button>
+      <DeleteServerDialog
+        open={deleteOpen}
+        server={server}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={() => {
+          setDeleteOpen(false);
+          onServerDeleted();
+        }}
+      />
     </section>
+  );
+}
+
+function DeleteServerDialog({
+  open,
+  server,
+  onClose,
+  onDeleted,
+}: {
+  open: boolean;
+  server: Server;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [confirmName, setConfirmName] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (open) {
+      setConfirmName('');
+      setError('');
+      setDeleting(false);
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  async function confirmDelete() {
+    setDeleting(true);
+    setError('');
+    try {
+      await api.deleteServer(server.id, confirmName);
+      onDeleted();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível excluir o servidor.');
+      setDeleting(false);
+    }
+  }
+
+  const matches = confirmName === server.name;
+
+  return (
+    <div className="dialog-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !deleting) onClose(); }}>
+      <div className="channel-dialog delete-server-confirm" role="dialog" aria-modal="true">
+        <header>
+          <div><h2>Excluir "{server.name}"</h2></div>
+          <button type="button" onClick={onClose} disabled={deleting} aria-label="Fechar"><CloseIcon size={18} /></button>
+        </header>
+        <p>
+          Essa ação é <strong>permanente</strong>. Todos os canais, categorias, mensagens, cargos e
+          convites deste servidor serão apagados pra sempre — não tem como desfazer.
+        </p>
+        <label htmlFor="delete-server-confirm-input">
+          Digite <strong>{server.name}</strong> pra confirmar
+        </label>
+        <input
+          id="delete-server-confirm-input"
+          value={confirmName}
+          onChange={(event) => setConfirmName(event.target.value)}
+          autoComplete="off"
+          autoFocus
+        />
+        {error && <p className="form-error" role="alert">{error}</p>}
+        <footer>
+          <button type="button" className="dialog-cancel" onClick={onClose} disabled={deleting}>Cancelar</button>
+          <button type="button" className="danger-button" disabled={!matches || deleting} onClick={() => void confirmDelete()}>
+            {deleting ? 'Excluindo…' : 'Excluir servidor'}
+          </button>
+        </footer>
+      </div>
+    </div>
   );
 }
 
@@ -168,7 +264,7 @@ function ServerProfilePane({
     if (!file) return;
     setIconError('');
     try {
-      setIconDataUrl(await fileToResizedDataUrl(file, 256, AVATAR_DATA_URL_MAX_LENGTH));
+      setIconDataUrl(await fileToResizedDataUrl(file, 256, AVATAR_DATA_URL_MAX_LENGTH, true));
     } catch {
       setIconError('Não foi possível usar essa imagem. Tente um arquivo menor.');
     }

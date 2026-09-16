@@ -957,7 +957,7 @@ function SettingsModal({
     if (!file) return;
     setAvatarError('');
     try {
-      setProfileAvatar(await fileToResizedDataUrl(file, 256, AVATAR_DATA_URL_MAX_LENGTH));
+      setProfileAvatar(await fileToResizedDataUrl(file, 256, AVATAR_DATA_URL_MAX_LENGTH, true));
     } catch {
       setAvatarError('Não foi possível usar essa imagem. Tente um arquivo menor.');
     }
@@ -2524,6 +2524,10 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           server={activeServer}
           member={member}
           onServerUpdated={() => serversState.refresh()}
+          onServerDeleted={() => {
+            setServerSettingsOpen(false);
+            serversState.refresh();
+          }}
         />
       )}
       <AddServerModal

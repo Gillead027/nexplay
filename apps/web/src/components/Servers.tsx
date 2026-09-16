@@ -22,6 +22,8 @@ export function useServersState(session: UserSession): { servers: Server[]; refr
         setServers((current) => (current.some((server) => server.id === event.server.id) ? current : [...current, event.server]));
       } else if (event.type === 'SERVER_UPDATE') {
         setServers((current) => current.map((server) => (server.id === event.server.id ? event.server : server)));
+      } else if (event.type === 'SERVER_DELETE') {
+        setServers((current) => current.filter((server) => server.id !== event.serverId));
       } else if (event.type === 'MEMBER_LEAVE' && event.userId === session.id) {
         setServers((current) => current.filter((server) => server.id !== event.serverId));
       }

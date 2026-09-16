@@ -817,6 +817,7 @@ export type RealtimeEvent =
   | { type: 'MEMBER_UNBANNED'; userId: string }
   | { type: 'SERVER_CREATE'; server: Server }
   | { type: 'SERVER_UPDATE'; server: Server }
+  | { type: 'SERVER_DELETE'; serverId: string }
   | { type: 'FRIENDSHIP_UPDATE'; participantIds: [string, string]; status: RawFriendshipStatus; requestedBy: string | null }
   | { type: 'DM_CHANNEL_CREATE'; channel: DmChannel }
   | { type: 'DM_MESSAGE_CREATE'; dmChannelId: string; message: DmMessage }
