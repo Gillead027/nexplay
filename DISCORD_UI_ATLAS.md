@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). Roteiros 5–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). Roteiros 6–69+ pendentes — ver nota de continuação no final do arquivo.
 
 ---
 
@@ -3490,4 +3490,246 @@ Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropri
 
 **Achados mais importantes deste roteiro** (por ordem de impacto prático no uso real do app): (1) **scroll forçado pro final a cada mensagem nova, mesmo lendo histórico antigo** — sem checagem de posição, sem botão "Novas mensagens", contrariando o comportamento esperado explicitamente pelo pedido original; (2) busca de mensagens encontra resultados antigos mas não consegue navegar até eles (fora da "janela carregada"); (3) nenhum autocomplete de `@`/`#`/`:`/`/` no composer; (4) sem drag-and-drop nem paste de imagem pro chat, só seletor de arquivo por clique; (5) nenhum menu de contexto (botão direito) em mensagens — tudo via hover only, o que também é uma lacuna de acessibilidade por teclado; (6) nenhum feedback visual de "Copiado!" em nenhuma ação de copiar do app inteiro (achado transversal, não só desta seção).
 
-**Próximo na fila**: Roteiro 5 — Tempo real (WebSocket, presença, typing indicator — já com achados prévios do Roteiro 1 a expandir aqui), seguido da prioridade especial do pedido original: Voz, Mute/Deafen, Compartilhar tela, Vídeo.
+---
+
+# ROTEIRO 5 — TEMPO REAL
+
+Arquitetura real (verificada em `apps/api/src/realtime.ts` e `apps/web/src/realtime.ts`, ambos lidos por completo nesta passagem): WebSocket próprio (biblioteca `ws`, sem Socket.IO/terceiros), autenticado pelo mesmo cookie de sessão HTTP no momento do handshake, sem "salas" (`rooms`) — toda a distribuição de eventos é resolvida on-the-fly consultando quem é membro de qual servidor no banco, a cada envio. Este roteiro documenta a **infraestrutura de tempo real em si** — o mecanismo de entrega de cada evento individual (`TEXT_MESSAGE_CREATE`, `CATEGORY_UPDATE`, etc.) já foi documentado dentro da ficha de cada feature nos Roteiros 3 e 4; aqui entram só as peças que ainda não tinham ficha própria: handshake, heartbeat, escopo de entrega, múltiplos dispositivos, e as duas lacunas grandes (presença e "digitando").
+
+---
+
+## 5.1 — WEBSOCKET_HANDSHAKE_AUTH
+
+**ID**: `WEBSOCKET_HANDSHAKE_AUTH`
+**NOME**: Autenticação da conexão WebSocket no momento do handshake
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Cliente > connectRealtime() (chamado uma vez dentro de Workspace.tsx, a única tela pós-login de vida longa) > new WebSocket('wss://.../api/realtime')`
+**POSIÇÃO NA INTERFACE**: Não aplicável (infraestrutura, sem UI própria).
+**APARÊNCIA**: Não aplicável.
+**ESTADO NORMAL**: Não aplicável.
+**HOVER**: Não aplicável.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável (sem indicador visual de "conectando" confirmado em nenhuma tela até agora nesta auditoria).
+**TRIGGER**: `Workspace` montar (uma única vez, depois do login — `started` é uma variável de módulo que impede reabrir se já chamado, confirmado no Roteiro 1).
+**PRÉ-CONDIÇÕES**: Cookie de sessão válido já presente (o handshake é a primeira e única vez que a validade da sessão é checada pro WebSocket — depois disso, a conexão **nunca mais revalida** o cookie até cair e precisar reconectar).
+**RESULTADO IMEDIATO**: No servidor, `server.on('upgrade', ...)` intercepta antes de qualquer coisa: (1) confirma que a URL é exatamente `/api/realtime`; (2) valida `Origin` contra `config.WEB_ORIGIN` (mesma política já aplicada ao CORS HTTP — se vier de origem diferente, `403 Forbidden` e o socket é destruído na hora, sem completar o handshake WebSocket); (3) `getSessionFromCookieHeader(request.headers.cookie)` — reaproveita a **mesma função exata** usada pelas rotas HTTP (Roteiro 1); (4) `getUserById`+`isBanned` — se o usuário não existir ou estiver banido, `401 Unauthorized`, socket destruído.
+**RESULTADO VISUAL**: Nenhum diretamente — se falhar, o cliente só veria `ws.onerror`/`ws.onclose` disparar (ver `REALTIME_RECONNECT`, Roteiro 1) e tentar de novo, **sem nenhuma mensagem específica de "autenticação falhou"** distinta de uma falha de rede qualquer.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Se autenticado com sucesso: `wss.handleUpgrade(...)` completa o handshake, `ws.userId = user.id` fica gravado no próprio socket (usado depois por todo o resto do sistema de distribuição de eventos).
+**RESULTADO FINAL**: Socket registrado em `clients` (um `Set` simples, sem indexação por servidor/sala).
+**EFEITO LOCAL**: `ws.onopen` no cliente dispara todos os `connectHandlers` (já documentado no Roteiro 1 — é o gatilho de refetch de tudo que cada tela precisa resincronizar).
+**EFEITO REMOTO**: Nenhum diretamente.
+**REALTIME**: É a própria infraestrutura sendo estabelecida.
+**BACKEND**: O handshake em si.
+**BANCO**: Leitura de usuário + checagem de ban.
+**REFRESH**: F5 sempre refaz o handshake do zero.
+**RECONEXÃO**: Ver `REALTIME_RECONNECT_SESSION_EXPIRED` adiante — acontece toda vez que `scheduleReconnect()` dispara.
+**ERRO**: `403`/`401` fecham o socket bruto antes mesmo dele virar um WebSocket de verdade (resposta HTTP crua escrita direto no `socket`, `socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n')` — não é uma mensagem de erro no protocolo WebSocket, é uma rejeição no nível do handshake HTTP que precede o upgrade).
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Não aplicável.
+
+---
+
+## 5.2 — WEBSOCKET_HEARTBEAT
+
+**ID**: `WEBSOCKET_HEARTBEAT`
+**NOME**: Ping/pong periódico para detectar conexões mortas
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Servidor > setInterval a cada 30 segundos > todos os clientes conectados`
+**POSIÇÃO NA INTERFACE**: Não aplicável — inteiramente invisível ao usuário.
+**APARÊNCIA**: Não aplicável.
+**ESTADO NORMAL**: A cada 30s (`HEARTBEAT_INTERVAL_MS`), o servidor marca cada cliente como `isAlive = false` e envia um `ping()` nativo do protocolo WebSocket.
+**HOVER**: Não aplicável.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável — sempre ativo enquanto o servidor está no ar.
+**LOADING**: Não aplicável.
+**TRIGGER**: Timer periódico, automático.
+**PRÉ-CONDIÇÕES**: Cliente conectado.
+**RESULTADO IMEDIATO**: Cliente responde automaticamente com `pong` (comportamento nativo do navegador/protocolo WebSocket, não código JS explícito do NexPlay no lado do cliente — o handshake de ping/pong é tratado pelo motor do navegador por baixo, invisível até ao próprio código React) → `ws.on('pong', () => { ws.isAlive = true; })` no servidor.
+**RESULTADO VISUAL**: Nenhum.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: No próximo ciclo de 30s, se `isAlive` ainda estiver `false` (nenhum pong recebido no intervalo anterior), `client.terminate()` — a conexão é forçadamente encerrada do lado do servidor.
+**RESULTADO FINAL**: Conexões "zumbi" (TCP ainda tecnicamente aberto, mas sem resposta — comum depois de o cliente perder rede abruptamente, sem um `close` limpo) são detectadas e limpas em até ~60 segundos (um ciclo de tolerância + um de confirmação).
+**EFEITO LOCAL**: Para o cliente cuja conexão foi terminada: dispara `ws.onclose` → `scheduleReconnect()` (mesmo fluxo do Roteiro 1).
+**EFEITO REMOTO**: Nenhum diretamente — mas libera o servidor de continuar tentando entregar eventos pra um socket morto, e a lista de `clients` fica mais precisa pra qualquer coisa que dependa de "quem está online" (relevante, já que não existe indicador de presença hoje — ver `PRESENCE_STATUS` adiante — mas se um dia existir, dependeria diretamente da precisão deste heartbeat).
+**REALTIME**: É o próprio mecanismo de saúde da conexão.
+**BACKEND**: `setInterval` no processo do servidor, `clearInterval` registrado em `wss.on('close', ...)` (limpeza correta ao encerrar o servidor WebSocket).
+**BANCO**: Não aplicável.
+**REFRESH**: Reinicia o ciclo do zero a cada nova conexão.
+**RECONEXÃO**: Detecção de morte → reconexão automática do cliente.
+**ERRO**: Não aplicável (é o próprio mecanismo de detecção de erro/desconexão silenciosa).
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Não aplicável.
+
+**Nota de auditoria**: 30 segundos é um intervalo razoável (nem agressivo demais gerando tráfego desnecessário, nem tão longo que o usuário fique "conectado" pro servidor por minutos depois de já ter perdido a rede de fato) — não é uma lacuna, é uma escolha de engenharia sã, documentada aqui como `CORE`.
+
+---
+
+## 5.3 — REALTIME_EVENT_SCOPING
+
+**ID**: `REALTIME_EVENT_SCOPING`
+**NOME**: Arquitetura de escopo de entrega de eventos (quem recebe o quê)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: Não é uma interação — é a arquitetura por trás de **toda** entrega de evento em tempo real do app.
+**POSIÇÃO NA INTERFACE**: Não aplicável.
+**APARÊNCIA**: Não aplicável.
+**ESTADO NORMAL**: Três funções de envio, cada uma com escopo diferente, todas resolvendo a lista de destinatários **na hora, sem cache**: `broadcast(event)` — todo cliente conectado, reservado só pra `MEMBER_BANNED`/`MEMBER_UNBANNED` (eventos genuinamente de instância inteira, já que banimento continua global, não por servidor — confirmado consistente com `DISCORD_PARITY_PLAN.md` §1); `sendToServerMembers(serverId, event)` — consulta `server_members` na hora e manda só pra quem é membro daquele servidor específico, usado por **todo** evento de canal/categoria/cargo/membro/mensagem/soundboard; `sendToUsers(userIds, event)` — lista explícita (ex.: os dois participantes de uma DM), cobre múltiplas abas/dispositivos do mesmo usuário automaticamente (itera todos os sockets, filtra por `userId`, não por conexão específica).
+**HOVER**: Não aplicável.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: Cada rota de API que muda algo relevante chama a função de envio apropriada depois de persistir a mudança no banco.
+**PRÉ-CONDIÇÕES**: Não aplicável.
+**RESULTADO IMEDIATO**: Entrega seletiva e correta — **verificado com script real em sessão anterior desta linha de trabalho confirmando que um não-membro de um servidor nunca recebe os eventos daquele servidor** (confirmado em `DISCORD_PARITY_PLAN.md` §1).
+**RESULTADO VISUAL**: Depende do evento específico (já documentado feature por feature nos Roteiros 3/4).
+**RESULTADO SONORO**: Não aplicável a esta ficha (arquitetura, não uma ação sonora).
+**ANIMAÇÃO**: Não aplicável.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Modelo de segurança simples e certo pra escala de um grupo fechado de amigos — **sem "salas" WebSocket** (nenhum `ws.join(room)` como em Socket.IO), a lista de destinatários é sempre recalculada a partir da fonte de verdade real (o banco), nunca de um cache que poderia ficar desatualizado se a filiação mudar com frequência (`sendToServerMembers` resolve isso a cada chamada, não uma vez na conexão).
+**EFEITO LOCAL**: Não aplicável a esta ficha.
+**EFEITO REMOTO**: É o próprio mecanismo de efeito remoto de tudo no app.
+**REALTIME**: É a própria arquitetura.
+**BACKEND**: Consulta ao banco (`listMemberUserIdsForServer`) a cada chamada de `sendToServerMembers` — **um custo real de performance por cada evento enviado** (uma query SQL adicional por broadcast), aceitável na escala atual (grupo fechado de amigos, poucas dezenas de membros no máximo por servidor) mas seria um ponto de atenção se o app crescesse muito — **não é uma lacuna funcional, é uma nota de escalabilidade futura**, registrada aqui porque o pedido original pede pra documentar também o que acontece "no banco"/"no backend" de cada coisa.
+**BANCO**: `server_members` consultada a cada envio escopado por servidor.
+**REFRESH**: Não aplicável.
+**RECONEXÃO**: Não aplicável a esta ficha (a lista de destinatários é sempre recalculada, então uma reconexão simplesmente volta a fazer parte do `clients` novamente).
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Não aplicável.
+
+---
+
+## 5.4 — REALTIME_RECONNECT_SESSION_EXPIRED *(achado confirmado)*
+
+**ID**: `REALTIME_RECONNECT_SESSION_EXPIRED`
+**NOME**: Tentativa de reconexão com uma sessão já expirada
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: Refina e **confirma definitivamente** um achado que o Roteiro 1 (`REALTIME_RECONNECT`) tinha deixado como "pendente de verificação" — agora confirmado lendo `attachRealtime` por completo nesta passagem.
+**CAMINHO EXATO**: `Cliente > WebSocket cai (rede, servidor reiniciado, etc.) > scheduleReconnect() tenta de novo > sessão HTTP já expirou nesse meio-tempo (12h, Roteiro 1)`
+**RESULTADO IMEDIATO — CONFIRMADO**: `getSessionFromCookieHeader` no handshake rejeita com `401 Unauthorized` (mesma checagem de `expiresAt` documentada no Roteiro 1). O socket é destruído no nível HTTP, nunca chega a virar uma conexão WebSocket de verdade.
+**RESULTADO VISUAL — CONFIRMADO, LACUNA REAL**: do lado do cliente, `ws.onerror = () => ws.close()` e `ws.onclose = () => { socket = null; scheduleReconnect(); }` — **o código do cliente não inspeciona o código de fechamento nem a resposta HTTP do handshake rejeitado**, então uma rejeição por sessão expirada é tratada **exatamente igual** a uma queda de rede comum: agenda nova tentativa com o mesmo backoff exponencial (1s → 2s → 4s → 8s → 15s, depois sempre 15s). **Resultado prático: um usuário com a aba/app aberto além das 12h de sessão fica preso num ciclo infinito de reconexão que nunca vai ter sucesso, silenciosamente, pra sempre, sem nenhuma mensagem sugerindo "faça login de novo".** A única forma de sair desse estado é um F5 manual (que dispara `SESSION_RESTORE_ON_BOOT`, Roteiro 1, que aí sim detecta a sessão morta e mostra a tela de login) ou fechar e reabrir o app.
+**EFEITO LOCAL**: Reconexões infinitas fracassadas, silenciosas, sem custo de rede alto (só uma tentativa a cada 15s no estado estável) mas sem nunca resolver.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: É o próprio ciclo quebrado.
+**BACKEND**: Rejeita corretamente (o backend está certo — a lacuna é inteiramente do lado do cliente, que não reage à rejeição de forma diferente de uma falha de rede).
+**BANCO**: Não aplicável.
+**REFRESH**: É a única saída funcional hoje (mencionado acima).
+**RECONEXÃO**: É o próprio problema documentado.
+**ERRO**: Nunca exposto ao usuário.
+**CANCELAMENTO**: Não aplicável — não há como o usuário interromper o ciclo a não ser recarregando manualmente.
+**REVERSÃO**: F5 ou reabrir o app.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Não aplicável.
+
+**Prioridade de correção sugerida**: média-alta — não é catastrófico (o usuário eventualmente percebe que nada atualiza e recarrega manualmente), mas é silencioso e confuso, e a correção é relativamente simples: o cliente poderia inspecionar o código de fechamento do WebSocket (ou fazer uma checagem HTTP leve tipo `GET /api/session` antes de tentar reconectar) e, se detectar 401, parar de tentar reconectar e mostrar a tela de login diretamente, em vez de re-tentar pra sempre.
+
+---
+
+## 5.5 — MULTI_DEVICE_SYNC
+
+**ID**: `MULTI_DEVICE_SYNC`
+**NOME**: Mesmo usuário conectado em múltiplas abas/dispositivos simultaneamente
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB` (inclusive misturado — desktop + web ao mesmo tempo, já que os dois usam o mesmo cookie de sessão/mesma conta)
+**CAMINHO EXATO**: `Mesmo usuário > login em duas abas do navegador, ou navegador + cliente desktop, simultaneamente`
+**POSIÇÃO NA INTERFACE**: Não aplicável — é um comportamento de sistema, não uma tela específica.
+**APARÊNCIA**: Não aplicável.
+**ESTADO NORMAL**: Cada aba/dispositivo abre sua própria conexão WebSocket independente (`ws.userId` igual nos dois, mas são dois objetos `TrackedSocket` diferentes no `Set` de `clients`).
+**HOVER**: Não aplicável.
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável — **não há nenhum bloqueio a múltiplas sessões simultâneas** (diferente de, por exemplo, um app bancário que força logout de sessões antigas) — confirmado por ausência: `createSession`/`setSessionCookie` não invalidam sessões anteriores, e o WebSocket não tem nenhuma lógica de "só uma conexão por usuário" (ao contrário do processo desktop, que tem single-instance lock — Roteiro 0 — mas isso é só dentro do mesmo SO/máquina; nada impede logar em outro computador ao mesmo tempo).
+**LOADING**: Não aplicável.
+**TRIGGER**: Login em um segundo lugar enquanto já logado em outro.
+**PRÉ-CONDIÇÕES**: Credenciais válidas (nenhuma outra checagem).
+**RESULTADO IMEDIATO**: Duas (ou mais) conexões WebSocket ativas simultaneamente pro mesmo `userId`.
+**RESULTADO VISUAL**: Ambas as telas recebem os mesmos eventos em tempo real (`sendToUsers`/`sendToServerMembers` iteram **todos** os sockets que batem o filtro, não um só) — uma mensagem enviada de uma aba aparece em tempo real na outra, sem precisar de refresh.
+**RESULTADO SONORO**: Nenhum específico a esta ficha (cada aba tocaria seus próprios sons normalmente, o que pode gerar sons duplicados se as duas estiverem à vista/audíveis ao mesmo tempo — não mitigado, sem "modo silencioso pra abas em segundo plano" confirmado).
+**ANIMAÇÃO**: Não aplicável.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma — as duas conexões vivem em paralelo, independentes, até uma delas fechar.
+**RESULTADO FINAL**: Sincronização "grátis" entre dispositivos, puramente como efeito colateral da arquitetura de distribuição por `userId` já existir (não foi uma feature construída deliberadamente pra isso, é uma consequência direta e correta do design).
+**EFEITO LOCAL**: Cada aba mantém seu próprio estado React independente — **não há sincronização de estado de UI entre abas** (ex.: qual canal está selecionado em uma aba não afeta a outra, só os dados que vêm via eventos de tempo real).
+**EFEITO REMOTO**: Nenhuma diferença — outros usuários não sabem/não se importam quantos dispositivos alguém tem conectado (sem indicador de "conectado em múltiplos dispositivos" em lugar nenhum, mesmo que o Discord real tenha algo parecido pra status de atividade).
+**REALTIME**: Cobertura automática via `sendToUsers`/`sendToServerMembers`.
+**BACKEND**: Nenhuma lógica especial — é o comportamento natural de iterar todos os sockets que casam o filtro.
+**BANCO**: Não aplicável.
+**REFRESH**: Cada aba/dispositivo é totalmente independente pra fins de F5.
+**RECONEXÃO**: Cada conexão reconecta independentemente se cair.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Fazer logout numa aba (`LOGOUT`, Roteiro 1) **não desloga as outras abas/dispositivos** — `DELETE /api/session` só limpa o cookie **daquele navegador específico** que fez a chamada; a sessão continua válida (mesmo `SESSION_SECRET`/assinatura) em qualquer outro lugar onde o cookie ainda esteja presente, já que não há lista de sessões revogáveis (confirmado em `DISCORD_PARITY_PLAN.md` §2: "Logout de todos os dispositivos | BLOCKED — impossível sem sessão stateful").
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Não aplicável.
+
+**Nota de auditoria**: isso é o comportamento correto e esperado (Discord real também sincroniza entre dispositivos livremente) — documentado aqui como `CORE`, não uma lacuna. A lacuna real relacionada já está registrada em `DISCORD_PARITY_PLAN.md` §2: sem lista de sessões ativas, sem "sair de todos os dispositivos".
+
+---
+
+## 5.6 — BAN_FORCE_DISCONNECT (referência — mecanismo já documentado em detalhe)
+
+**ID**: `BAN_FORCE_DISCONNECT`
+**NOME**: Sequência exata de desconexão forçada ao banir um usuário
+**STATUS**: `CORE` — mecanismo já confirmado funcionando, documentado aqui com a sequência exata (complementa `SESSION_FORCE_LOGOUT_BAN`, Roteiro 1, que documentou o lado do cliente — esta ficha documenta o lado do servidor com mais precisão agora que `realtime.ts` foi lido por completo):
+1. `banUser(...)` grava o banimento no banco.
+2. `forceDisconnectFromVoice(userId)` — se estava numa call de voz, é desconectado da call primeiro (**antes** de qualquer coisa relacionada ao WebSocket de dados).
+3. `broadcast({ type: 'MEMBER_BANNED', userId })` — evento vai pra **todo mundo conectado na instância inteira**, não só pro banido (consistente com banimento ser de instância inteira, não por servidor) — é isso que dispara `void onSignOut()` no cliente do próprio banido (Roteiro 1) **e** permite que outros clientes conectados reajam removendo o usuário de listas de membros/online em tempo real (mecanismo de reação nos *outros* clientes não reauditado em detalhe nesta passagem específica — pertence a uma auditoria futura de moderação).
+4. `disconnectUser(userId)` — **só depois** do broadcast, fecha à força qualquer socket WebSocket que aquele `userId` ainda tenha aberto — defesa em profundidade: mesmo que o passo 3 não tivesse sido suficiente por algum motivo (ex.: um clique perdido, uma aba com JS travado), a conexão de dados é encerrada de qualquer forma.
+**Achado desta passagem**: a ordem exata (voz → evento → fechar socket) é deliberada e correta — mas **o WebSocket sendo fechado por `disconnectUser` não distingue esse motivo de uma queda de rede comum** (mesmo código de fechamento genérico) — o cliente do usuário banido, ao ter o socket fechado nesse passo 4, entraria no mesmo ciclo de `scheduleReconnect()` normal (Roteiro 1) **se** o passo 3 (receber o evento e fazer logout) não tivesse já acontecido primeiro — como o sign-out já limpa a sessão local antes disso ser relevante, na prática não chega a importar, mas é uma dependência de ordem de execução implícita (não documentada em nenhum comentário do código) que vale reforçar aqui.
+
+---
+
+## 5.7 — TYPING_INDICATOR *(MISSING)*
+
+**ID**: `TYPING_INDICATOR`
+**NOME**: Indicador de "Fulano está digitando..."
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: **`MISSING` por completo, confirmado no nível do protocolo.** Não é só uma peça de UI ausente — **o próprio tipo de evento não existe** no union `RealtimeEvent` (`packages/shared/src/index.ts`, lido por completo em auditorias anteriores desta linha de trabalho e reconfirmado agora): nenhum `TYPING_START`/`USER_TYPING`/equivalente. Confirmado também por ausência total no composer (Roteiro 4, `MESSAGE_SEND`): nenhum handler de `onChange` do `textarea` dispara nada além de atualizar o estado local `draft` — nenhum "throttled emit" de typing, que é o padrão esperado pelo pedido original (Roteiro 8: "Digitação: emite typing indicator com throttling").
+**CAMINHO EXATO ESPERADO** (não implementado): `Canal de texto > rodapé, abaixo da lista de mensagens ou acima do composer > "Fulano está digitando..."` (posição exata seria uma decisão de design nova, já que nunca existiu).
+**Pré-requisito de implementação, caso venha a ser feito**: exigiria (a) um novo tipo de evento no protocolo compartilhado; (b) emissão throttled no cliente a cada tecla (não a cada tecla individual — precisa de debounce/throttle pra não inundar o WebSocket); (c) um timeout do lado de quem recebe pra "esquecer" automaticamente que alguém está digitando se não receber um novo sinal em alguns segundos (evita ficar preso mostrando "digitando..." pra sempre se o evento de "parou de digitar" se perder).
+
+---
+
+## 5.8 — PRESENCE_STATUS *(MISSING)*
+
+**ID**: `PRESENCE_STATUS`
+**NOME**: Status de presença geral (online/ausente/não perturbe/invisível/offline)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: **`MISSING` por completo, confirmado no nível do protocolo** — mesma ausência total no union `RealtimeEvent` que `TYPING_INDICATOR`. Já registrado em `DISCORD_PARITY_PLAN.md` §8: "Presença (online/ausente/dnd/invisível/offline) | MISSING — hoje só existe 'conectado à voz' ou não; não há status de presença geral (só atividade de jogo/música)". **Confirmado nesta passagem que a única forma de saber se alguém está "ativo" hoje é indireta**: (a) estar conectado a um canal de voz (visível na lista de participantes daquele canal específico, Roteiro 3); (b) ter uma atividade detectada (jogo/Spotify, via o mecanismo de `ACTIVITY_DETECT` do Roteiro 0, só disponível no cliente desktop). **Não existe nenhum indicador de "esta pessoa está com o app aberto agora", nem em servidores nem na lista de amigos** — mesmo a infraestrutura de `clients`/`ws.userId` já existindo no servidor (que tecnicamente já sabe quem está conectado, `Set<TrackedSocket>` com `userId` em cada um), **essa informação nunca é exposta pra nenhum cliente** — nenhuma rota, nenhum evento a expõe.
+**CAMINHO EXATO ESPERADO** (não implementado): Bolinha de status no avatar (verde/amarelo/vermelho/cinza) em toda a UI — rail de servidores (via mini-perfil), lista de membros, lista de amigos, mini-perfil.
+**Pré-requisito de implementação, caso venha a ser feito**: o servidor **já tem os dados brutos necessários** (quem está com socket aberto agora, via o `Set<clients>` já existente) — o trabalho real seria: (a) expor isso como um novo tipo de evento (`PRESENCE_UPDATE`) disparado em `ws.on('close')`/na conexão bem-sucedida; (b) decidir o escopo de quem recebe essas atualizações (provavelmente `sendToServerMembers` pra cada servidor em comum, ou um `sendToUsers` pra lista de amigos — a granularidade certa depende de decisão de produto, não só técnica); (c) status "ausente" automático por inatividade exigiria detectar inatividade no cliente (sem mexer o mouse/teclado por N minutos) e emitir separadamente; (d) "não perturbe"/"invisível" seriam escolhas manuais do usuário, persistidas (provavelmente uma coluna nova em `users`).
+
+---
+
+# CONTINUAÇÃO
+
+Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas `MISSING`/de referência), as **24 interações do Roteiro 0**, **18 do Roteiro 1**, **11 do Roteiro 2**, **19 do Roteiro 3**, **23 do Roteiro 4** e **8 do Roteiro 5** — **103 fichas no total**, cada uma verificada contra o código real (`apps/api/src/realtime.ts` e `apps/web/src/realtime.ts` lidos por completo nesta passagem). A infraestrutura de tempo real em si (handshake, heartbeat, escopo de entrega, multi-dispositivo, desconexão forçada por ban) é sólida e correta — documentada como `CORE`. As duas lacunas mais importantes — **typing indicator** e **presença geral** — estão confirmadas ausentes não só na UI mas no próprio protocolo de eventos compartilhado, o que significa que implementá-las exigiria estender o contrato `RealtimeEvent` em `packages/shared`, não só adicionar componentes React. O achado novo de maior impacto prático: reconectar com uma sessão já expirada entra num loop silencioso e infinito de tentativas que nunca vão ter sucesso, sem nunca avisar o usuário pra logar de novo.
+
+**Próximo na fila**: a partir daqui, a auditoria entra na **prioridade especial do pedido original** — Voz (conectar/desconectar, WebRTC/LiveKit), Mute/Deafen, Compartilhar tela, Vídeo — a área que o próprio usuário marcou como mais importante desde o início desta linha de trabalho. Dado o tamanho já considerável deste documento (103 fichas, 5 roteiros completos), a auditoria de Voz será tratada como sua própria unidade de trabalho extensa (múltiplos roteiros do pedido original: 10 a 17), começando pela conexão/desconexão de canal de voz.
