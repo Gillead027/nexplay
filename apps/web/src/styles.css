@@ -978,8 +978,6 @@ body { letter-spacing: -.01em; }
   background: linear-gradient(100deg, #111526 0%, #0b0e18 48%, #090c14 100%);
   user-select: none;
 }
-.app-chrome-brand { height: 100%; display: flex; align-items: center; gap: 10px; padding-left: 16px; -webkit-app-region: drag; }
-.app-chrome-brand strong { font-size: 13px; font-weight: 700; letter-spacing: -.15px; }
 .brand-mark {
   position: relative; width: 29px; height: 29px; display: inline-block; flex: 0 0 auto;
   overflow: hidden; border-radius: 9px; background: linear-gradient(145deg, #9489ff, #6b5be7);
@@ -989,12 +987,15 @@ body { letter-spacing: -.01em; }
 .brand-mark i:first-child { left: 6px; transform: rotate(-18deg); }
 .brand-mark i:last-child { right: 6px; transform: rotate(18deg); }
 .brand-mark.compact { width: 27px; height: 27px; border-radius: 8px; }
-.beta-badge { padding: 2px 6px; border: 1px solid #484064; border-radius: 5px; color: #aca6d2; background: #252037; font-size: 8px; font-weight: 800; letter-spacing: .65px; }
 .app-chrome-drag { height: 100%; flex: 1; -webkit-app-region: drag; }
 .window-controls { height: 100%; display: flex; -webkit-app-region: no-drag; }
-.window-controls button { width: 47px; height: 100%; color: #8f94a8; cursor: pointer; font-size: 16px; }
+.window-controls button {
+  width: 47px; height: 100%; display: flex; align-items: center; justify-content: center;
+  border: none; background: transparent; color: #8f94a8; cursor: pointer;
+  padding: 0; margin: 0; appearance: none; outline: none;
+}
 .window-controls button:hover { color: #fff; background: rgba(255,255,255,.07); }
-.window-controls .window-close:hover { background: #d94f64; }
+.window-controls .window-close:hover { color: #fff; background: #d94f64; }
 
 .server-rail, .sidebar, .main-panel { grid-row: 1; }
 .server-rail { padding: 15px 0; gap: 11px; border-right-color: #171d29; }
