@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). Roteiros 8–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). Roteiros 9–69+ pendentes — ver nota de continuação no final do arquivo.
 
 ---
 
@@ -4524,4 +4524,261 @@ Continuação direta do Roteiro 6. Arquitetura real (verificada em `Workspace.ts
 
 Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas `MISSING`/de referência), as **24 interações do Roteiro 0**, **18 do Roteiro 1**, **11 do Roteiro 2**, **19 do Roteiro 3**, **23 do Roteiro 4**, **8 do Roteiro 5**, **9 do Roteiro 6** e **12 do Roteiro 7** — **124 fichas no total**. Com isso, a auditoria de Voz cobre agora o ciclo completo: entrar, mutar, ensurdecer, sair, câmera, compartilhar tela, participantes (lista, fala, volume, desconectar), dispositivos, chat da call, PTT e perfis de microfone. Achados novos de maior interesse: um provável bug de encoding numa mensagem de erro (`"N?o foi poss?vel..."`); o chat de voz é arquitetural e deliberadamente mais simples que o chat de canal (efêmero, sem markdown, sem histórico, sem toolbar); volumes individuais (voz/tela/soundboard) e escolha de dispositivo não persistem entre sessões, diferente de quase toda outra preferência de voz, que já usa `localStorage` consistentemente.
 
-**Ainda pendente dentro de Voz/Vídeo** (próxima passagem): grid/foco de vídeo e tela compartilhada (`ScreenStage.tsx`, ainda não lido nesta auditoria), auditoria de Vídeo dedicada (câmera em detalhe — preview, grid multi-participante), e o botão/UI específico de acionar o soundboard dentro da tela de voz. **Depois**: Servidores/Configurações completas (Cargos, Permissões, Membros, Convites, Integrações — já `CORE` mas sem ficha campo-a-campo), Amigos/DMs, Configurações do app inteiras (Conta, Privacidade, Aparência — já com achados parciais dispersos nas seções anteriores), Premium/Shop (bloco `MISSING`), e os três documentos ainda não criados (`DISCORD_NAVIGATION_TREE.md`, `DISCORD_INTERACTION_MATRIX.md`, `DISCORD_USER_JOURNEYS.md`) — que passam a fazer mais sentido produzir a partir daqui, já que boa parte da superfície do app já está mapeada em profundidade suficiente para alimentá-los sem generalizar.
+---
+
+# ROTEIRO 8 — VÍDEO E TELA COMPARTILHADA: EXIBIÇÃO (GRID/FOCO)
+
+Continuação de Voz. Arquitetura real (verificada em `apps/web/src/components/ScreenStage.tsx`, lido por completo): câmera e tela compartilhada usam dois modelos de exibição **deliberadamente diferentes** — câmera é sempre visível em miniatura na galeria (é só uma chamada de vídeo normal, sem "opt-in"); tela compartilhada é **opt-in pra assistir** — aparece como um card pequeno na galeria até alguém clicar pra promovê-la a um tile grande em foco. Suporta múltiplas transmissões simultâneas, cada uma assistível independentemente.
+
+---
+
+## 8.1 — VIDEO_CAMERA_GALLERY_TILE
+
+**ID**: `VIDEO_CAMERA_GALLERY_TILE`
+**NOME**: Miniatura de câmera na galeria de vídeo
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Canal de voz conectado > área central de vídeo > galeria (linha inferior) > tile de câmera`
+**POSIÇÃO NA INTERFACE**: `.gallery-row`, ao lado de eventuais cards de transmissão não assistida.
+**APARÊNCIA**: `<video autoPlay playsInline>` + rótulo com o nome do participante (`.screen-label.small`); skeleton de carregamento (`.stream-skeleton`, três barras) enquanto o vídeo ainda não disparou `onLoadedMetadata`.
+**ESTADO NORMAL**: Aparece automaticamente assim que qualquer participante liga a câmera — **sem exigir nenhuma ação de quem assiste** (diferente de tela compartilhada).
+**HOVER**: Não confirmado nenhum overlay de ação no hover desta tile específica (diferente do card de transmissão não assistida, que tem "Ver transmissão" no hover).
+**ACTIVE/PRESSED**: Não aplicável (não é clicável).
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Skeleton de 3 barras até o vídeo carregar o primeiro frame.
+**TRIGGER**: Automático — outro participante (ou você mesmo) liga a câmera (`VOICE_CAMERA_TOGGLE`, Roteiro 6).
+**PRÉ-CONDIÇÕES**: Participante com câmera ativa e **não mutada** — `cameraTiles` filtra explicitamente `!screen.publication.isMuted`, evitando (comentário confirmado no código) "um tile preto na galeria pra uma câmera que a pessoa já apagou" no caso comum de trocar de dispositivo (que muta a publicação sem desfazê-la por completo).
+**RESULTADO IMEDIATO**: `attachVideo` conecta a track de vídeo ao elemento `<video>`.
+**RESULTADO VISUAL**: Vídeo ao vivo aparece assim que carrega.
+**RESULTADO SONORO**: Não aplicável a esta ficha (o áudio de voz do participante é tratado inteiramente à parte, via `VoiceAudioSinks`, Roteiro 7 — a track de vídeo da câmera não carrega áudio).
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma — não há como "promover" uma câmera a um tile grande (diferente de tela compartilhada) — **achado real**: se várias pessoas ligarem a câmera ao mesmo tempo, todas ficam do mesmo tamanho pequeno na galeria, sem um mecanismo de foco/destaque em quem está falando (nenhuma integração confirmada entre `VOICE_SPEAKING_INDICATOR`, Roteiro 7, e o tamanho/destaque do tile de câmera na galeria).
+**RESULTADO FINAL**: Vídeo continua tocando enquanto o participante mantiver a câmera ligada.
+**EFEITO LOCAL**: Nenhuma mudança de dado.
+**EFEITO REMOTO**: Nenhum (é só recepção).
+**REALTIME**: Nativo do LiveKit (track de vídeo).
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: Recriado do zero a cada nova conexão.
+**RECONEXÃO**: Track reanexada quando reconecta.
+**ERRO**: Não confirmado tratamento de erro específico se a track falhar ao anexar (`attachVideo` retorna `undefined` silenciosamente se a condição de tipo não bater).
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: O próprio participante desligando a câmera remove o tile.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: **`MISSING`** — nenhuma ação disponível clicando na tile de câmera de alguém (Discord real geralmente permite fixar/expandir via clique ou menu).
+**ACESSIBILIDADE**: Rótulo de texto com o nome sempre visível (não depende só do vídeo pra identificar quem é).
+
+**Nota de auditoria — vídeo local mutado**: `muted={view.participant instanceof RemoteParticipant === false}` — a **própria** tile de câmera do usuário (não a dos outros) é renderizada com o elemento `<video muted>` — proteção padrão e correta contra eco/duplicação (mesmo que a track de câmera normalmente não carregue áudio, é uma defesa segura por padrão).
+
+---
+
+## 8.2 — SCREEN_SHARE_WATCH
+
+**ID**: `SCREEN_SHARE_WATCH`
+**NOME**: Começar a assistir uma transmissão de tela (promover a tile grande)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Canal de voz conectado > galeria > card de transmissão não assistida > clique`
+**POSIÇÃO NA INTERFACE**: `ShareGalleryTile`, no mesmo `.gallery-row` das câmeras.
+**APARÊNCIA**: Card com ícone de compartilhamento (`ShareIcon`), rótulo com nome + ponto "ao vivo" (`.live-dot`); no hover, overlay com "👁 Ver transmissão".
+**ESTADO NORMAL**: Card pequeno, não expandido — **é o estado padrão de qualquer transmissão nova**: ninguém assiste automaticamente, nem quem já estava na call quando a transmissão começou.
+**HOVER**: Overlay "Ver transmissão" aparece sobre o card.
+**ACTIVE/PRESSED**: Padrão de botão.
+**SELECTED**: Não aplicável (o card em si nunca fica "selecionado" — ao clicar, ele desaparece da galeria e vira uma `HeroTile` em outra área da tela).
+**DISABLED**: Nunca.
+**LOADING**: Skeleton de vídeo se ainda carregando ao promover.
+**TRIGGER**: Clique no card inteiro (é um `<button>` que envolve tudo).
+**PRÉ-CONDIÇÕES**: Alguém estar compartilhando tela na call.
+**RESULTADO IMEDIATO**: `onWatch(screen.id)` → `watchingIds` ganha o id daquela transmissão.
+**RESULTADO VISUAL**: Transmissão desaparece da galeria pequena e aparece como `HeroTile` grande na `.hero-row`, acima da galeria.
+**RESULTADO SONORO**: Nenhum som específico de "começar a assistir" (distinto do som de início de transmissão de quem compartilha, já documentado em `VOICE_SCREEN_SHARE_START`, Roteiro 6 — aquele toca pra quem compartilha, não pra quem assiste).
+**ANIMAÇÃO**: Não confirmada transição entre os dois tamanhos de tile.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Ver `SCREEN_SHARE_VOLUME`/`SCREEN_SHARE_FULLSCREEN_TOGGLE`.
+**RESULTADO FINAL**: Transmissão em destaque, com controles próprios (parar de assistir, volume, tela cheia se for a única/entre as assistidas).
+**EFEITO LOCAL**: Só a experiência de quem clicou muda — **é uma escolha inteiramente pessoal de visualização**.
+**EFEITO REMOTO**: **Nenhum** — quem compartilha não é notificado de quantas pessoas estão assistindo nem quem especificamente (diferente de alguns apps de chamada que mostram "N pessoas assistindo").
+**REALTIME**: `watchingIds` é estado local puro — não há evento de rede associado a "começar a assistir".
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: `watchingIds` reseta a cada nova conexão à call.
+**RECONEXÃO**: Reseta — reconectar depois de uma queda faz qualquer transmissão em andamento voltar ao estado "não assistida" até clicar de novo.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável (clicar já é a ação completa).
+**REVERSÃO**: `SCREEN_SHARE_STOP_WATCHING` (ficha seguinte).
+**ATALHO**: Nenhum atalho de teclado pra promover uma transmissão.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Card inteiro é um `<button>` real, alcançável via Tab, com o texto "Ver transmissão" visível (não só um ícone).
+
+**Nota de auditoria — comparação com Discord real**: o Discord moderno **também** trata assistir tela compartilhada como algo que exige clique (não força o vídeo pra tela cheia de todo mundo automaticamente), então este comportamento é consistente com a experiência esperada, não uma simplificação — mas o Discord real geralmente destaca visualmente *mais* a transmissão nova (ex.: notificação/toast "Fulano começou a compartilhar a tela") — não confirmado se o NexPlay tem algum aviso proativo além do próprio card aparecer silenciosamente na galeria.
+
+---
+
+## 8.3 — SCREEN_SHARE_STOP_WATCHING
+
+**ID**: `SCREEN_SHARE_STOP_WATCHING`
+**NOME**: Parar de assistir uma transmissão (voltar pra galeria pequena)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Tile grande em foco (HeroTile) > passar o mouse > "Sair da transmissão"`
+**POSIÇÃO NA INTERFACE**: `.hero-tile-overlay`, sobreposto ao vídeo, visível no hover.
+**APARÊNCIA**: Botão com `EyeOffIcon` + texto "Sair da transmissão".
+**ESTADO NORMAL**: Invisível até o hover (overlay).
+**HOVER**: Overlay aparece sobre o vídeo.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Nunca.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Já assistindo aquela transmissão.
+**RESULTADO IMEDIATO**: `onStopWatching(screen.id)` → remove o id de `watchingIds`.
+**RESULTADO VISUAL**: Tile volta a ser um card pequeno na galeria (com "Ver transmissão" disponível de novo).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma — **a transmissão continua ativa pra quem compartilha e pra outros que ainda estejam assistindo**, só quem clicou para de ver.
+**RESULTADO FINAL**: Tela recuperada pra outros conteúdos (se essa era a única transmissão em foco, `hasHero` vira falso e o layout volta ao normal sem a `.hero-row`).
+**EFEITO LOCAL**: Só a experiência de quem clicou.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável (estado local).
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: Reseta com a call.
+**RECONEXÃO**: Reseta.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Clicar no card pequeno de novo (`SCREEN_SHARE_WATCH`).
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Botão com texto visível, não só ícone.
+
+---
+
+## 8.4 — SCREEN_SHARE_MULTI_HERO
+
+**ID**: `SCREEN_SHARE_MULTI_HERO`
+**NOME**: Assistir múltiplas transmissões simultâneas lado a lado
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: `CORE` — confirmado no código: `heroShares.map((screen) => <HeroTile key={screen.id} .../>)` dentro de `.hero-row` — **não há limite de uma única transmissão em foco por vez**, cada uma assistida vira sua própria `HeroTile`, todas exibidas lado a lado na mesma fileira.
+**Complementa** `DISCORD_PARITY_PLAN.md` §6 ("Multistream (vários compartilhando ao mesmo tempo) | PARTIAL — LiveKit suporta nativamente múltiplos publishers; UI de grid/foco pra múltiplas transmissões simultâneas não testada/implementada") — **esta auditoria confirma que a UI já existe e já suporta isso**, não é mais `PARTIAL`: cada transmissão tem seu próprio card de "assistir" independente, e várias podem estar em foco ao mesmo tempo, cada uma com seu próprio controle de volume (`SCREEN_SHARE_VOLUME`) e botão de "sair da transmissão" individual. **Atualização de status recomendada em `DISCORD_PARITY_PLAN.md`**: de `PARTIAL` para `DONE`.
+**Limitação real observada**: não há um controle de *layout* (grid 2x2, foco automático em quem fala, etc.) além de empilhar todas as heroes numa fileira horizontal — com 3+ transmissões simultâneas assistidas, o espaço de cada uma fica proporcionalmente menor (CSS flexível, a confirmar comportamento exato em telas pequenas).
+
+---
+
+## 8.5 — SCREEN_SHARE_VOLUME
+
+**ID**: `SCREEN_SHARE_VOLUME`
+**NOME**: Ajustar o volume do áudio de uma transmissão específica
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Tile grande (HeroTile) de uma transmissão remota > canto do vídeo > controle de volume`
+**POSIÇÃO NA INTERFACE**: `.screen-volume`, sobreposto ao vídeo — **só aparece se `isRemote`** (não existe controle de volume pra sua própria transmissão, obviamente).
+**APARÊNCIA**: `SpeakerIcon` + `<input type="range">` + valor numérico.
+**ESTADO NORMAL**: 100% por padrão (`streamVolumes[identity] ?? 100`).
+**HOVER**: Padrão de slider.
+**ACTIVE/PRESSED**: `onClick={(event) => event.stopPropagation()}` no `<label>` que envolve o controle — **impede que clicar no slider também dispare qualquer clique por baixo no tile inteiro** (defesa de propagação de evento, mesma técnica já vista em outros componentes desta auditoria).
+**SELECTED**: Não aplicável.
+**DISABLED**: Nunca (pra transmissões remotas).
+**LOADING**: Não aplicável.
+**TRIGGER**: Arrastar o slider.
+**PRÉ-CONDIÇÕES**: Assistindo uma transmissão de outro participante (não a própria).
+**RESULTADO IMEDIATO**: `setStreamVolume(identity, valor)` — **distinto do volume de voz do mesmo participante** (`VOICE_PARTICIPANT_VOLUME_CONTROL`, Roteiro 7) — são dois volumes completamente independentes: o volume da *voz* de alguém e o volume do *áudio da tela que ele está compartilhando* podem ser ajustados separadamente.
+**RESULTADO VISUAL**: Número atualiza.
+**RESULTADO SONORO**: Volume do áudio da transmissão muda imediatamente.
+**ANIMAÇÃO**: Nativa do slider.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Volume daquela transmissão específica ajustado, só para quem ajustou.
+**EFEITO LOCAL**: Mixagem de áudio local.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada.
+**BANCO**: **Não persiste** — mesma característica de todos os volumes individuais já documentados no Roteiro 7 (reseta a cada nova conexão).
+**REFRESH**: Reseta pra 100%.
+**RECONEXÃO**: Reseta.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Arrastar de volta.
+**ATALHO**: Setas do teclado com foco no slider.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label="Volume da transmissão de {nome}"`.
+
+---
+
+## 8.6 — SCREEN_SHARE_FULLSCREEN_TOGGLE
+
+**ID**: `SCREEN_SHARE_FULLSCREEN_TOGGLE`
+**NOME**: Abrir a transmissão assistida em tela cheia
+**PLATAFORMA**: `DESKTOP_WINDOWS` (tela cheia nativa da janela) / `WEB` (Fullscreen API do navegador, só no elemento da transmissão)
+**CAMINHO EXATO**: `Área de transmissão (com pelo menos uma tile em foco) > barra superior > botão de tela cheia`
+**POSIÇÃO NA INTERFACE**: `.stream-toolbar`, só visível quando `hasHero` (pelo menos uma transmissão sendo assistida).
+**APARÊNCIA**: `FullscreenIcon` + texto "Tela cheia"/"Sair da tela cheia".
+**ESTADO NORMAL**: "Tela cheia".
+**HOVER**: Padrão de botão.
+**ACTIVE/PRESSED**: `aria-pressed={fullscreen}`.
+**SELECTED**: Texto/estado muda conforme `fullscreen`.
+**DISABLED**: Só existe com pelo menos uma transmissão em foco.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Pelo menos uma transmissão sendo assistida.
+**RESULTADO IMEDIATO — DESKTOP**: `window.desktop.setFullscreen(true)` — **usa a MESMA tela cheia nativa da janela inteira documentada no Roteiro 0** (`APP_FULLSCREEN_TOGGLE`), não um modo "tela cheia só do vídeo" — a janela inteira do NexPlay entra em fullscreen do SO, com o resto da interface (sidebar, etc.) ainda tecnicamente presente mas a tela cheia cobrindo tudo.
+**RESULTADO IMEDIATO — WEB**: `stage.requestFullscreen()` — Fullscreen API padrão do navegador, **só no elemento `.screen-stage`** (a área de vídeo em si, não a janela/aba inteira) — diferença real de escopo entre as duas plataformas.
+**RESULTADO VISUAL**: Tela cheia ativada; classe `native-fullscreen` aplicada ao container.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nativa do SO/navegador.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Ver `SCREEN_SHARE_FULLSCREEN_EXIT_ESC`.
+**RESULTADO FINAL**: Vídeo em tela cheia.
+**EFEITO LOCAL**: Apenas visual.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: Sai da tela cheia (implícito, já que a página recarrega).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: `catch { setFullscreenError('Não foi possível ativar a tela cheia. Tente novamente.') }` — exibido em `.fullscreen-error` com `role="alert"`.
+**CANCELAMENTO**: Clicar de novo, ou Esc (ver ficha seguinte).
+**REVERSÃO**: Clicar de novo (é um toggle).
+**ATALHO**: **Nenhum atalho de teclado pra *entrar* em tela cheia especificamente daqui** — mas no desktop, F11 (`APP_FULLSCREEN_TOGGLE`, Roteiro 0) aciona exatamente o mesmo estado subjacente da janela, então tecnicamente F11 também entra/sai de "tela cheia" enquanto uma transmissão está em foco, mesmo sem ter sido pensado como um atalho específico desta tela.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-pressed`, `aria-label` dinâmicos corretos; `title` menciona a tecla Esc explicitamente ("Sair da tela cheia (Esc)").
+
+**Nota de auditoria — acoplamento entre F11 e este botão**: como o modo desktop usa a mesma tela cheia nativa da janela (Roteiro 0), pressionar F11 enquanto assiste uma transmissão em foco **também** sai/entra desse mesmo estado — os dois mecanismos (F11 global e este botão local) controlam exatamente o mesmo estado subjacente (`mainWindow.isFullScreen()`), sincronizados via `onFullscreenChanged`/`getFullscreen()`. Isso é consistente e correto (um único estado, duas formas de alterá-lo), não uma duplicação problemática.
+
+---
+
+## 8.7 — SCREEN_SHARE_FULLSCREEN_EXIT_ESC
+
+**ID**: `SCREEN_SHARE_FULLSCREEN_EXIT_ESC`
+**NOME**: Sair da tela cheia da transmissão com Esc
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Tela cheia ativa (assistindo transmissão) > tecla Esc`
+**RESULTADO IMEDIATO — WEB**: Comportamento **nativo do navegador** — a Fullscreen API já sai sozinha com Esc, sem o NexPlay precisar de nenhum código (o `keydown` customizado em `ScreenStage.tsx` só é registrado `if (fullscreen && window.desktop?.setFullscreen)`, ou seja, **explicitamente não roda no modo web**, deixando o comportamento padrão do navegador cuidar disso).
+**RESULTADO IMEDIATO — DESKTOP**: `ScreenStage.tsx` registra seu **próprio** listener de `keydown` pra Esc, chamando `window.desktop.setFullscreen(false)`.
+**ACHADO REAL — SOBREPOSIÇÃO COM O ROTEIRO 0**: o processo principal do Electron **já** intercepta Esc no nível de `before-input-event` sempre que `window.isFullScreen()` é verdadeiro (`APP_FULLSCREEN_EXIT_ESC`, Roteiro 0), chamando `window.setFullScreen(false)` **antes mesmo do evento chegar ao React** — e `event.preventDefault()` nesse ponto impede o evento de alcançar a página web. Isso significa que **o listener de Esc dentro de `ScreenStage.tsx` provavelmente nunca chega a disparar no cliente desktop empacotado** — a interceptação do processo principal já resolve a saída da tela cheia primeiro, tornando este segundo handler uma camada redundante (defesa em profundidade não intencional, ou possivelmente código morto, dependendo de nuances exatas do pipeline de input do Electron não confirmáveis sem um teste ao vivo). Como os dois caminhos convergem pro mesmo resultado (`setFullscreen(false)`), isso nunca causaria um bug visível — é só uma duplicação de responsabilidade entre o processo principal e um componente React específico, que só um teste ao vivo (fora do escopo desta auditoria de leitura de código) confirmaria com certeza.
+**Demais campos**: idênticos a `APP_FULLSCREEN_EXIT_ESC` (Roteiro 0) e `SCREEN_SHARE_FULLSCREEN_TOGGLE` (ficha anterior) — resultado final é sempre voltar ao layout normal da tela de voz.
+
+---
+
+## 8.8 — SCREEN_SHARE_QUALITY_CHANGE (referência — já registrado como MISSING)
+
+**ID**: `SCREEN_SHARE_QUALITY_CHANGE`
+**STATUS**: `MISSING`, já documentado em detalhe em `VOICE_SCREEN_SHARE_START` (Roteiro 6) e `DISCORD_PARITY_PLAN.md` §6 — trocar a qualidade de uma transmissão já em andamento (720p→1080p, 30→60fps) sem precisar parar e reiniciar o compartilhamento. Não repetido aqui por já ter ficha própria; citado só para reforçar que a auditoria de exibição (este roteiro) não encontrou nenhum controle do lado de quem *assiste* pra pedir uma qualidade diferente tampouco (ex.: "assistir em qualidade menor pra economizar banda") — a única alavanca de qualidade é de quem compartilha, e só antes de começar.
+
+---
+
+# CONTINUAÇÃO
+
+Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas `MISSING`/de referência), as **24 interações do Roteiro 0**, **18 do Roteiro 1**, **11 do Roteiro 2**, **19 do Roteiro 3**, **23 do Roteiro 4**, **8 do Roteiro 5**, **9 do Roteiro 6**, **12 do Roteiro 7** e **8 do Roteiro 8** — **132 fichas no total**. Com isso, a **prioridade especial de Voz do pedido original está com sua auditoria principal concluída**: conectar, mutar, ensurdecer, sair, câmera, compartilhar tela (enviar e assistir), participantes, dispositivos, chat da call, PTT, perfis de microfone, e agora exibição de vídeo/tela em grid e foco.
+
+**Achado mais valioso desta seção**: `DISCORD_PARITY_PLAN.md` §6 registrava suporte a múltiplas transmissões simultâneas como `PARTIAL` ("não testada/implementada") — **esta auditoria encontrou que já está implementado e funcional** (`SCREEN_SHARE_MULTI_HERO`), uma correção de registro que deveria ser propagada de volta ao arquivo de paridade.
+
+**Próximo na fila**: com Voz/Vídeo suficientemente mapeado, a auditoria segue pra Servidores/Configurações completas (Cargos, Permissões, Membros, Convites, Integrações — já `CORE` mas sem ficha campo-a-campo), Amigos/DMs, Configurações do app inteiras, e a partir daí os três documentos ainda não criados (`DISCORD_NAVIGATION_TREE.md`, `DISCORD_INTERACTION_MATRIX.md`, `DISCORD_USER_JOURNEYS.md`).

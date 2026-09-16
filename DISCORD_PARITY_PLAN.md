@@ -138,7 +138,7 @@ Itens que **funcionam bem e já são reais**, confirmados nesta auditoria (não 
 | Som próprio de início/fim de transmissão | `DONE` (corrigido nesta sessão) |
 | Indicador "AO VIVO" | `DONE` (mas note: foi removido da lista de membros por pedido do usuário e centralizado na lista de canais de voz — comportamento intencional, não regressão) |
 | Trocar qualidade sem encerrar | `MISSING` — precisa renegociar track, não implementado |
-| Multistream (vários compartilhando ao mesmo tempo) | `PARTIAL` — LiveKit suporta nativamente múltiplos publishers; UI de grid/foco pra múltiplas transmissões simultâneas não testada/implementada |
+| Multistream (vários compartilhando ao mesmo tempo) | `DONE` — corrigido nesta auditoria: `ScreenStage.tsx` já suporta assistir múltiplas transmissões simultâneas, cada uma com sua própria tile grande, volume e "sair da transmissão" independentes (`.hero-row` mapeia todas as transmissões em `watchingIds`, sem limite de uma só); registro anterior de "não testada/implementada" estava desatualizado |
 | Redução automática de bitrate sob perda de pacote | `PARTIAL` — LiveKit tem adaptive stream nativo; não há UI mostrando isso ao usuário |
 | Fullscreen / Focus / PiP | `PARTIAL` — fullscreen existe; grid/focus/PiP formal não confirmado |
 
