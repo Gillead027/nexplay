@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). Roteiros 6–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo: conectar/mute/deafen/desconectar/câmera/compartilhar tela). Roteiros 7–69+ pendentes — ver nota de continuação no final do arquivo.
 
 ---
 
@@ -3732,4 +3732,344 @@ Arquitetura real (verificada em `apps/api/src/realtime.ts` e `apps/web/src/realt
 
 Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas `MISSING`/de referência), as **24 interações do Roteiro 0**, **18 do Roteiro 1**, **11 do Roteiro 2**, **19 do Roteiro 3**, **23 do Roteiro 4** e **8 do Roteiro 5** — **103 fichas no total**, cada uma verificada contra o código real (`apps/api/src/realtime.ts` e `apps/web/src/realtime.ts` lidos por completo nesta passagem). A infraestrutura de tempo real em si (handshake, heartbeat, escopo de entrega, multi-dispositivo, desconexão forçada por ban) é sólida e correta — documentada como `CORE`. As duas lacunas mais importantes — **typing indicator** e **presença geral** — estão confirmadas ausentes não só na UI mas no próprio protocolo de eventos compartilhado, o que significa que implementá-las exigiria estender o contrato `RealtimeEvent` em `packages/shared`, não só adicionar componentes React. O achado novo de maior impacto prático: reconectar com uma sessão já expirada entra num loop silencioso e infinito de tentativas que nunca vão ter sucesso, sem nunca avisar o usuário pra logar de novo.
 
-**Próximo na fila**: a partir daqui, a auditoria entra na **prioridade especial do pedido original** — Voz (conectar/desconectar, WebRTC/LiveKit), Mute/Deafen, Compartilhar tela, Vídeo — a área que o próprio usuário marcou como mais importante desde o início desta linha de trabalho. Dado o tamanho já considerável deste documento (103 fichas, 5 roteiros completos), a auditoria de Voz será tratada como sua própria unidade de trabalho extensa (múltiplos roteiros do pedido original: 10 a 17), começando pela conexão/desconexão de canal de voz.
+---
+
+# ROTEIRO 6 — VOZ: CONECTAR, MUTE, DEAFEN, DESCONECTAR, CÂMERA, COMPARTILHAR TELA
+
+Prioridade especial do pedido original (Roteiros 10-17). Arquitetura real (verificada em `apps/web/src/livekit/useVoiceRoom.ts`, ~1250 linhas lidas por completo — o arquivo mais denso de todo o app — mais os pontos de uso em `Workspace.tsx`): LiveKit self-hosted (SFU), sem TURN/coturn (já registrado como lacuna em `DISCORD_PARITY_PLAN.md` §5), com uma quantidade de refinamento real que **não é óbvia de fora**: supressão de ruído Krisp de verdade (o mesmo motor WASM que o Discord usa, não uma alternativa mais fraca), 3 perfis de microfone, push-to-talk configurável, gate de voz-ativa com auto-calibração, qualidade de compartilhamento de tela com 3 presets, captura de áudio do sistema com `restrictOwnAudio` pra evitar eco, e um chat de texto próprio dentro da chamada de voz via canal de dados do LiveKit (separado do chat de texto do servidor, Roteiro 4).
+
+---
+
+## 6.1 — VOICE_CHANNEL_JOIN
+
+**ID**: `VOICE_CHANNEL_JOIN`
+**NOME**: Conectar a um canal de voz
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Servidor > sidebar de canais > categoria de voz > canal de voz específico > clique`
+**POSIÇÃO NA INTERFACE**: Botão de canal de voz na sidebar (`ChannelButton`, Roteiro 3).
+**APARÊNCIA**: Ícone de voz + nome do canal; durante a conexão, o botão entra em estado de carregamento (`loading={joiningId === room.id}`).
+**ESTADO NORMAL**: Canal listado, clicável.
+**HOVER**: Padrão de botão de canal.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: `active={voice.currentChannel?.id === room.id && voice.connected}`.
+**DISABLED**: Nunca desabilitado no cliente por conta de limite de usuários — a rejeição por sala cheia acontece no backend, na emissão do token (ver `ERRO`).
+**LOADING**: Overlay dedicado: `<div className="room-loading" aria-label="Entrando na sala"><span>Entrando na sala...</span></div>` — **não é o comportamento ingênuo de "clicou → apareceu"**: é literalmente uma sala de voz persistente, não uma "ligação" com botão de atender, exatamente como o pedido original especifica que deveria ser.
+**TRIGGER**: Clique esquerdo no canal de voz.
+**PRÉ-CONDIÇÕES**: Permissão `Connect` implícita — qualquer membro que vê o canal pode entrar (sem overwrite de permissão por canal neste app, ver `DISCORD_PARITY_PLAN.md` §1/§15); canal não pode estar com o limite de usuários já atingido.
+**RESULTADO IMEDIATO**: `joinChannel(channel)`: (1) `setSelectedTextChannelId(null)` — sair do contexto de canal de texto; (2) ativa a tela de "Entrando na sala..." (via `flushSync`+`startViewTransition` quando `perfMode === 'full'`, ou diretamente senão — **único lugar do app inteiro que usa a View Transitions API do navegador**, confirmado nesta auditoria); (3) `voice.connect(channel)`.
+**RESULTADO VISUAL**: Overlay "Entrando na sala..." enquanto conecta; ao concluir, painel de voz aparece no rodapé da sidebar (mute/deafen já habilitados) e o "voice-status-panel" aparece acima do rodapé mostrando canal/servidor atual + câmera/compartilhar/sair.
+**RESULTADO SONORO**: Som de entrada (`playJoinSound`) — mas só tocado **depois** que o microfone já foi publicado (ou já se desistiu dele por erro), não no instante da conexão TCP/WebRTC em si — o som acompanha o momento em que a UI realmente já mostra "dentro" da sala.
+**ANIMAÇÃO**: View Transition nativa do navegador (quando `perfMode === 'full'`) na troca de estado "fora → entrando".
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: `api.getLiveKitToken(serverId, channelId)` busca um token de curta duração; `room.connect(url, token, { autoSubscribe: true })` abre a conexão WebRTC de verdade; assim que conectado, `setMicrophoneEnabled(true, ...)` publica o microfone automaticamente (**entra com o mic ligado por padrão**, salvo modo PTT, que já entra com o mic desligado à espera da tecla).
+**RESULTADO FINAL**: `currentChannel` setado, `connectionState = Connected`, participante aparece na lista de quem está no canal pra todo mundo (via o próprio LiveKit, que já distribui isso nativamente — não é um evento próprio do NexPlay).
+**EFEITO LOCAL**: Microfone ativo publicando (a menos que falhe — ver `ERRO`); dispositivos de áudio/vídeo listados (`refreshDevices()`).
+**EFEITO REMOTO**: Outros participantes do canal recebem o evento nativo `ParticipantConnected` do LiveKit, tocam `playJoinSound` (**a menos que já estivessem no canal antes de VOCÊ entrar** — `suppressPresenceSoundsRef` fica `true` por 1.5s depois da conexão, evitando um coro de bipes de entrada pra cada participante já presente sendo processado de uma vez pelo SDK ao sincronizar o estado inicial da sala).
+**REALTIME**: Estado de sala/participantes vem inteiramente do próprio LiveKit (WebRTC + seu canal de sinalização), não do WebSocket de dados do NexPlay (Roteiro 5) — são duas conexões de tempo real paralelas e independentes.
+**BACKEND**: `POST` de emissão de token LiveKit — **valida limite de usuários da sala aqui** (rejeita se já estiver cheia, confirmado em `DISCORD_PARITY_PLAN.md` §4: "limite de usuários é aplicado de verdade (rejeita o token do LiveKit se a sala já estiver cheia)").
+**BANCO**: Nenhuma escrita direta (o LiveKit gerencia o estado de sala em memória própria; webhooks do LiveKit atualizam o WebSocket de dados do NexPlay pra refletir entrada/saída na lista de canais — mecanismo já documentado em `DISCORD_PARITY_PLAN.md` §0).
+**REFRESH**: Um F5 **desconecta da call** (mesma categoria de comportamento já documentada no Roteiro 0 — `disconnectOnPageLeave: true` configurado explicitamente na criação do `Room`) — diferente de mensagens de texto, que sobrevivem a um reload, uma call de voz não.
+**RECONEXÃO**: Ver `VOICE_NETWORK_RECONNECT` (ficha adiante) para quedas de rede durante uma call já ativa — distinto desta ficha, que é sobre a conexão inicial.
+**ERRO**: `withTimeout(..., 20_000, ...)` — **timeout próprio de 20s** tanto pra desconectar de um canal anterior quanto pra conectar no novo (o SDK do LiveKit não tem timeout nativo — numa rede ruim sem TURN, a negociação ICE podia ficar "checking" pra sempre, travando a tela de "Entrando..." sem erro nenhum; isso foi um bug real relatado pelo usuário com prints em sessão anterior, já corrigido). **Rede de segurança adicional** em `Workspace.tsx`: mesmo com o timeout interno, a tela de loading é liberada assim que `voice.connected` vira `true` de verdade (reage ao estado real da conexão, não só à promise), com um teto de 15s que libera de qualquer jeito mesmo se a conexão nunca se confirmar — **dupla camada de proteção contra travamento silencioso**, resultado de duas iterações de correção sobre o mesmo bug real.
+**CANCELAMENTO**: **`MISSING`**: não há um botão explícito de "cancelar" na tela de "Entrando na sala..." — só esperar o timeout, ou navegar pra outro canal (o que dispara `setSelectedTextChannelId`/nova tentativa de `joinChannel`, mas não cancela ativamente a tentativa em andamento — `connectingRef` só ignora cliques repetidos, não interrompe o que já começou).
+**REVERSÃO**: `VOICE_DISCONNECT` depois de já conectado; ou esperar o erro/timeout se ainda conectando.
+**ATALHO**: Nenhum atalho de teclado pra entrar num canal de voz específico.
+**MENU DE CONTEXTO**: Ver Roteiro 3 (`CHANNEL_MOVE_VIA_CONTEXT_MENU`) — botão direito num canal de voz abre o menu de mover categoria, não tem opção de "entrar" (entrar é só clique esquerdo).
+**ACESSIBILIDADE**: `aria-label="Entrando na sala"` no overlay de loading.
+
+---
+
+## 6.2 — VOICE_CHANNEL_JOIN_ERRORS
+
+**ID**: `VOICE_CHANNEL_JOIN_ERRORS`
+**NOME**: Estados de erro ao tentar entrar num canal de voz
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: Mesma ficha de `VOICE_CHANNEL_JOIN`, ramos de falha.
+**RESULTADO FINAL — canal cheio**: Token rejeitado pelo backend → erro exibido (mensagem exata do backend, a confirmar palavra por palavra em auditoria futura mais profunda da rota de token).
+**RESULTADO FINAL — timeout de rede (sem TURN, ICE travado)**: `withTimeout` rejeita após 20s → `"A conexão com o canal de voz demorou demais. Verifique sua rede e tente de novo."` — mensagem específica e acionável (diz o que fazer), não um erro genérico.
+**RESULTADO FINAL — falha ao obter o microfone (permissão negada, sem dispositivo)**: **Achado real de UX bem pensada**: o erro **não impede a entrada na call** — `catch (mediaError) { setError(...'Você entrou com o microfone desligado.') }` — o usuário entra normalmente, só sem áudio de saída, com uma mensagem explicando por quê, em vez de bloquear a entrada inteira por causa do microfone (equivalente ao "permitir entrar como ouvinte" que o pedido original sugere como comportamento desejável quando a arquitetura suportar).
+**RESULTADO FINAL — erro genérico/desconhecido**: `connectError.message` ou fallback `"Não foi possível entrar no canal de voz."`; `room.disconnect()` chamado de qualquer forma como limpeza, `currentChannel` volta a `null`.
+**EFEITO LOCAL**: Em qualquer erro que impeça a conexão (diferente do caso "sem microfone", que ainda conecta), o usuário permanece fora do canal, livre pra tentar de novo.
+**BACKEND**: Ver `VOICE_CHANNEL_JOIN`.
+**ERRO**: Mensagens diferenciadas por causa, não um erro genérico único — achado positivo de qualidade de UX.
+**Demais campos**: idênticos a `VOICE_CHANNEL_JOIN`, este ficha documenta só os ramos de falha em detalhe.
+
+---
+
+## 6.3 — VOICE_SELF_MUTE
+
+**ID**: `VOICE_SELF_MUTE`
+**NOME**: Silenciar/ativar o próprio microfone
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > conectado a um canal de voz > rodapé da sidebar (painel do usuário) > ícone de microfone` — **também disponível** dentro do painel de voz expandido/central (`.voice-action`, linha ~3018 de `Workspace.tsx`), um segundo local com o mesmo controle (auditoria detalhada desse painel central pendente de uma passagem futura sobre o layout completo da tela de voz).
+**POSIÇÃO NA INTERFACE**: Extremo esquerdo do grupo de ícones no rodapé da sidebar, ao lado do avatar/nome do próprio usuário.
+**APARÊNCIA**: `IconSwap` entre `MicIcon` (ligado) e `MicOffIcon` (desligado); classe `danger` no botão quando `!voice.micEnabled` (destaque vermelho quando mutado, consistente com o padrão de "estado de alerta" já visto em outros botões do app).
+**ESTADO NORMAL**: Microfone ligado (ícone normal) assim que conectado (salvo modo PTT, que entra desligado à espera da tecla).
+**HOVER**: `title`/`aria-label` dinâmicos: "Desligar microfone" (quando ligado) ou "Ligar microfone" (quando desligado) — tooltip nativo.
+**ACTIVE/PRESSED**: Padrão de botão-ícone.
+**SELECTED**: Classe `danger` quando mutado.
+**DISABLED**: `disabled={!voice.connected || voice.deafened}` — **desabilitado quando não conectado a nenhum canal** (o botão continua visível mesmo fora de uma call, só inerte) **e desabilitado enquanto ensurdecido** (não dá pra desmutar manualmente enquanto o áudio de saída também está desligado — precisa desensurdecer primeiro, ver `VOICE_SELF_DEAFEN`).
+**LOADING**: Não aplicável (operação local, sem chamada de rede — é só uma track WebRTC sendo pausada/retomada).
+**TRIGGER**: Clique esquerdo.
+**PRÉ-CONDIÇÕES**: Conectado a um canal de voz; não estar ensurdecido.
+**RESULTADO IMEDIATO**: `toggleMicrophone()`: inverte `room.localParticipant.isMicrophoneEnabled` e chama `setMicrophoneEnabled(novoEstado, opções de captura se ligando)`.
+**RESULTADO VISUAL**: Ícone troca instantaneamente (`MicIcon` ↔ `MicOffIcon`); botão ganha/perde destaque vermelho.
+**RESULTADO SONORO**: `playMicMuteSound`/`playMicUnmuteSound` (sons distintos pra cada direção, tocados no volume de saída configurado pelo usuário) — **local, tocado só pra quem clicou**, não para os outros participantes.
+**ANIMAÇÃO**: Troca de ícone instantânea, sem transição elaborada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Se o Krisp/supressão de ruído estava ativo, é reaplicado automaticamente ao republicar o track de microfone (o processor precisa ser reanexado a cada publish, já que reconectar o track cria um `LocalAudioTrack` novo — mecanismo já confirmado no código).
+**RESULTADO FINAL**: Estado do microfone alternado; `syncRoom()` atualiza todo o estado derivado (`micEnabled`, lista de participantes, etc.).
+**EFEITO LOCAL**: Track de áudio local pausada/retomada; usuário continua ouvindo os outros normalmente (mutar não afeta recepção).
+**EFEITO REMOTO**: LiveKit propaga `TrackMuted`/`TrackUnmuted` nativamente pra todos os outros participantes — o ícone de microfone do usuário aparece mutado/normal na lista de participantes de todo mundo, **em tempo real via WebRTC, não via o WebSocket de dados do NexPlay** (mecanismo de transporte diferente do resto do app, mas com o mesmo efeito prático de "tempo real").
+**REALTIME**: `RoomEvent.TrackMuted`/`TrackUnmuted` do LiveKit (distinto do `RealtimeEvent` do Roteiro 5).
+**BACKEND**: Nenhuma chamada à API REST do NexPlay — é inteiramente uma operação de mídia WebRTC.
+**BANCO**: Não aplicável — estado de mute não é persistido (cada nova conexão sempre começa com o mic ligado, salvo PTT).
+**REFRESH**: Não aplicável (a call inteira cai num refresh, ver `VOICE_CHANNEL_JOIN`).
+**RECONEXÃO**: Se a conexão cair e reconectar automaticamente (`VOICE_NETWORK_RECONNECT`), o estado de mute **não é confirmado como preservado** nesta passagem — a verificar em auditoria futura mais profunda se o LiveKit republica o track no mesmo estado ou sempre volta a ligado.
+**ERRO**: `catch (mediaError) { setError(await describeMediaError(mediaError, 'microphone')) }` — se o dispositivo falhar no meio (ex.: desconectado fisicamente), erro descritivo exibido (mecanismo `describeMediaError` compartilhado com outras fichas de mídia).
+**CANCELAMENTO**: Não aplicável (ação instantânea, sem etapa intermediária).
+**REVERSÃO**: Clicar de novo (segundo clique, exatamente como o exemplo do próprio pedido original descreve: "Segundo clique: remove o mute, restaura transmissão de áudio, atualiza o ícone e envia atualização em tempo real").
+**ATALHO**: **`MISSING`**: nenhum atalho de teclado global pra mute rápido (Discord real geralmente tem um configurável) — confirmado por ausência de qualquer `keydown` global ligado a `toggleMicrophone` fora do fluxo de PTT (que é um mecanismo diferente — segurar uma tecla pra falar, não alternar mute).
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label` dinâmico correto.
+
+**Comparação direta com o exemplo do pedido original**: o fluxo real bate com o script de exemplo quase ponto a ponto — bloqueia envio de áudio local, não sai da call, continua recebendo áudio dos outros, ícone muda, som local toca, atualização em tempo real via LiveKit, segundo clique reverte tudo. A única lacuna real frente ao exemplo é o **atalho de teclado configurável**, que não existe.
+
+---
+
+## 6.4 — VOICE_SELF_DEAFEN
+
+**ID**: `VOICE_SELF_DEAFEN`
+**NOME**: Ensurdecer/reativar a própria escuta (e o microfone junto)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Rodapé da sidebar > painel do usuário > ícone de fone de ouvido`
+**POSIÇÃO NA INTERFACE**: Ao lado do botão de microfone.
+**APARÊNCIA**: `IconSwap` entre `HeadphonesIcon` (normal) e `HeadphonesOffIcon` (ensurdecido); classe `danger` quando ensurdecido.
+**ESTADO NORMAL**: Áudio normal.
+**HOVER**: `title` dinâmico: "Desativar áudio" / "Ativar áudio".
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Classe `danger` quando `voice.deafened`.
+**DISABLED**: `disabled={!voice.connected}` — só ativo dentro de uma call.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique esquerdo.
+**PRÉ-CONDIÇÕES**: Conectado a um canal de voz.
+**RESULTADO IMEDIATO**: `toggleDeafen()`: se vai ensurdecer, **guarda o estado atual do microfone** (`wasMicEnabled.current = isMicrophoneEnabled`) antes de desligá-lo — **aplica mute automaticamente junto** (mesmo comportamento do Discord real: ensurdecer sempre muta também, já que não faz sentido falar sem conseguir ouvir a resposta).
+**RESULTADO VISUAL**: Ícone de fone muda; **o botão de microfone também reflete mutado e fica desabilitado** (não dá pra desmutar manualmente enquanto ensurdecido — precisa desensurdecer primeiro, que aí sim restaura o microfone **só se ele já estava ligado antes** de ensurdecer, respeitando a intenção original do usuário).
+**RESULTADO SONORO**: Não confirmado um som específico de deafen/undeafen distinto do de mute — a auditoria não encontrou `playDeafenSound`/`playUndeafenSound` nem chamadas de som dentro de `toggleDeafen` (diferente de `toggleMicrophone`, que toca sons próprios) — **achado**: `MISSING` feedback sonoro específico pra esta ação, só o feedback visual (troca de ícone) confirma que funcionou.
+**ANIMAÇÃO**: Troca de ícone instantânea.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL — desensurdecer**: `if (wasMicEnabled.current) setMicrophoneEnabled(true, ...)` — **lida corretamente com o caso de já estar mutado antes de ensurdecer**: se o usuário já tinha se mutado manualmente e *depois* ensurdeceu, desensurdecer **não reativa o microfone à força** — respeita que a intenção original era ficar mutado. Exatamente o comportamento correto que o pedido original exige explicitamente: "Deve lidar corretamente com estado que já estava muted antes do deafen."
+**EFEITO LOCAL**: Áudio de saída de todos os participantes silenciado (o "ouvir" em si é controlado do lado do cliente que recebe — não precisa de nenhuma sinalização pro resto da sala); microfone também desligado.
+**EFEITO REMOTO**: Outros participantes veem o ícone de mute do usuário mudar (consequência do mute automático) — **não veem um indicador específico de "ensurdecido"** separado de "mutado" (o LiveKit só propaga estado de track de microfone, não um conceito de "deafen" — isso é inteiramente um estado do lado do cliente que ensurdeceu, invisível pros outros como conceito distinto).
+**REALTIME**: `TrackMuted` (consequência do mute automático); o estado de "áudio de saída desligado" em si nunca viaja pela rede — é só a track de reprodução sendo silenciada localmente no navegador de quem ensurdeceu.
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: `deafened` reseta pra `false` a cada nova conexão (confirmado em `connect()`: `setDeafened(false)`).
+**RECONEXÃO**: Não confirmado se persiste através de uma reconexão automática de rede (mesma lacuna de verificação de `VOICE_SELF_MUTE`).
+**ERRO**: Mesmo padrão de `describeMediaError` se a reativação do microfone falhar ao desensurdecer.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Clicar de novo.
+**ATALHO**: **`MISSING`**, mesma lacuna categórica de `VOICE_SELF_MUTE`.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label` dinâmico correto.
+
+---
+
+## 6.5 — VOICE_DISCONNECT
+
+**ID**: `VOICE_DISCONNECT`
+**NOME**: Sair do canal de voz
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Voice-status-panel (acima do rodapé da sidebar, visível só quando conectado) > ícone de sair` — **também disponível** no painel de voz central expandido (`.voice-action.leave`, mesma duplicação de controle já notada em `VOICE_SELF_MUTE`).
+**POSIÇÃO NA INTERFACE**: Último ícone do grupo de ações no `.voice-status-panel`.
+**APARÊNCIA**: `LeaveIcon`, classe `danger` fixa (sempre em destaque de alerta, já que é sempre uma ação "de saída").
+**ESTADO NORMAL**: Visível só quando `voice.connected`.
+**HOVER**: `title="Sair do canal"`.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Não aplicável.
+**DISABLED**: Nunca (sempre pode sair enquanto conectado).
+**LOADING**: Não confirmado indicador visual durante a desconexão em si (provavelmente instantâneo o bastante para não precisar).
+**TRIGGER**: Clique esquerdo — **sem confirmação**, ação imediata (correto/esperado — sair de uma call não é destrutivo o bastante pra merecer confirmação, mesmo padrão universal de qualquer app de chamada).
+**PRÉ-CONDIÇÕES**: Conectado a um canal de voz.
+**RESULTADO IMEDIATO**: `disconnect()`: `room.disconnect()` primeiro, **depois** toca o som de saída (`playLeaveSound`) — ordem deliberada, já documentada no comentário do próprio código: "Só depois de desconectar de verdade — soar isso antes fazia o áudio 'confirmar a saída' enquanto você ainda estava tecnicamente na sala."
+**RESULTADO VISUAL**: Painel de voz inteiro (status panel + controles de mic/deafen no rodapé) volta ao estado "fora de call"; se estava com câmera/tela compartilhada ligada, tudo para junto (consequência de `room.disconnect()` derrubar todas as tracks publicadas).
+**RESULTADO SONORO**: `playLeaveSound`, tocado depois da desconexão confirmada.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável (sem confirmação, ver `TRIGGER`).
+**SEGUNDA ETAPA**: Nenhuma.
+**RESULTADO FINAL**: Todo estado de voz resetado: `currentChannel`, `participants`, `messages` (o chat de texto da call, Roteiro a confirmar), `speakers`, `deafened`, `micEnabled`, `screenEnabled`, `cameraEnabled`, `screenTracks` — **reset completo e explícito de cada pedaço de estado**, não só um "esqueça tudo" genérico.
+**EFEITO LOCAL**: Todas as tracks locais (mic, câmera, tela) param.
+**EFEITO REMOTO**: Outros participantes recebem `ParticipantDisconnected` nativo do LiveKit, tocam `playLeaveSound` do lado deles também (mesma supressão de som em massa não se aplica aqui — sair é sempre um evento "real" a ser anunciado, diferente de entrar numa sala já cheia).
+**REALTIME**: `RoomEvent.ParticipantDisconnected`.
+**BACKEND**: Nenhuma chamada HTTP explícita — o LiveKit detecta a desconexão e seus webhooks (`participant_joined`/`left`, já documentados em `DISCORD_PARITY_PLAN.md` §0) atualizam a lista de participantes que aparece na sidebar (fora da call) via o WebSocket de dados do NexPlay.
+**BANCO**: Não aplicável diretamente.
+**REFRESH**: Não aplicável (já é o estado "fora").
+**RECONEXÃO**: Não aplicável (desconexão voluntária, não uma queda a recuperar).
+**ERRO**: Não confirmado tratamento de erro específico se `room.disconnect()` falhar (raro, já que desconectar é geralmente uma operação que não deveria rejeitar).
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Entrar de novo (`VOICE_CHANNEL_JOIN`).
+**ATALHO**: Nenhum atalho de teclado dedicado.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label="Sair do canal"`.
+
+---
+
+## 6.6 — VOICE_CAMERA_TOGGLE
+
+**ID**: `VOICE_CAMERA_TOGGLE`
+**NOME**: Ligar/desligar a câmera
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Voice-status-panel > ícone de câmera`
+**POSIÇÃO NA INTERFACE**: Primeiro ícone do grupo de ações do status panel.
+**APARÊNCIA**: `IconSwap` entre `CameraIcon`/`CameraOffIcon`; classe `selected` quando ligada (destaque neutro/positivo, diferente do `danger` usado em mute/deafen — câmera ligada não é um "estado de alerta").
+**ESTADO NORMAL**: Desligada ao entrar na call (câmera nunca liga automaticamente).
+**HOVER**: `title` dinâmico "Desligar câmera"/"Ligar câmera".
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Classe `selected` quando ativa.
+**DISABLED**: Não condicionado a `voice.connected` explicitamente neste botão específico (diferente de mic/deafen) — **mas só aparece dentro do `voice-status-panel`, que só renderiza `if (voice.connected)`**, então a proteção existe, só que por ausência do elemento inteiro, não por um atributo `disabled`.
+**LOADING**: Não confirmado indicador visual durante a negociação de mídia (pedir permissão de câmera pode levar um tempo perceptível na primeira vez).
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Conectado a um canal de voz; permissão de câmera do SO/navegador (ver `MEDIA_PERMISSION` no Roteiro 0 para o mecanismo de checagem no desktop).
+**RESULTADO IMEDIATO**: `toggleCamera()`: `setCameraEnabled(!atual, { resolution: h1080 }, { videoEncoding: h1080, simulcast: true })` — **sempre pede 1080p com simulcast** (múltiplas camadas de qualidade, apropriado pra vídeo de câmera visto por gente com conexões variadas — contraste deliberado com compartilhamento de tela, que desliga simulcast, já visto na configuração de `shareSettings`).
+**RESULTADO VISUAL**: Tile de vídeo aparece pra outros participantes (mecanismo de exibição em si — grid de vídeo — pertence a uma ficha própria de exibição, `ROTEIRO 16` do pedido original, ainda não auditada em detalhe nesta passagem específica de controles).
+**RESULTADO SONORO**: Nenhum som específico confirmado pra ligar/desligar câmera (diferente de mic/tela, que têm sons próprios) — mesma lacuna categórica de `VOICE_SELF_DEAFEN`.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: **`MISSING` confirmado nesta ficha especificamente**: o pedido original espera um menu ao lado com "selecionar dispositivo; background; blur; preview" antes de ligar — não existe: o clique liga a câmera direto, sem preview prévio nem seletor de fundo/blur (fundo/blur já registrado como `MISSING` em `DISCORD_PARITY_PLAN.md` §7 — "Fundo/blur/fundo customizado | MISSING"). Seleção de dispositivo de câmera existe, mas em outro lugar (Configurações de Voz e Vídeo, não um menu contextual ao lado deste botão — auditoria detalhada de Configurações ainda pendente).
+**MENU**: Ver acima — `MISSING`.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Nenhuma além do vídeo aparecer.
+**RESULTADO FINAL**: Câmera publicada/despublicada.
+**EFEITO LOCAL**: Preview do próprio vídeo (localização exata na UI não confirmada nesta passagem).
+**EFEITO REMOTO**: `RoomEvent` nativo de track de vídeo publicada — outros veem o tile de câmera em tempo real.
+**REALTIME**: Nativo do LiveKit.
+**BACKEND**: Nenhuma chamada HTTP.
+**BANCO**: Não aplicável.
+**REFRESH**: Câmera cai junto com toda a call (mesma categoria de `VOICE_CHANNEL_JOIN`).
+**RECONEXÃO**: Não confirmado se a câmera é republicada automaticamente após uma reconexão de rede.
+**ERRO**: `describeMediaError(mediaError, 'camera')` — mesma família de tratamento de erro descritivo de `VOICE_SELF_MUTE`.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Clicar de novo.
+**ATALHO**: **`MISSING`**.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label` dinâmico correto.
+
+---
+
+## 6.7 — VOICE_SCREEN_SHARE_START
+
+**ID**: `VOICE_SCREEN_SHARE_START`
+**NOME**: Iniciar compartilhamento de tela (fluxo completo, multi-etapas)
+**PLATAFORMA**: `DESKTOP_WINDOWS` (fluxo completo com picker nativo) / `WEB` (fluxo reduzido, sem picker próprio — ver nota de plataforma)
+**CAMINHO EXATO**: `Voice-status-panel > ícone de compartilhar tela`
+**POSIÇÃO NA INTERFACE**: Segundo ícone do grupo de ações.
+**APARÊNCIA**: `ShareIcon`; classe `selected` quando `voice.screenEnabled`.
+**ESTADO NORMAL**: Inativo.
+**HOVER**: `title` dinâmico "Compartilhar tela"/"Parar transmissão".
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: `selected` quando ativo.
+**DISABLED**: Só existe dentro do status panel (mesma proteção implícita de `VOICE_CAMERA_TOGGLE`).
+**LOADING**: Não confirmado durante a negociação do picker/captura.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Conectado a um canal de voz.
+**RESULTADO IMEDIATO — DESKTOP**: `startOrStopScreenShare()` → `window.desktop.chooseShareSource()` → abre o picker nativo do Electron (`SCREEN_SHARE_PICKER_OPEN`, já documentado em detalhe completo no Roteiro 0: seleção de fonte, qualidade 720p30/720p60/1080p60, toggle de áudio do sistema).
+**RESULTADO IMEDIATO — WEB (fora do Electron)**: **Sem picker nativo próprio do NexPlay** — `if (!window.desktop) { await voice.toggleScreenShare(quality); return; }`, usando a qualidade já configurada previamente em Configurações; o próprio `setScreenShareEnabled` do LiveKit então dispara o `getDisplayMedia` padrão do navegador, que mostra **o picker nativo do navegador** (Chrome/Edge/Firefox têm o seu próprio, fora do controle visual do NexPlay) — **diferença real de plataforma, não um bug**: web nunca teve escolha de qualidade/áudio no momento do compartilhamento, só o que já estava configurado antes.
+**RESULTADO VISUAL**: Se cancelado no picker (`choice === null`): nada acontece, função retorna cedo. Se confirmado: `voice.toggleScreenShare(quality, shareAudio)`.
+**RESULTADO SONORO**: `playScreenShareStartSound`, tocado só depois que a track já foi publicada com sucesso (não no clique, não na escolha do picker — só na confirmação real de que a captura começou).
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável (o picker é uma janela nativa separada no desktop, ver Roteiro 0).
+**MENU**: Não aplicável.
+**MODAL**: O picker do Electron é o "modal" desta etapa (Roteiro 0).
+**SEGUNDA ETAPA**: `setScreenShareEnabled(true, { resolução/fps da qualidade escolhida, áudio: SCREEN_SHARE_AUDIO_CAPTURE se `shareAudio` }, { videoEncoding, simulcast: false, ...configuração de áudio de publicação })`.
+**RESULTADO FINAL**: Track de vídeo (e opcionalmente áudio) de tela publicada; `contentHint = 'detail'` aplicado no `MediaStreamTrack` (prioriza nitidez espacial sobre suavidade de movimento — correto pra texto/UI, diferente de vídeo de câmera); `setShareAudioActive(audioPublished)` reflete se o áudio realmente entrou.
+**EFEITO LOCAL**: **Se compartilhando áudio do sistema, a captura usa `restrictOwnAudio: true`** — uma constraint real do Chromium (Electron 44+, Windows) que filtra do loopback qualquer som que tenha se originado do próprio app NexPlay, especificamente pra evitar que a voz dos outros participantes (que está tocando pelos alto-falantes de quem compartilha) vaze de volta pra dentro da própria transmissão — **um bug real de eco que foi corrigido com uma API de plataforma específica**, documentado em detalhe no comentário do código.
+**EFEITO REMOTO**: Outros participantes recebem a track de vídeo (e áudio, se aplicável) via LiveKit; badge "AO VIVO" aparece na lista de canais de voz (não mais na lista de membros — mudança deliberada de posição por pedido do usuário em sessão anterior, confirmado em `DISCORD_PARITY_PLAN.md` §6).
+**REALTIME**: Nativo do LiveKit (publicação de track).
+**BACKEND**: Nenhuma chamada HTTP — inteiramente mídia WebRTC.
+**BANCO**: Não aplicável.
+**REFRESH**: Cai junto com a call inteira.
+**RECONEXÃO**: Não confirmado se a tela é republicada automaticamente após queda de rede.
+**ERRO**: `isScreenShareCancelled(error)` detecta especificamente o erro `"invalid capture constraints"` (cancelamento do usuário no picker do navegador/SO) e **não mostra isso como erro** — só ramos de falha genuína (permissão negada de verdade, sem fonte disponível) chegam em `setError`.
+**CANCELAMENTO**: Cancelar no picker (nativo do Electron ou do navegador) — tratado como não-erro, silenciosamente volta ao estado anterior.
+**REVERSÃO**: `VOICE_SCREEN_SHARE_STOP` (ficha seguinte).
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label` dinâmico.
+
+**Comparação direta com a jornada de exemplo do pedido original**: o script de exemplo (Roteiro 17: abrir seletor → escolher fonte → preview → escolher resolução/FPS → escolher áudio → confirmar → iniciar → som → LIVE → assistir → mudar qualidade → parar) bate **quase inteiramente** com o fluxo real no desktop — a única etapa do script de exemplo que **não existe**: "Usuário A abre menu de qualidade [durante a transmissão já ativa]. Muda resolução. Stream renegocia." — trocar de qualidade **sem encerrar** a transmissão já em andamento é `MISSING`, já registrado em `DISCORD_PARITY_PLAN.md` §6 ("Trocar qualidade sem encerrar | MISSING — precisa renegociar track, não implementado"), e reconfirmado nesta auditoria: `toggleScreenShare` não tem nenhum caminho de "trocar qualidade com a track já publicada" — só liga/desliga.
+
+---
+
+## 6.8 — VOICE_SCREEN_SHARE_STOP
+
+**ID**: `VOICE_SCREEN_SHARE_STOP`
+**NOME**: Parar o compartilhamento de tela
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Voice-status-panel > mesmo ícone de compartilhar tela, já ativo` **ou** `barra nativa de compartilhamento do Windows/navegador > botão "Parar de compartilhar"`
+**POSIÇÃO NA INTERFACE**: Mesmo botão de `VOICE_SCREEN_SHARE_START` (é um toggle).
+**APARÊNCIA**: Ícone perde a classe `selected`.
+**ESTADO NORMAL**: Não aplicável (só existe partindo do estado ativo).
+**HOVER**: `title="Parar transmissão"`.
+**ACTIVE/PRESSED**: Padrão.
+**SELECTED**: Perde o destaque ao parar.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: **Dois caminhos equivalentes, ambos cobertos**: (1) clique no próprio botão do NexPlay; (2) clique em "Parar de compartilhar" na barra nativa que o Windows/navegador sobrepõe automaticamente durante qualquer captura de tela — **achado positivo confirmado no código**: `onLocalTrackUnpublished` no `RoomEvent` cobre especificamente esse segundo caminho ("Cobre o caso de parar o compartilhamento pela barra nativa do Windows/navegador em vez do nosso botão — sem isso, o mudo ficava travado"), com um comentário explícito confirmando que já foi um bug real corrigido.
+**PRÉ-CONDIÇÕES**: Compartilhamento ativo.
+**RESULTADO IMEDIATO**: `setScreenShareEnabled(false)` (via clique no botão) ou o próprio SDK detectando o encerramento da track (via a barra nativa) — **os dois convergem no mesmo evento `LocalTrackUnpublished`**, que é o único lugar que toca o som de parada — **deliberado**: "tanto o botão quanto a barra nativa acabam disparando este mesmo evento, então tocar o som aqui (em vez de no botão também) evita ele tocar em dobro."
+**RESULTADO VISUAL**: Badge "AO VIVO" some da lista de canais de voz; ícone volta ao normal.
+**RESULTADO SONORO**: `playScreenShareStopSound` — tocado exatamente uma vez, não importa qual dos dois caminhos encerrou a transmissão.
+**ANIMAÇÃO**: Não confirmada.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: `setShareAudioActive(false)` também reseta se o áudio do sistema estava junto.
+**RESULTADO FINAL**: Transmissão encerrada por completo; outros participantes deixam de receber a track (LiveKit nativo).
+**EFEITO LOCAL**: Track de captura de tela parada, recursos do SO liberados.
+**EFEITO REMOTO**: Outros veem o tile de tela compartilhada desaparecer; quem estava assistindo em foco/fullscreen volta pro layout normal da call (comportamento exato de "retornar à call" não reauditado em detalhe nesta passagem — pertence ao Roteiro de exibição/grid, ainda pendente).
+**REALTIME**: `RoomEvent.LocalTrackUnpublished` nativo.
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: Não aplicável (cai com a call inteira de qualquer forma).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável (parar não deveria falhar).
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: `VOICE_SCREEN_SHARE_START` de novo.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label` dinâmico.
+
+---
+
+## 6.9 — VOICE_NETWORK_RECONNECT *(correção de registro anterior)*
+
+**ID**: `VOICE_NETWORK_RECONNECT`
+**NOME**: Reconexão automática de voz após instabilidade de rede
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS — CORREÇÃO**: `DISCORD_PARITY_PLAN.md` §5 registrava isto como `PARTIAL` ("não verificado explicitamente... não há UI de 'reconectando...'"). **Lendo `Workspace.tsx` nesta passagem, isso está desatualizado**: `connectionLabel` (exibido no rodapé da sidebar, ao lado do nome do usuário) já mapeia `ConnectionState.Reconnecting` para o texto **"Reconectando"**, distinto de "Conectado"/"Conectando"/"Desconectado". **A UI de reconectando existe**, corrigindo o registro anterior — atualizado em `DISCORD_PARITY_PLAN.md` junto com esta passagem de auditoria.
+**CAMINHO EXATO**: `Rodapé da sidebar > texto abaixo do nome do usuário` (o mesmo lugar que mostra "Conectado"/"Desconectado" em uso normal).
+**POSIÇÃO NA INTERFACE**: `.current-user-copy > span`.
+**APARÊNCIA**: Texto simples "Reconectando" (sem spinner/ícone animado confirmado especificamente para este estado — só o texto muda).
+**TRIGGER**: `RoomEvent.ConnectionStateChanged` do LiveKit reportando `Reconnecting` — automático, o SDK detecta e tenta se recuperar sozinho (mecanismo interno do LiveKit, não código customizado do NexPlay).
+**RESULTADO VISUAL**: Label muda para "Reconectando" enquanto dura.
+**RESULTADO FINAL — sucesso**: Volta a "Conectado" quando o LiveKit recupera a conexão sozinho — **sem precisar de intervenção do usuário nem re-entrar no canal manualmente**.
+**RESULTADO FINAL — falha em recuperar**: Comportamento exato não confirmado nesta passagem (o LiveKit eventualmente desistiria e cairia pra `Disconnected`? Dispara algum erro visível? — marcado como lacuna de verificação para auditoria futura mais profunda especificamente deste cenário, que exigiria simular perda de rede real pra observar).
+**Demais campos**: infraestrutura nativa do LiveKit, não código customizado do NexPlay além de exibir o label — a maior parte dos 36 campos não se aplica de forma diferente do já documentado em `VOICE_CHANNEL_JOIN`.
+
+---
+
+# CONTINUAÇÃO
+
+Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas `MISSING`/de referência/correção), as **24 interações do Roteiro 0**, **18 do Roteiro 1**, **11 do Roteiro 2**, **19 do Roteiro 3**, **23 do Roteiro 4**, **8 do Roteiro 5** e **9 do Roteiro 6** — **112 fichas no total**. O núcleo da experiência de voz (conectar, mutar, ensurdecer, desconectar, câmera, compartilhar tela) já é **real, sofisticado e testado** — Krisp de verdade, `restrictOwnAudio` corrigindo um bug real de eco, dois timeouts independentes protegendo contra travamento, detecção da barra nativa de "parar compartilhamento" do SO. Documentado como `CORE`, com uma correção de registro (`VOICE_NETWORK_RECONNECT` já tem UI de "Reconectando", ao contrário do que `DISCORD_PARITY_PLAN.md` registrava antes desta auditoria).
+
+**Lacunas reais confirmadas nesta passagem**: sem atalho de teclado configurável pra mute/deafen (o próprio exemplo do pedido original menciona isso como esperado); sem som específico de deafen/undeafen nem de ligar/desligar câmera; sem preview/seletor de fundo-blur antes de ligar a câmera; sem trocar qualidade de compartilhamento de tela sem reconectar; sem cancelamento explícito da tela "Entrando na sala..." além de esperar o timeout.
+
+**Ainda dentro da prioridade especial de Voz, pendente de auditoria** (continuação natural deste roteiro numa próxima passagem, dado o tamanho já grande deste documento): dispositivos de entrada/saída (`DeviceMenu`), push-to-talk configurável, os 3 perfis de microfone + Krisp em detalhe, o chat de texto dentro da call (canal de dados do LiveKit), soundboard (já `CORE`/testado, mas sem ficha campo-a-campo ainda), lista de participantes com indicador de fala, grid/foco de vídeo e tela compartilhada, e a auditoria de Vídeo dedicada (Roteiro 7 do pedido original). Depois: Servidor/Configurações completas (Cargos, Permissões, Membros, Convites — já `CORE` mas sem ficha campo-a-campo), Amigos/DMs, Configurações do app inteiras, Premium/Shop (tudo `MISSING`, registrado em bloco em `DISCORD_PARITY_PLAN.md` §10), e as Jornadas de usuário completas nos documentos ainda não criados (`DISCORD_NAVIGATION_TREE.md`, `DISCORD_INTERACTION_MATRIX.md`, `DISCORD_USER_JOURNEYS.md`).
