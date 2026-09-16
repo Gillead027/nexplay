@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). **Roteiro 10 completo** (7 fichas, configurações — aparência). Roteiros 11–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). **Roteiro 10 completo** (7 fichas, configurações — aparência). **Roteiro 11 completo** (13 fichas, amigos e DMs). Roteiros 12–69+ pendentes — ver nota de continuação no final do arquivo.
 
 ---
 
@@ -5396,4 +5396,186 @@ Arquitetura real (verificada em `Workspace.tsx`, seção `section === 'appearanc
 
 Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas agrupadas/de referência, dado que os três sliders de Aparência são estruturalmente idênticos e a norma contra resumir aplica-se a *interações distintas*, não a instâncias repetidas do mesmo componente genérico), as **24 interações do Roteiro 0**, **18 do Roteiro 1**, **11 do Roteiro 2**, **19 do Roteiro 3**, **23 do Roteiro 4**, **8 do Roteiro 5**, **9 do Roteiro 6**, **12 do Roteiro 7**, **8 do Roteiro 8**, **15 do Roteiro 9** e **7 do Roteiro 10** — **154 fichas no total**. Aparência é a seção de Configurações mais consistentemente `CORE` de toda a auditoria até agora — sem nenhum elemento decorativo encontrado.
 
-**Interrupção deliberada da auditoria — incidente de produção**: a pedido explícito do usuário, o trabalho de auditoria pausa aqui pra investigar e corrigir uma queda recorrente do bot de música (que já aconteceu de novo após um deploy) e, principalmente, **isolar o serviço do bot de música pra que deploys futuros de outras partes do app parem de derrubá-lo** — uma instrução permanente de processo, não só um bug pontual. A auditoria retoma a partir do Roteiro 11 (Amigos/DMs) assim que isso for resolvido.
+**Interrupção deliberada da auditoria — incidente de produção**: a pedido explícito do usuário, o trabalho de auditoria pausou aqui pra investigar uma queda recorrente do bot de música. **Achado**: o container do bot nunca chegou a cair — ficou 17h no ar atravessando vários deploys de `api`/`web` no mesmo dia, prova direta de que o processo de deploy já era escopado corretamente (`docker compose build api web` + `up -d --no-deps api web`, nunca tocando `music-bot`) — o isolamento pedido já existia. A causa real era só os cookies de autenticação do YouTube expirando (fragilidade conhecida de cookies exportados do navegador, sem relação com deploy nenhum) — corrigido aplicando cookies novos e verificado com o comando exato que o app usa internamente (`--plugin-dirs`/`--js-runtimes node`/PO-token), sem reiniciar nem reconstruir o container. Lição registrada em memória de longo prazo para não repetir a investigação do zero numa próxima queda. Auditoria retomada a partir daqui.
+
+---
+
+# ROTEIRO 11 — AMIGOS E MENSAGENS DIRETAS
+
+Arquitetura real (verificada em `apps/web/src/components/Friends.tsx` e `DmChannelView.tsx`, lidos por completo nesta passagem): sistema de amigos e DM 1:1 **real e funcional**, com uma divergência arquitetural deliberada e importante frente ao Discord real — **só é possível adicionar como amigo alguém que já divide um servidor com você**, não existe busca global por nome de usuário/tag em toda a instância.
+
+---
+
+## 11.1 — FRIEND_ADD_SEARCH
+
+**ID**: `FRIEND_ADD_SEARCH`
+**NOME**: Buscar pessoas para adicionar como amigo
+**CAMINHO EXATO**: `Início > Amigos > aba "Adicionar amigo"`
+**APARÊNCIA**: Campo de busca funcional (`SearchIcon` + `<input>`) + lista de resultados, cada um com avatar/nome + ação conforme o status do relacionamento.
+**ACHADO ARQUITETURAL — ESCOPO REAL**: confirmado lendo o código e o comentário do próprio autor: a lista de candidatos **não é "todo mundo registrado na instância"**, é a união deduplicada dos membros de **todos os servidores dos quais o próprio usuário já faz parte** (`Promise.all(serverIds.map(id => api.getMembers(id)))`, mesclados por id). O comentário explica a razão: "não existe mais um único 'todo mundo registrado' desde que múltiplos servidores existem." **Efeito prático**: não dá pra adicionar como amigo alguém que não compartilha nenhum servidor com você — diferente do Discord real, que permite adicionar por `usuário#tag`/nome de usuário global, cruzando servidores livremente.
+**TRIGGER**: Digitar no campo (filtro local sobre a lista já carregada, sem nova chamada de rede por tecla).
+**RESULTADO IMEDIATO**: Filtro instantâneo client-side (`member.displayName.toLowerCase().includes(query)`).
+**PRÉ-CONDIÇÕES**: Estar em pelo menos um servidor com outras pessoas.
+**RESULTADO VISUAL**: Lista filtrada; cada linha mostra a ação certa conforme `relationshipStatus`: "Adicionar" (`NONE`), "Pedido enviado" (`PENDING_OUTGOING`), "Pedido recebido" (`PENDING_INCOMING`), "Já são amigos" (`ACCEPTED`) — **nunca mostra um botão de ação errado pro estado atual**.
+**BACKEND**: `GET /api/servers/:id/members` por servidor, reaproveitado (mesma rota que a aba Membros de Configurações do Servidor usa, Roteiro 9).
+**BANCO**: Leitura de `server_members`.
+**EFEITO REMOTO**: Nenhum até enviar um pedido.
+**ACESSIBILIDADE**: Busca funcional real (contraste positivo direto com `ROLE_LIST_SEARCH_FAKE`, Roteiro 9).
+
+**Nota de auditoria**: esta restrição pode ser vista como uma feature de privacidade deliberada (instância fechada, comunidade de amigos) tanto quanto uma limitação — vale confirmar com o usuário se isso é intencional pra sempre ou se um dia deveria existir uma forma de adicionar alguém por convite direto/username sem precisar estar no mesmo servidor primeiro.
+
+---
+
+## 11.2 — FRIEND_REQUEST_SEND
+
+**ID**: `FRIEND_REQUEST_SEND`
+**NOME**: Enviar um pedido de amizade
+**CAMINHO EXATO**: `Aba "Adicionar amigo" > linha de alguém com status NONE > "Adicionar"`
+**TRIGGER**: Clique.
+**RESULTADO IMEDIATO**: `api.sendFriendRequest(userId)`.
+**RESULTADO VISUAL**: Feedback inline por pessoa (`feedback[userId]`): **"Agora vocês são amigos!"** se a resposta já vier `ACCEPTED` (caso do outro lado já ter pedido antes — auto-aceite em pedido mútuo simultâneo, já confirmado como `DONE` em `DISCORD_PARITY_PLAN.md` §1) ou **"Pedido enviado."** caso contrário — **duas mensagens de sucesso diferentes pro mesmo botão**, dependendo do resultado real, não um "sucesso genérico" fixo.
+**EFEITO REMOTO**: `FRIENDSHIP_UPDATE` via WebSocket, escopado aos dois participantes (`sendToUsers`, Roteiro 5) — o destinatário vê o pedido aparecer em tempo real na aba "Pendentes" dele, com o badge no botão Início atualizando (`FRIEND_REQUEST_BADGE`, Roteiro 2).
+**BACKEND**: `POST /api/friends/requests` (nome exato de rota inferido, não relido linha a linha nesta passagem).
+**ERRO**: Feedback de erro na mesma área inline.
+**REVERSÃO**: `FRIEND_REQUEST_CANCEL_OUTGOING`.
+
+---
+
+## 11.3 — FRIEND_REQUEST_ACCEPT
+
+**ID**: `FRIEND_REQUEST_ACCEPT`
+**NOME**: Aceitar um pedido de amizade recebido
+**CAMINHO EXATO**: `Amigos > aba "Pendentes" > pedido recebido > "Aceitar"`
+**ACHADO — SEM ROTA DEDICADA**: `respond(userId, true)` chama **o mesmo `api.sendFriendRequest(userId)`** usado pra *enviar* um pedido novo, não uma rota separada de "aceitar" — reaproveita a lógica de auto-aceite do backend (mandar um pedido quando já existe um pedido pendente do outro lado na direção oposta é tratado como aceitar, não como um segundo pedido duplicado).
+**RESULTADO IMEDIATO**: Chamada + `onRefresh()` (refetch completo de amigos/pedidos, não uma atualização otimista local).
+**RESULTADO VISUAL**: Pedido sai de "Pendentes", pessoa aparece em "Todos".
+**EFEITO REMOTO**: `FRIENDSHIP_UPDATE` pros dois lados.
+**ERRO**: Silenciado (`catch { /* O usuário pode tentar de novo pelo mesmo botão. */ }`) — **sem feedback visível de erro nesta ação específica**, diferente de `FRIEND_REQUEST_SEND` (que tem feedback inline por pessoa) — se aceitar falhar, o usuário só veria o pedido continuar lá, sem explicação, e teria que tentar nave de novo por conta própria.
+
+---
+
+## 11.4 — FRIEND_REQUEST_DECLINE
+
+**ID**: `FRIEND_REQUEST_DECLINE`
+**NOME**: Recusar um pedido de amizade recebido
+**CAMINHO EXATO**: `Pendentes > pedido recebido > "Recusar"`
+**TRIGGER**: Clique — **sem confirmação**.
+**RESULTADO IMEDIATO**: `api.removeFriendship(userId)` — **mesma rota usada pra desfazer uma amizade já aceita** (`FRIEND_REMOVE`) e pra cancelar um pedido enviado (`FRIEND_REQUEST_CANCEL_OUTGOING`) — uma única operação de backend cobre os três casos (recusar/cancelar/desfazer), já que todos resultam no mesmo estado final: nenhum relacionamento entre os dois.
+**RESULTADO VISUAL**: Pedido desaparece da lista.
+**EFEITO REMOTO**: `FRIENDSHIP_UPDATE`.
+**ERRO**: Silenciado, mesma lacuna de `FRIEND_REQUEST_ACCEPT`.
+
+---
+
+## 11.5 — FRIEND_REQUEST_CANCEL_OUTGOING
+
+**ID**: `FRIEND_REQUEST_CANCEL_OUTGOING`
+**NOME**: Cancelar um pedido de amizade que você mesmo enviou
+**CAMINHO EXATO**: `Pendentes > pedido enviado > "Cancelar"`
+**Demais campos**: idênticos a `FRIEND_REQUEST_DECLINE` (mesma rota `removeFriendship`, sem confirmação, erro silenciado).
+
+---
+
+## 11.6 — FRIEND_REMOVE
+
+**ID**: `FRIEND_REMOVE`
+**NOME**: Desfazer uma amizade já aceita
+**CAMINHO EXATO**: `Amigos > aba "Todos" > linha do amigo > ícone de X`
+**TRIGGER**: Clique → **`window.confirm('Remover esse amigo?')`** — **esta é a única das três ações de "remover relacionamento" (recusar/cancelar/desfazer) que pede confirmação** — recusar um pedido recebido ou cancelar um enviado são imediatos, sem confirmar; desfazer uma amizade já estabelecida pede um clique extra de confirmação. Diferença de fricção justificável (desfazer algo já aceito por ambos os lados é uma perda maior que recusar algo que nunca se concretizou), mas vale registrar como a razão da assimetria entre fichas irmãs.
+**RESULTADO IMEDIATO**: Se confirmado, `api.removeFriendship(userId)`.
+**RESULTADO VISUAL**: Amigo sai da lista "Todos".
+**EFEITO REMOTO**: `FRIENDSHIP_UPDATE` pros dois lados — **o DM entre os dois não é apagado** (mensagens antigas continuam existindo se o usuário navegar até o canal de DM diretamente, a confirmar se a aba de DM em si desaparece da sidebar ou só fica "sem amizade" — ver nota de auditoria em `DM_MESSAGE_SEND` adiante).
+**ERRO**: Silenciado.
+
+---
+
+## 11.7 — FRIEND_TABS_NAVIGATION
+
+**ID**: `FRIEND_TABS_NAVIGATION`
+**NOME**: Navegar entre as abas Todos/Pendentes/Bloqueados/Adicionar amigo
+**CAMINHO EXATO**: `Amigos > barra de abas`
+**APARÊNCIA**: 4 abas com contagem: "Todos — N", "Pendentes" (só mostra número se `incoming.length > 0`), "Bloqueados — N", "Adicionar amigo" (sem contagem, ícone `UserPlusIcon`, estilo visualmente distinto — `.friends-tab-add`).
+**ESTADO NORMAL**: Aba inicial é **dinâmica**: `useState(state.incoming.length > 0 ? 'pending' : 'all')` — se você tem pedidos pendentes ao abrir a tela, ela já abre direto em "Pendentes" em vez de "Todos", chamando atenção pra ação necessária.
+**ACHADO — SEM ABA "ONLINE"**: confirmado por ausência: só 4 abas (Todos/Pendentes/Bloqueados/Adicionar), **nenhuma aba "Online"** como o pedido original espera (Roteiro 30) — consequência direta e coerente da ausência total de status de presença já confirmada no protocolo (`PRESENCE_STATUS`, Roteiro 5, `MISSING` até no nível do `RealtimeEvent`) — não dá pra filtrar por "online" quando o conceito de "estar online" não existe em lugar nenhum do sistema.
+**Demais campos**: navegação simples por `useState`, sem persistência entre sessões, sem atalho de teclado, sem `role="tablist"` formal confirmado (mesma lacuna ARIA parcial já notada em seletores parecidos).
+
+---
+
+## 11.8 — FRIEND_DM_OPEN
+
+**ID**: `FRIEND_DM_OPEN`
+**NOME**: Abrir/criar uma conversa direta com um amigo
+**CAMINHO EXATO**: `Amigos > aba "Todos" > linha do amigo > ícone de mensagem`
+**RESULTADO IMEDIATO**: **Condicional em duas etapas**: `friend.dmChannelId ? onOpenDm(friend.id) : void api.openDmChannel(friend.id).then(() => onOpenDm(friend.id))` — se já existe um canal de DM com essa pessoa (de uma conversa anterior), abre direto; se nunca conversaram, **cria o canal de DM na hora**, só então abre — **transparente ao usuário**, o clique parece igual nos dois casos, mas o caminho de código por trás é diferente (achado, não um bug).
+**RESULTADO VISUAL**: Navega pra `DmChannelView`, sidebar muda pro contexto de DM.
+**EFEITO REMOTO**: Se o canal for novo, `DM_CHANNEL_CREATE` via WebSocket — **só entregue pros dois participantes** (`sendToUsers`), não um broadcast.
+**BACKEND**: `POST /api/dm-channels` (criação) ou navegação direta se já existe.
+**BANCO**: Insere em `dm_channels` só se novo.
+
+---
+
+## 11.9 — DM_SIDEBAR_LIST
+
+**ID**: `DM_SIDEBAR_LIST`
+**NOME**: Lista de conversas diretas na sidebar
+**CAMINHO EXATO**: `Início > sidebar > "MENSAGENS DIRETAS"`
+**APARÊNCIA**: Um botão "Amigos" fixo no topo (com badge de pendentes) + lista de canais de DM, cada um com avatar/nome do outro participante.
+**ESTADO NORMAL**: "Nenhuma conversa ainda." se vazio.
+**RESULTADO FINAL — ORDENAÇÃO**: confirmado no `useFriendsState` (Roteiro 11, ficha de referência de dados): a lista é **reordenada a cada mensagem nova** — `[...next].sort((a,b) => (b.lastMessageAt ?? b.createdAt) - (a.lastMessageAt ?? a.createdAt))` — conversa mais recente sempre sobe pro topo, em tempo real, sem precisar de F5 (mesmo padrão do Discord real).
+**ACHADO — SEM INDICADOR DE NÃO LIDA**: mesma lacuna categórica já confirmada nos Roteiros 2/5 (sem rastreio de leitura em lugar nenhum do app) — uma DM nova não mostra nenhum destaque visual além de subir na ordem da lista.
+**SELECTED**: Canal ativo com classe `active`.
+**EFEITO REMOTO**: `DM_CHANNEL_CREATE` insere no topo da lista em tempo real pra quem recebe a primeira mensagem de alguém novo.
+
+---
+
+## 11.10 — DM_MESSAGE_SEND
+
+**ID**: `DM_MESSAGE_SEND`
+**NOME**: Enviar mensagem numa conversa direta
+**CAMINHO EXATO**: `DM aberta > composer`
+**STATUS**: Reaproveita boa parte do mesmo padrão de `MESSAGE_SEND` (Roteiro 4): markdown real (`MarkdownText`), editar, apagar, copiar, encaminhar — todos confirmados presentes (`CopyIcon`/`EditIcon`/`ForwardIcon`/`TrashIcon` importados e usados em `DmChannelView.tsx`).
+**ACHADO — LACUNAS REAIS FRENTE AO CHAT DE CANAL**: confirmado por ausência de import: **sem reações** (nenhum ícone de emoji/reação na toolbar de hover da DM) e **sem upload de anexo** (nenhum botão de clipe/anexo no composer da DM) — ambos existem no chat de canal de servidor (Roteiro 4) mas não aqui, consistente com `DISCORD_PARITY_PLAN.md` §1: "sem reação/pin/busca/anexo dentro do DM ainda."
+**PRÉ-CONDIÇÕES**: `composerDisabled = isBlockedByMe` — **só trava o composer se *você* bloqueou a outra pessoa** (não checa se a outra pessoa bloqueou você — nesse caso a mensagem provavelmente falharia no backend em vez de ser prevenida no cliente, a confirmar em auditoria futura). **Sem gate de timeout** — comentário explícito no código confirma que isso é deliberado: "timeout passou a ser por servidor... DM é uma conversa fora de qualquer servidor" — mesmo alguém em timeout em todos os seus servidores pode mandar DM normalmente.
+**RESULTADO FINAL**: Mensagem persistida em `dm_messages`, entregue em tempo real só aos dois participantes.
+**REALTIME**: `DM_MESSAGE_CREATE`/`DM_MESSAGE_UPSERT`, via `sendToUsers`.
+
+**Nota de auditoria — DM com quem você desfez amizade**: não confirmado nesta passagem se `DM_MESSAGE_SEND` continua funcionando depois de `FRIEND_REMOVE` (desfazer a amizade) — o comentário do código em `DmChannelView.tsx` só menciona bloqueio, não status de amizade, como condição pro composer — **possível que DMs continuem abertas e funcionais mesmo sem amizade ativa**, diferente do que `DISCORD_PARITY_PLAN.md` §1 registra como pré-requisito pra *criar* uma DM ("DM 1:1 exige amizade ACCEPTED") — a exigência pode valer só pra abrir uma conversa nova, não pra continuar uma já existente após desfazer amizade. Marcado como achado a confirmar em auditoria futura mais profunda do backend de DM.
+
+---
+
+## 11.11 — DM_VOICE_VIDEO_CALL *(MISSING)*
+
+**ID**: `DM_VOICE_VIDEO_CALL`
+**NOME**: Iniciar uma chamada de voz/vídeo dentro de uma DM
+**STATUS**: **`MISSING` por completo.** Confirmado por ausência: `DmChannelView.tsx` cabeçalho (`.dm-channel-header`) só tem o identity button (avatar+nome) — nenhum ícone de telefone/câmera pra iniciar chamada, diferente do Discord real, que tem os dois no cabeçalho de toda DM. Consistente com a arquitetura de voz deste app inteiro sendo baseada em **canais de voz persistentes dentro de servidores** (Roteiro 6), não em chamadas ad-hoc entre duas pessoas fora de um servidor — implementar isso exigiria um modelo novo de "sala de voz efêmera" só pra DMs, não uma extensão trivial do que já existe.
+**Roteiro relacionado do pedido original**: `ROTEIRO 32 — RECEBER CALL` (som, overlay, aceitar/recusar) também não tem nenhum equivalente, pela mesma razão de raiz.
+
+---
+
+## 11.12 — DM_UNBLOCK
+
+**ID**: `DM_UNBLOCK`
+**NOME**: Desbloquear um usuário pela aba Bloqueados
+**CAMINHO EXATO**: `Amigos > aba "Bloqueados" > linha > "Desbloquear"`
+**TRIGGER**: Clique — sem confirmação.
+**RESULTADO IMEDIATO**: `api.unblockUser(userId)` + `onRefresh()`.
+**EFEITO REMOTO**: `BLOCK_UPDATE` via WebSocket (confirmado no union de eventos e no `useFriendsState`).
+**ERRO**: Silenciado, mesma família de `FRIEND_REQUEST_ACCEPT`/`DECLINE`.
+**Nota**: esta é a **segunda** forma de desbloquear já confirmada nesta auditoria mais ampla — a primeira é dentro de Configurações do app > Privacidade (`blockedUsers`/`unblock`, já mencionado en passant em sessão anterior desta linha de trabalho) — **duas telas diferentes com a mesma funcionalidade de desbloqueio**, a confirmar em auditoria futura se são exatamente redundantes ou se cada uma tem um propósito de navegação distinto (uma é "central de amigos", outra é "configurações da minha conta" — plausivelmente ambas fazem sentido coexistir, como no Discord real, que também tem bloqueados tanto em Amigos quanto em Configurações de Privacidade).
+
+---
+
+## 11.13 — DM_GROUP *(MISSING — referência)*
+
+**ID**: `DM_GROUP`
+**STATUS**: `MISSING`, já registrado em `DISCORD_PARITY_PLAN.md` §1/§4 ("sem grupo" repetido em várias entradas) — confirmado nesta auditoria por ausência estrutural: `DmChannel`/`dm_channels` são modelados inteiramente como 1:1 (`channel.participants.find(p => p.id !== ownId)` em vários lugares já lidos assume sempre exatamente um "outro" participante) — adicionar DM em grupo exigiria mudança de schema, não só de UI.
+
+---
+
+# CONTINUAÇÃO
+
+Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropriado pra fichas agrupadas/de referência/`MISSING`), as **24 interações do Roteiro 0**, **18 do Roteiro 1**, **11 do Roteiro 2**, **19 do Roteiro 3**, **23 do Roteiro 4**, **8 do Roteiro 5**, **9 do Roteiro 6**, **12 do Roteiro 7**, **8 do Roteiro 8**, **15 do Roteiro 9**, **7 do Roteiro 10** e **13 do Roteiro 11** — **167 fichas no total**. Amigos e DM 1:1 são um sistema **real e funcional**, com uma divergência arquitetural deliberada relevante: adicionar amigo exige compartilhar um servidor primeiro, sem busca global por usuário.
+
+**Achados mais importantes desta seção**: (1) "Aceitar" pedido de amizade e "enviar" pedido são literalmente a mesma chamada de API, reaproveitando lógica de auto-aceite; (2) três ações de "encerrar relacionamento" (recusar/cancelar/desfazer) têm fricção inconsistente — só desfazer amizade já aceita pede confirmação; (3) erros são silenciados em quase toda ação de amigos (aceitar, recusar, desbloquear) exceto enviar pedido, que tem feedback inline — inconsistência real de tratamento de erro; (4) DM não tem reações nem anexos, diferente do chat de canal; (5) sem chamada de voz/vídeo em DM, coerente com a arquitetura de voz ser baseada em canais de servidor, não em chamadas ad-hoc.
+
+**Próximo na fila**: com Amigos/DMs e a maior parte das Configurações mapeadas, a auditoria segue pra completar Configurações restantes (Conta e segurança, Privacidade — já com achados parciais de sessões anteriores, merecem uma passagem campo-a-campo formal) e então parte para os três documentos de síntese ainda não criados (`DISCORD_NAVIGATION_TREE.md`, `DISCORD_INTERACTION_MATRIX.md`, `DISCORD_USER_JOURNEYS.md`), já que a superfície do app está mapeada em profundidade suficiente pra alimentá-los sem generalizar.
