@@ -2,7 +2,7 @@ import { ContextMenu, useContextMenu } from './ContextMenu';
 import { CategorySettingsModal, type CategorySettingsModalHandle } from './CategorySettingsModal';
 import { TextChannelSettingsModal } from './TextChannelSettingsModal';
 import { VoiceChannelSettingsModal } from './VoiceChannelSettingsModal';
-import { type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type DragEvent as ReactDragEvent, type FormEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type RefObject, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import {
   ACCENT_COLORS,
@@ -520,6 +520,8 @@ function ChannelButton({
   disconnectingIdentity,
   settings,
   onContextMenu,
+  draggable,
+  onDragStart,
 }: {
   channel: VoiceChannel;
   summary: RoomSummary | undefined;
@@ -544,10 +546,13 @@ function ChannelButton({
     onDeleted: () => void;
   } | undefined;
   onContextMenu?: (event: ReactMouseEvent<HTMLElement>) => void;
+  draggable?: boolean;
+  onDragStart?: (event: ReactDragEvent<HTMLElement>) => void;
 }) {
   return (
     <div className="channel-block">
-      <div className={`channel-row ${settings ? 'channel-row-renamable' : ''}`} onContextMenu={onContextMenu}>
+      <div className={`channel-row ${settings ? 'channel-row-renamable' : ''}`} onContextMenu={onContextMenu}
+        draggable={draggable} onDragStart={onDragStart}>
         <button
           type="button"
           className={`channel-button ${active ? 'active' : ''}`}
@@ -1843,6 +1848,38 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     void applyChannelMove(kind, channelId, destinationCategoryId);
   }
 
+  const DRAG_MIME = 'application/x-nexplay-channel';
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>('none');
+
+  function handleChannelDragStart(
+    event: ReactDragEvent<HTMLElement>,
+    kind: 'text' | 'voice',
+    channelId: string,
+    channelLabel: string,
+    currentCategoryId: string | null,
+  ) {
+    if (!canManageChannels) { event.preventDefault(); return; }
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData(DRAG_MIME, JSON.stringify({ kind, channelId, channelLabel, currentCategoryId }));
+  }
+
+  function handleCategoryDragOver(event: ReactDragEvent<HTMLElement>, targetCategoryId: string | null) {
+    if (!canManageChannels || !event.dataTransfer.types.includes(DRAG_MIME)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = 'move';
+    if (dragOverTarget !== (targetCategoryId ?? 'root')) setDragOverTarget(targetCategoryId ?? 'root');
+  }
+
+  function handleCategoryDrop(event: ReactDragEvent<HTMLElement>, targetCategoryId: string | null, targetLabel: string) {
+    event.preventDefault();
+    setDragOverTarget('none');
+    const raw = event.dataTransfer.getData(DRAG_MIME);
+    if (!raw) return;
+    const dragged = JSON.parse(raw) as { kind: 'text' | 'voice'; channelId: string; channelLabel: string; currentCategoryId: string | null };
+    if (dragged.currentCategoryId === targetCategoryId) return;
+    requestMoveChannel(dragged.kind, dragged.channelId, dragged.channelLabel, dragged.currentCategoryId, targetCategoryId, targetLabel);
+  }
+
   function openMoveChannelMenu(
     event: { preventDefault: () => void; clientX: number; clientY: number },
     kind: 'text' | 'voice',
@@ -2598,6 +2635,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                       const selected = channel.id === selectedTextChannelId;
                       return (
                         <div className="text-channel-row" key={channel.id}
+                          draggable={canManageChannels}
+                          onDragStart={(event) => handleChannelDragStart(event, 'text', channel.id, `#${channel.name}`, channel.categoryId)}
                           onContextMenu={(event) => openMoveChannelMenu(event, 'text', channel.id, `#${channel.name}`, channel.categoryId)}>
                           <button type="button" className={`text-channel-button ${selected ? 'active' : ''}`}
                             onClick={() => setSelectedTextChannelId(channel.id)}
@@ -2621,6 +2660,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                     key={room.id}
                     channel={room}
                     onContextMenu={(event) => openMoveChannelMenu(event, 'voice', room.id, room.name, room.categoryId)}
+                    draggable={canManageChannels}
+                    onDragStart={(event) => handleChannelDragStart(event, 'voice', room.id, room.name, room.categoryId)}
                     settings={voiceSettingsFor(room)}
                     summary={room}
                     active={voice.currentChannel?.id === room.id && voice.connected}
@@ -2638,35 +2679,43 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                 ));
 
                 return <>
-                  <div className="section-title">
-                    <span>CANAIS DE TEXTO</span>
-                    {canManageChannels && (
-                      <button ref={createTextChannelButtonRef} type="button" className="add-channel-button"
-                        onClick={() => setCreateTextChannelOpen(true)} aria-label="Criar canal de texto" title="Criar canal de texto">
-                        <PlusIcon size={14} />
-                      </button>
-                    )}
+                  <div className={`uncategorized-zone ${dragOverTarget === 'root' ? 'drag-over' : ''}`}
+                    onDragOver={(event) => handleCategoryDragOver(event, null)}
+                    onDragLeave={() => setDragOverTarget((current) => current === 'root' ? 'none' : current)}
+                    onDrop={(event) => handleCategoryDrop(event, null, 'Sem categoria')}>
+                    <div className="section-title">
+                      <span>CANAIS DE TEXTO</span>
+                      {canManageChannels && (
+                        <button ref={createTextChannelButtonRef} type="button" className="add-channel-button"
+                          onClick={() => setCreateTextChannelOpen(true)} aria-label="Criar canal de texto" title="Criar canal de texto">
+                          <PlusIcon size={14} />
+                        </button>
+                      )}
+                    </div>
+                    {renderTextChannels(uncategorizedText)}
+                    <div className="section-title">
+                      <span>CANAIS DE VOZ</span>
+                      <small>{rooms.reduce((sum, room) => sum + room.participants.length, 0)} online</small>
+                      {canManageChannels && (
+                        <button ref={createVoiceChannelButtonRef} type="button" className="add-channel-button"
+                          onClick={() => setCreateVoiceChannelOpen(true)} aria-label="Criar canal de voz" title="Criar canal de voz">
+                          <PlusIcon size={14} />
+                        </button>
+                      )}
+                    </div>
+                    {!livekitAvailable && <div className="service-warning">LiveKit indisponível</div>}
+                    {renderVoiceChannels(uncategorizedRooms)}
                   </div>
-                  {renderTextChannels(uncategorizedText)}
-                  <div className="section-title">
-                    <span>CANAIS DE VOZ</span>
-                    <small>{rooms.reduce((sum, room) => sum + room.participants.length, 0)} online</small>
-                    {canManageChannels && (
-                      <button ref={createVoiceChannelButtonRef} type="button" className="add-channel-button"
-                        onClick={() => setCreateVoiceChannelOpen(true)} aria-label="Criar canal de voz" title="Criar canal de voz">
-                        <PlusIcon size={14} />
-                      </button>
-                    )}
-                  </div>
-                  {!livekitAvailable && <div className="service-warning">LiveKit indisponível</div>}
-                  {renderVoiceChannels(uncategorizedRooms)}
 
                   {[...categories].sort((a, b) => a.position - b.position).map((category) => {
                     const collapsed = categoryPrefFor(category.id).collapsed;
                     const categoryText = textChannels.filter((channel) => channel.categoryId === category.id);
                     const categoryRooms = rooms.filter((room) => room.categoryId === category.id);
                     return (
-                      <div className="channel-category" key={category.id}>
+                      <div className={`channel-category ${dragOverTarget === category.id ? 'drag-over' : ''}`} key={category.id}
+                        onDragOver={(event) => handleCategoryDragOver(event, category.id)}
+                        onDragLeave={() => setDragOverTarget((current) => current === category.id ? 'none' : current)}
+                        onDrop={(event) => handleCategoryDrop(event, category.id, category.name)}>
                         <button type="button" className="category-header"
                           onClick={() => toggleCategoryCollapsed(category.id)}
                           onContextMenu={(event) => openCategoryMenu(event, category)}>
