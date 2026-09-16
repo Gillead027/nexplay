@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). Roteiros 2–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). Roteiros 3–69+ pendentes — ver nota de continuação no final do arquivo.
 
 ---
 
@@ -1642,8 +1642,349 @@ Arquitetura real (verificada lendo `apps/web/src/App.tsx`, `apps/web/src/compone
 
 ---
 
+# ROTEIRO 2 — NAVEGAÇÃO
+
+Arquitetura real (verificada em `apps/web/src/components/Workspace.tsx` e `Servers.tsx`): navegação de topo é um `useState<'server' | 'friends'>` binário — **só existem esses dois "modos"**, sem conceito de rota/URL própria (não há router; trocar de servidor/canal não muda a URL do navegador, então **não é possível copiar/colar um link direto pra um servidor específico, nem usar Voltar/Avançar do navegador pra navegar entre servidores/canais** — isso está fora do escopo desta ficha individual e é registrado à parte como achado transversal no fim deste roteiro). Todos os botões da rail usam `title="..."` nativo do HTML como tooltip — **nenhum tooltip customizado/estilizado** (diferente do balão rico do Discord real, que mostra nome + indicador de status).
+
+---
+
+## 2.1 — HOME_SELECT
+
+**ID**: `HOME_SELECT`
+**NOME**: Ir para a tela Início (contexto pessoal — amigos/DMs)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > rail de servidores (extrema esquerda) > primeiro botão, topo`
+**POSIÇÃO NA INTERFACE**: Topo da `<aside className="server-rail">`, antes do divisor (`.rail-divider`) que separa do primeiro servidor.
+**APARÊNCIA**: Botão com a marca do app (`<span className="brand-mark compact"><i /><i /></span>` — duas barras/traços formando o logo compacto, não um ícone importado), classes `server-button home`.
+**ESTADO NORMAL**: Sem destaque quando `view !== 'friends'`.
+**HOVER**: Estilo padrão de `.server-button:hover` (mudança de `border-radius`/cor de fundo, já documentado no CSS de outras auditorias desta sessão como indo de quadrado arredondado pra mais arredondado ainda no hover).
+**ACTIVE/PRESSED**: Sem regra CSS distinta de `:active` documentada.
+**SELECTED**: Classe `active` aplicada quando `view === 'friends'` — mesmo tratamento visual da barra lateral de destaque (`::before`) que um servidor selecionado tem, reaproveitando a mesma classe `.server-button.home`.
+**DISABLED**: Nunca desabilitado.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique esquerdo.
+**PRÉ-CONDIÇÕES**: Nenhuma.
+**RESULTADO IMEDIATO**: `setView('friends')`.
+**RESULTADO VISUAL**: Coluna de contexto (`.sidebar`) troca de "canais do servidor ativo" para a lista de amigos/DMs; painel central troca do canal de texto/voz para a tela de amigos ou DM selecionada.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma transição documentada — troca instantânea (`View Transitions API` do navegador só é usada especificamente pra entrar em canal de voz, ver auditoria futura de Voz — não para troca de contexto Início/Servidor).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Usuário navega dentro da tela de Amigos/DMs (auditoria detalhada pendente, Roteiro 30/31).
+**RESULTADO FINAL**: `view === 'friends'`, `activeServerId` continua retido no estado (não é resetado — voltar para um servidor depois volta pro mesmo servidor de antes, sem precisar escolher de novo).
+**EFEITO LOCAL**: Nenhuma chamada de API disparada só pela troca de view em si (a tela de Amigos já teria seus próprios dados carregados via `useFriendsState`, que roda em paralelo o tempo todo, independente da view ativa — não é um fetch sob demanda ao clicar).
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não afetado — WebSocket continua conectado e recebendo eventos de servidor mesmo com `view === 'friends'` (confirmado: os hooks de estado de servidor, como `useServersState`, não são condicionados à view ativa).
+**BACKEND**: Nenhuma chamada nova.
+**BANCO**: Não aplicável.
+**REFRESH**: `view` **não persiste em F5** — sempre volta para `'server'` (valor inicial do `useState`), mesmo que o usuário estivesse em "Início" antes de recarregar.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Clicar em qualquer ícone de servidor na rail volta para `view === 'server'`.
+**ATALHO**: **`MISSING`** — nenhum atalho de teclado dedicado (Discord real não tem um atalho universal pra isso either, então não é necessariamente uma lacuna de paridade).
+**MENU DE CONTEXTO**: **`MISSING`** — botão direito não abre nada.
+**ACESSIBILIDADE**: `aria-label="Início"`. Alcançável via Tab, ativável via Enter/Espaço.
+
+---
+
+## 2.2 — FRIEND_REQUEST_BADGE
+
+**ID**: `FRIEND_REQUEST_BADGE`
+**NOME**: Indicador de pedidos de amizade pendentes no botão Início
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > rail de servidores > botão Início > canto do badge`
+**POSIÇÃO NA INTERFACE**: Sobreposto ao botão Início (`<span className="dm-pending-badge rail-badge">`).
+**APARÊNCIA**: Badge numérico pequeno — mostra a contagem exata (`friendsState.incoming.length`), não um simples ponto.
+**ESTADO NORMAL**: Ausente quando `friendsState.incoming.length === 0`.
+**HOVER**: Não é um elemento interativo próprio (clicar nele clica no botão por baixo, já que é um `<span>` sem seu próprio handler) — não tem tooltip próprio explicando "N pedidos de amizade pendentes", só o número visível.
+**ACTIVE/PRESSED**: Não aplicável (não é clicável isoladamente).
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: Renderização condicional — não é uma interação, é um indicador reativo.
+**PRÉ-CONDIÇÕES**: `friendsState.incoming.length > 0` (isto é, alguém enviou um pedido de amizade que o usuário ainda não respondeu).
+**RESULTADO IMEDIATO**: Badge aparece/atualiza o número automaticamente conforme `friendsState` muda (o hook por trás já reage a eventos de tempo real de amizade, `FRIENDSHIP_UPDATE`, documentado em `DISCORD_PARITY_PLAN.md` §1).
+**RESULTADO VISUAL**: Número visível sobre o ícone Início.
+**RESULTADO SONORO**: **`MISSING`**: nenhum som toca quando um novo pedido de amizade chega enquanto o app está aberto (diferente de uma notificação sonora esperada).
+**ANIMAÇÃO**: Não confirmada (pode ou não ter uma entrada suave — não verificado nesta passagem).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Clicar no botão Início (por baixo do badge) navega para a tela de Amigos, onde presumivelmente a aba "Pendentes" mostraria os pedidos em si (auditoria detalhada de Amigos pendente, Roteiro 30).
+**RESULTADO FINAL**: Badge some assim que `friendsState.incoming.length` volta a zero (pedido aceito/recusado).
+**EFEITO LOCAL**: Nenhum.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Atualizado via evento `FRIENDSHIP_UPDATE`.
+**BACKEND**: Nenhuma chamada nova disparada pelo badge em si (dado já vem do `useFriendsState` compartilhado).
+**BANCO**: Não aplicável a esta ficha.
+**REFRESH**: Recalculado do zero a cada F5 (fetch inicial de amizades).
+**RECONEXÃO**: Recalculado via `onRealtimeConnect` (mesmo padrão de refetch-ao-reconectar já documentado no Roteiro 1).
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: **Achado**: o `<span>` do badge não tem `aria-label` próprio nem está associado via `aria-describedby` ao botão — um leitor de tela focando o botão "Início" provavelmente só anuncia "Início", sem mencionar a contagem de pedidos pendentes.
+
+---
+
+## 2.3 — SERVER_RAIL_TOOLTIP
+
+**ID**: `SERVER_RAIL_TOOLTIP`
+**NOME**: Dica de nome do servidor ao passar o mouse na rail
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > rail de servidores > qualquer ícone de servidor`
+**POSIÇÃO NA INTERFACE**: Tooltip nativo do navegador/SO, posicionado automaticamente pelo motor de renderização (não controlado por CSS/JS do NexPlay).
+**APARÊNCIA**: **Tooltip nativo do sistema** (`title="{server.name}"`) — caixa cinza simples do SO, sem estilização do NexPlay, sem indicador de status/atividade dentro do tooltip (diferente do balão rico que o Discord real mostra, com nome do servidor formatado e às vezes badges extras).
+**ESTADO NORMAL**: Invisível até o hover.
+**HOVER**: Aparece após o delay padrão do SO/navegador para `title` (tipicamente ~500ms-1s, não configurável pelo NexPlay).
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: Não aplicável.
+**DISABLED**: Não aplicável.
+**LOADING**: Não aplicável.
+**TRIGGER**: Hover (mouse parado sobre o ícone por tempo suficiente).
+**PRÉ-CONDIÇÕES**: Nenhuma.
+**RESULTADO IMEDIATO**: Navegador/SO renderiza o tooltip nativo.
+**RESULTADO VISUAL**: Caixa de texto simples aparece próxima ao cursor.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: A do próprio SO/navegador (geralmente nenhuma ou um fade rápido).
+**POPOVER**: Não aplicável (tecnicamente É um popover nativo, mas não controlado pelo NexPlay).
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Tirar o mouse esconde o tooltip.
+**RESULTADO FINAL**: Nenhum efeito colateral — é só informativo.
+**EFEITO LOCAL**: Nenhum.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: Não aplicável.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Tirar o mouse do elemento.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável (tooltip nativo não é acionável por teclado da mesma forma — foco via Tab também dispara `title` em alguns navegadores, mas o comportamento exato varia e não é controlado pelo NexPlay).
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label` **duplicado com o `title`** em todos os botões da rail (`aria-label={server.name}` e `title={server.name}` com o mesmo valor) — redundante mas não incorreto; leitores de tela usam o `aria-label`, o `title` é só o tooltip visual.
+
+**Nota de auditoria**: todo tooltip do app (não só na rail) usa `title` nativo — nenhum componente de tooltip customizado (posicionamento `fixed` com delay configurável, como o `ProfilePopover`/`EmojiPicker` já documentados em `DISCORD_PARITY_PLAN.md`) foi encontrado nesta auditoria de navegação. Isso é consistente em toda a rail, mas é uma lacuna de polish visual comparado ao Discord real.
+
+---
+
+## 2.4 — SERVER_SELECT
+
+**ID**: `SERVER_SELECT`
+**NOME**: Selecionar um servidor na rail
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > rail de servidores > ícone de um servidor específico`
+**POSIÇÃO NA INTERFACE**: Entre o divisor pós-Início e o botão "+" de adicionar servidor, um botão por servidor do qual o usuário é membro, na ordem retornada por `GET /api/servers` (**achado**: essa ordem vem de `listServersForUser`, cuja ordenação exata — por data de entrada? por nome? — não foi confirmada nesta auditoria específica; **não há reordenação manual da rail pelo usuário, arrastando ícones**, diferente do Discord real, que permite isso).
+**APARÊNCIA**: Ícone do servidor (`server.iconDataUrl`, já documentado com o recorte quadrado central real desde a correção desta sessão) ou, na ausência de ícone, a primeira letra maiúscula do nome como texto.
+**ESTADO NORMAL**: Sem destaque.
+**HOVER**: Padrão de `.server-button:hover`.
+**ACTIVE/PRESSED**: Sem regra distinta documentada.
+**SELECTED**: Classe `active` quando `view === 'server' && activeServerId === server.id` — barra de destaque lateral (`::before`) visível, mesma técnica do botão Início.
+**DISABLED**: Nunca desabilitado (qualquer servidor do qual o usuário é membro é sempre selecionável).
+**LOADING**: **`MISSING`**: nenhum indicador de carregamento visível no próprio ícone enquanto os canais do novo servidor carregam — a troca parece instantânea na rail mesmo que o conteúdo da sidebar/painel central ainda esteja buscando dados.
+**TRIGGER**: Clique esquerdo.
+**PRÉ-CONDIÇÕES**: Ser membro do servidor (a lista já só contém servidores dos quais o usuário faz parte).
+**RESULTADO IMEDIATO**: `setActiveServerId(server.id)` + `setView('server')`.
+**RESULTADO VISUAL**: Sidebar troca para a lista de categorias/canais do novo servidor; cabeçalho (`sidebar-header`) muda para o nome do novo servidor; painel central troca para o primeiro canal de texto da lista nova (ver `CHANNEL_LIST_DEFAULT_SELECT` — **nunca o último canal visitado**, sempre o primeiro).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma transição (troca instantânea de conteúdo).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: `useEffect`s dependentes de `activeServerId` disparam: busca de canais (`GET /api/servers/:id/channels`), categorias, membro ativo (`useActiveServerMember`), salas de voz (`GET /api/servers/:id/rooms`).
+**RESULTADO FINAL**: Servidor novo totalmente carregado e ativo, com o primeiro canal de texto selecionado.
+**EFEITO LOCAL**: Múltiplas chamadas HTTP disparadas em paralelo (uma por `useEffect` dependente de `activeServerId`) — **não há um único endpoint agregado "tudo que preciso pra este servidor"**, são requests separadas.
+**EFEITO REMOTO**: Nenhum — outros usuários não são notificados de que alguém está "vendo" o servidor (não há indicador de presença dentro de servidor específico).
+**REALTIME**: A assinatura de eventos do WebSocket já é global (não por servidor) do lado do cliente — trocar de servidor não reabre a conexão, só muda quais dados o React local mantém sincronizados visualmente.
+**BACKEND**: `GET /api/servers/:id/channels`, `/categories`, `/members/me`, `/rooms` — quatro chamadas HTTP mínimas por troca de servidor (a confirmar contagem exata em auditoria futura mais profunda).
+**BANCO**: Nenhuma escrita — troca de servidor é só leitura.
+**REFRESH**: **`activeServerId` não persiste em F5** — o `useEffect` de "servidor ativo por padrão" (já documentado no código-fonte com o comentário "cai pro primeiro disponível") sempre volta para `serversState.servers[0]`, o primeiro da lista, não necessariamente o que estava selecionado antes de recarregar.
+**RECONEXÃO**: Se o servidor selecionado deixar de existir na lista (ex.: o usuário foi removido dele em outra aba, ou o servidor foi excluído por outro membro), o mesmo `useEffect` detecta e recua automaticamente para o primeiro servidor disponível (ou `null` se não sobrar nenhum) — mecanismo já usado e confirmado funcionando durante a implementação da exclusão de servidor, numa sessão anterior desta auditoria de código mais ampla.
+**ERRO**: Se as chamadas de canais/categorias/membro falharem (backend indisponível), não há uma tela de erro específica por servidor — o comportamento exato (tela em branco? loading infinito?) não foi confirmado nesta passagem, marcado como lacuna de verificação para auditoria futura.
+**CANCELAMENTO**: Não aplicável — não há como cancelar a troca uma vez clicada (é instantânea do ponto de vista da rail, mesmo que o carregamento de dados continue em segundo plano).
+**REVERSÃO**: Clicar em outro servidor, ou no botão Início.
+**ATALHO**: **`MISSING`** — nenhum atalho de teclado (Ctrl+Alt+Seta como no Discord real) para navegar entre servidores sem usar o mouse.
+**MENU DE CONTEXTO**: Ver `SERVER_CONTEXT_MENU` — **`MISSING`**.
+**ACESSIBILIDADE**: `aria-label={server.name}`, alcançável via Tab, ativável via Enter/Espaço.
+
+---
+
+## 2.5 — SERVER_ADD_OPEN
+
+**ID**: `SERVER_ADD_OPEN`
+**NOME**: Abrir o modal de adicionar/criar/entrar em servidor
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > rail de servidores > último botão, abaixo de todos os servidores`
+**POSIÇÃO NA INTERFACE**: Fim da rail, depois do último ícone de servidor.
+**APARÊNCIA**: Botão com ícone de "+" (`PlusIcon`, 18px), classe `server-button add` (tratamento visual próprio — borda tracejada, cor diferenciada, já documentado no CSS lido nesta sessão em auditorias anteriores).
+**ESTADO NORMAL**: Sempre visível para qualquer usuário autenticado.
+**HOVER**: Estilo próprio de `.server-button.add:hover` (cor de destaque diferente dos ícones de servidor normais).
+**ACTIVE/PRESSED**: Sem regra distinta documentada.
+**SELECTED**: Não aplicável (abre um modal, não "seleciona" um estado persistente).
+**DISABLED**: Nunca desabilitado — **não há limite de quantidade de servidores que um usuário pode criar/entrar**, confirmado por ausência de qualquer checagem desse tipo no código de criação de servidor já auditado em sessões anteriores.
+**LOADING**: Não aplicável ao botão em si.
+**TRIGGER**: Clique esquerdo.
+**PRÉ-CONDIÇÕES**: Nenhuma.
+**RESULTADO IMEDIATO**: `setAddServerOpen(true)`.
+**RESULTADO VISUAL**: `AddServerModal` aparece como overlay (`.dialog-overlay`), com duas abas: "Criar servidor" e "Entrar com convite" (auditoria detalhada do conteúdo do modal em si — campos, submissão — cabe no Roteiro 3, Servidores/Canais, para não duplicar aqui).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada nesta passagem (padrão de `.dialog-overlay` reaproveitado em vários outros modais já auditados — provavelmente sem transição de entrada elaborada).
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: É o próprio `AddServerModal`.
+**SEGUNDA ETAPA**: Preencher e submeter um dos dois formulários (Roteiro 3).
+**RESULTADO FINAL**: Modal aberto, foco movido para o campo de nome (`nameInputRef.current?.focus()` via `requestAnimationFrame`, confirmado no código de `Servers.tsx`).
+**EFEITO LOCAL**: Nenhuma chamada de API só por abrir o modal.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: Não aplicável.
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável a esta etapa.
+**CANCELAMENTO**: Ver ficha de fechar modal (botão X, Esc, clique fora — todos implementados: `onClose` + `window.addEventListener('keydown', ...)` para Esc + `onMouseDown` no overlay checando `event.target === event.currentTarget`).
+**REVERSÃO**: Fechar sem submeter.
+**ATALHO**: Nenhum atalho de teclado dedicado para *abrir* o modal (diferente de fechá-lo, que tem Esc).
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `aria-label="Adicionar servidor"` no botão; o modal em si usa `role="dialog"`/`aria-modal="true"`/`aria-labelledby` (confirmado no código de `AddServerModal`) — foco é movido programaticamente para dentro do modal ao abrir, e devolvido ao botão que abriu (`returnFocusRef`) ao fechar — **gerenciamento de foco correto e completo**, um dos poucos modais desta auditoria com esse cuidado explicitamente confirmado no código.
+
+---
+
+## 2.6 — SERVER_CONTEXT_MENU *(MISSING)*
+
+**ID**: `SERVER_CONTEXT_MENU`
+**NOME**: Menu de contexto ao clicar com o botão direito num servidor da rail
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: **`MISSING` por completo.** Confirmado por ausência: nenhum `onContextMenu` nos botões de servidor da rail (`grep` não encontrou nenhuma ocorrência em `Workspace.tsx` associando `onContextMenu` a `.server-button.server-current`) — comparado a canais e categorias, que **já têm** menu de contexto funcional (`onContextMenu={(event) => openMoveChannelMenu(...)}` em canais, `onContextMenu={(event) => openCategoryMenu(event, category)}` em categorias, ambos usando o mesmo `useContextMenu()`/`<ContextMenu>` genérico já construído e reaproveitável em `ContextMenu.tsx`).
+**CAMINHO EXATO ESPERADO** (não implementado): `Rail de servidores > botão direito num ícone de servidor`
+**O que isso bloqueia**: o pedido do usuário lista explicitamente, para este menu: "Marcar como lido. Notificações. Silenciar. Configurações de privacidade. Editar perfil do servidor. Criar convite. Sair. Copiar ID." — nenhuma dessas ações está disponível via clique direito hoje. Ações equivalentes que **já existem em outro lugar** da UI (não recriar, só reorganizar se algum dia isso for implementado): "Editar perfil do servidor" já existe dentro de Configurações do Servidor (auditado como funcional em sessão anterior); "Sair do servidor" existe como rota de API (`DELETE /api/servers/:serverId/members/me`, confirmado em `apps/api/src/index.ts`) mas **não confirmado se tem um botão na UI atual** (a verificar em auditoria futura do Roteiro 3); "Criar convite"/"Copiar ID" — convite já existe na aba Convites das configurações do servidor; "Copiar ID" não confirmado em lugar nenhum ainda.
+**Pré-requisito de implementação, caso venha a ser feito**: reaproveitar exatamente o `useContextMenu()`/`<ContextMenu>` já existente (usado em canais/categorias) — é o mesmo padrão, só falta o `onContextMenu` no botão de servidor e a lista de itens do menu.
+
+---
+
+## 2.7 — SERVER_HEADER_OPEN_SETTINGS
+
+**ID**: `SERVER_HEADER_OPEN_SETTINGS`
+**NOME**: Abrir configurações do servidor pelo cabeçalho da sidebar
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > servidor ativo > sidebar > cabeçalho (topo, mostrando o nome do servidor)`
+**POSIÇÃO NA INTERFACE**: `<header className="sidebar-header">`, topo da coluna de canais.
+**APARÊNCIA**: Nome do servidor em destaque (`<strong>{activeServer?.name}</strong>`) + ícone de chevron (`ChevronIcon`, 16px) à direita, sugerindo um dropdown — **mas não é um dropdown**.
+**ESTADO NORMAL**: Nome do servidor ativo, ou "Carregando…" enquanto `activeServer` ainda é `null`/não resolvido.
+**HOVER**: Estilo de hover de botão padrão do app (a confirmar tom exato).
+**ACTIVE/PRESSED**: Sem regra distinta documentada.
+**SELECTED**: Não aplicável.
+**DISABLED**: Nunca desabilitado enquanto há um servidor ativo.
+**LOADING**: O próprio texto "Carregando…" serve como indicador enquanto `activeServer` é `null` (ex.: no instante entre trocar de servidor e os dados chegarem).
+**TRIGGER**: Clique esquerdo em qualquer parte do cabeçalho (é um único `<button>` que envolve nome + chevron, não dois elementos separados).
+**PRÉ-CONDIÇÕES**: `view === 'server'` (só existe nesse contexto).
+**RESULTADO IMEDIATO**: `setServerSettingsOpen(true)`.
+**RESULTADO VISUAL**: `ServerSettings` abre como tela cheia sobreposta (`.server-settings-shell`), **direto na seção "Perfil do servidor"** — não existe uma etapa intermediária de menu suspenso com múltiplas opções (Impulsionar, Convidar Pessoas, Configurações do Servidor, Criar Canal, Criar Categoria, Notificações, Sair — todas essas opções que o Discord real mostra num dropdown ao clicar no nome do servidor) — **achado real, distinto do `SERVER_CONTEXT_MENU`**: aqui o clique *funciona*, só que pula direto pras configurações completas em vez de abrir um menu curto com atalhos.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Não confirmada (mesma lacuna de verificação de outros modais/overlays desta auditoria).
+**POPOVER**: **`MISSING`**: o pedido do usuário esperava um dropdown leve aqui (ver `DISCORD_UI_ATLAS.md` Roteiro 3 do pedido original: "Clique: abre menu do servidor. Documentar cada entrada: Boost. Convidar pessoas. Configurações. Criar canal. Criar categoria. Criar evento..."), mas o que existe é um salto direto pra tela cheia de configurações.
+**MENU**: Não existe (ver acima).
+**MODAL**: `ServerSettings` em si é o resultado (tela cheia, não um modal pequeno).
+**SEGUNDA ETAPA**: Usuário navega dentro de Configurações do Servidor (já auditado em detalhe em sessões anteriores: Perfil, Cargos, Membros, Convites, Integrações, Excluir servidor).
+**RESULTADO FINAL**: Tela de Configurações do Servidor aberta.
+**EFEITO LOCAL**: Nenhuma chamada nova de API (os dados do servidor já estão carregados via `activeServer`/`member`, que `ServerSettings` recebe como props, não busca de novo).
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não afetado.
+**BACKEND**: Nenhuma chamada nova ao abrir (chamadas específicas de cada aba, como Membros/Convites, acontecem só quando aquela aba é selecionada — auditado em sessão anterior).
+**BANCO**: Não aplicável.
+**REFRESH**: Estado `serverSettingsOpen` não persiste em F5 (sempre fecha).
+**RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável a esta etapa.
+**CANCELAMENTO**: Botão de fechar (`.server-settings-close`, com indicação "ESC" visível) ou tecla Esc.
+**REVERSÃO**: Fechar e reabrir.
+**ATALHO**: Nenhum atalho de teclado dedicado para *abrir*; Esc fecha (confirmado em `useEffect` de `ServerSettings`, já auditado em sessão anterior desta mesma auditoria de código mais ampla).
+**MENU DE CONTEXTO**: Não aplicável ao cabeçalho em si.
+**ACESSIBILIDADE**: `aria-label="Abrir configurações do servidor"` no botão — nome explícito, apesar do chevron visualmente sugerir "expandir menu" em vez de "abrir configurações" (pequena incoerência entre a affordance visual e o rótulo de acessibilidade real).
+
+**Nota de auditoria — lacuna estrutural**: como não existe o menu-dropdown intermediário, ações rápidas como "Criar canal"/"Criar categoria" (que na UI atual moram dentro da própria lista de canais, via botões "+" — já auditados como funcionais em sessão anterior) e "Convidar pessoas"/"Sair do servidor" (que exigiriam entrar em Configurações primeiro) não têm um atalho de um clique só a partir do cabeçalho, diferente do Discord real.
+
+---
+
+## 2.8 — CHANNEL_LIST_DEFAULT_SELECT
+
+**ID**: `CHANNEL_LIST_DEFAULT_SELECT`
+**NOME**: Seleção automática de canal ao entrar/trocar de servidor
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Aplicativo > SERVER_SELECT > sidebar de canais > primeiro canal de texto da lista`
+**POSIÇÃO NA INTERFACE**: Não aplicável (é uma seleção automática, não um clique do usuário).
+**APARÊNCIA**: O primeiro canal de texto da lista (`channels[0]`) aparece com o destaque visual de "selecionado" (mesmo tratamento de `.text-channel-button.active`/`.channel-button.active` já documentado em auditorias anteriores desta sessão de trabalho no código).
+**ESTADO NORMAL**: Não aplicável.
+**HOVER**: Não aplicável a esta ficha (é sobre a seleção automática, não sobre interação manual com a lista).
+**ACTIVE/PRESSED**: Não aplicável.
+**SELECTED**: É o próprio resultado.
+**DISABLED**: Não aplicável.
+**LOADING**: Entre trocar de servidor e os canais carregarem, a sidebar mostra o estado anterior por um instante (não há skeleton/placeholder de lista de canais confirmado nesta auditoria — a verificar).
+**TRIGGER**: Automático — dispara sempre que `activeServerId` muda e é a **primeira vez** que os canais daquele servidor são carregados nesta sessão do app (controlado por `textChannelsInitializedRef`, um `useRef` que reseta a cada troca de `activeServerId`).
+**PRÉ-CONDIÇÕES**: Servidor ter pelo menos um canal de texto (se não tiver nenhum, `channels[0]?.id ?? null` resulta em `null` — nenhum canal selecionado, painel central mostra estado vazio, auditoria pendente).
+**RESULTADO IMEDIATO**: `setSelectedTextChannelId(channels[0]?.id ?? null)`.
+**RESULTADO VISUAL**: Painel central passa a mostrar o histórico do primeiro canal de texto.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER**: Não aplicável.
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Usuário pode clicar em outro canal manualmente (ver ficha própria de seleção manual de canal, a auditar em detalhe no Roteiro 3/5 — Servidores e Canais/Mensagens).
+**RESULTADO FINAL — LACUNA REAL DE PARIDADE**: **o app nunca lembra qual foi o último canal que o usuário estava vendo naquele servidor** — nem entre sessões (F5/reabrir), nem dentro da mesma sessão ao trocar de servidor e voltar (`textChannelsInitializedRef` é resetado a cada troca de `activeServerId`, então voltar a um servidor já visitado nesta mesma sessão **também** reseta pro primeiro canal, não pro que o usuário tinha aberto por último). Isso contraria diretamente o comportamento esperado descrito no próprio pedido do usuário: "Troca a coluna de canais. Troca painel central para último canal acessado."
+**EFEITO LOCAL**: Nenhum efeito colateral além da seleção em si.
+**EFEITO REMOTO**: Nenhum.
+**REALTIME**: Não aplicável.
+**BACKEND**: Nenhuma chamada nova (é decidido inteiramente a partir dos dados já buscados por `SERVER_SELECT`).
+**BANCO**: Não aplicável — **não existe nenhuma tabela/coluna de "último canal visitado por usuário por servidor"** no schema (confirmado por ausência ao longo de toda a auditoria de `db.ts` feita nesta sessão de trabalho mais ampla).
+**REFRESH**: Sempre reseta pro primeiro canal (ver acima).
+**RECONEXÃO**: Se o canal atualmente selecionado for excluído por outro membro enquanto o usuário está nele, o mesmo padrão de fallback (`if (current && !channels.some(...)) return channels[0]?.id ?? null;`) recua automaticamente pro primeiro canal disponível — isso é o comportamento correto e desejável para esse caso específico (canal sumiu), só não é desejável como comportamento padrão de troca de servidor.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Não aplicável.
+**ATALHO**: Não aplicável.
+**MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Não aplicável a esta ficha especificamente.
+
+---
+
+## 2.9 — RAIL_UNREAD_MENTION_INDICATOR *(MISSING)*
+
+**ID**: `RAIL_UNREAD_MENTION_INDICATOR`
+**NOME**: Indicador de mensagem não lida / menção num ícone de servidor
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: **`MISSING` por completo**, já registrado em `DISCORD_PARITY_PLAN.md` §3-5 ("Indicador de não lida/menção na rail | MISSING — hoje não há sequer rastreio de 'última mensagem lida'") — confirmado nesta auditoria de navegação por ausência total: nenhuma classe CSS, nenhum badge, nenhum pingo branco (o indicador clássico do Discord de "servidor com atividade não vista") em nenhum botão de servidor da rail.
+**CAMINHO EXATO ESPERADO** (não implementado): `Rail de servidores > ícone do servidor > pingo branco (não lido) ou badge numérico (menções) sobreposto`
+**Pré-requisito de arquitetura para implementar**: exigiria uma tabela nova de "último timestamp lido por usuário por canal" (não existe hoje — nem em `text_channels` nem em nenhuma tabela de junção), comparada contra o `created_at` da mensagem mais recente de cada canal daquele servidor, agregada por servidor pra decidir se mostra o indicador na rail. Bloqueia também `CHANNEL_UNREAD_INDICATOR` (indicador por canal individual na sidebar, roteiro futuro) e a funcionalidade "Marcar como lido" já documentada como só-visual em categorias (`DISCORD_PARITY_PLAN.md` §1: "'marcar como lida' é só visual — o app não tem nenhum rastreio de mensagem lida/não lida em lugar nenhum ainda").
+
+---
+
+## 2.10 — QUICK_SWITCHER *(MISSING)*
+
+**ID**: `QUICK_SWITCHER`
+**NOME**: Busca rápida de servidor/canal/DM/usuário via atalho de teclado
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: **`MISSING` por completo.** Confirmado por ausência: nenhum listener de `Ctrl+K`/`Cmd+K` em `Workspace.tsx` nem em nenhum outro componente (`grep` por combinações de teclado relacionadas não encontrou nada). Ficha completa (36 campos) fica para quando a auditoria chegar no Roteiro 37 (Quick Switcher, dedicado) do pedido original, pra não duplicar — registrado aqui só como achado de navegação, já que é o mecanismo de navegação mais rápido que falta.
+
+---
+
+## 2.11 — KEYBOARD_SERVER_NAVIGATION *(MISSING)*
+
+**ID**: `KEYBOARD_SERVER_NAVIGATION`
+**NOME**: Trocar de servidor via teclado (sem usar o mouse na rail)
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**STATUS**: **`MISSING` por completo.** Confirmado por ausência: nenhum listener de `Ctrl+Alt+Seta`/`Alt+Seta` (os atalhos reais do Discord para isso) em `Workspace.tsx`. A única forma de trocar de servidor hoje é clicar diretamente num ícone da rail com o mouse, ou usar Tab pra alcançar os botões um por um (funcional, mas lento — sem um atalho dedicado de "próximo/servidor anterior").
+**CAMINHO EXATO ESPERADO** (não implementado): Atalho global, qualquer tela.
+
+---
+
 # CONTINUAÇÃO
 
-Este documento cobriu, com todos os 36 campos exigidos, as **24 interações do Roteiro 0** (processo desktop) e as **18 interações do Roteiro 1** (login e sessão) — 42 fichas no total, cada uma verificada contra o código real (`apps/desktop/src/*`, `apps/web/src/App.tsx`, `EntryScreen.tsx`, `realtime.ts`, `apps/api/src/session.ts`, `apps/api/src/index.ts`), nunca assumida de memória ou copiada do comportamento genérico do Discord sem checar primeiro. Toda lacuna encontrada foi marcada `MISSING`/`PARTIAL` explicitamente, nunca simulada como se existisse.
+Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente resumido de status para fichas inteiramente `MISSING`, conforme a própria convenção definida no topo deste arquivo), as **24 interações do Roteiro 0** (processo desktop), as **18 interações do Roteiro 1** (login e sessão) e as **11 interações do Roteiro 2** (navegação) — 53 fichas no total, cada uma verificada contra o código real, nunca assumida de memória ou copiada do comportamento genérico do Discord sem checar primeiro. Toda lacuna encontrada foi marcada `MISSING`/`PARTIAL` explicitamente, nunca simulada como se existisse — e tudo que já funciona (seleção de servidor, badge de pedidos de amizade, foco/retorno de foco do modal de adicionar servidor) foi documentado como `CORE`/funcional, não redescrito como se fosse novo trabalho a fazer.
 
-**Próximo na fila** (seguindo a ordem de prioridade da "Terceira Tarefa" do pedido original): Roteiro 2 — Navegação (rail de servidores, sidebar de canais, troca de contexto, quick switcher se existir), seguido de Roteiro 3 — Servidores/canais, Roteiro 4 — Mensagens, Roteiro 5 — Tempo real, e a partir daí Voz/Mute/Deafen/Compartilhar tela/Vídeo, que o próprio pedido do usuário marca como prioridade especial. A escala total do que falta continua a mesma descrita na versão anterior deste documento — dezenas de roteiros, cada um no mesmo padrão de profundidade aqui demonstrado.
+**Achado transversal deste roteiro**: a navegação inteira do NexPlay não tem URL própria (sem router) — trocar de servidor/canal/DM nunca muda o endereço na barra do navegador nem gera um estado de histórico navegável via Voltar/Avançar do navegador, e não é possível compartilhar um link direto pra um servidor ou canal específico de fora do app (diferente de `discord.com/channels/...`). Isso afeta potencialmente várias fichas futuras (links de mensagem/deep link, Roteiro 60) e fica registrado aqui como o achado estrutural mais amplo desta seção.
+
+**Próximo na fila**: Roteiro 3 — Servidores e Canais (criar/entrar em servidor pelo `AddServerModal` já mencionado, categorias, canais de texto/voz, configurações de canal — muito disso já implementado e testado em sessões anteriores desta mesma linha de trabalho, então a auditoria vai documentar o que já existe como `DONE` em vez de redescobrir do zero), seguido de Roteiro 4 — Mensagens, Roteiro 5 — Tempo real, e a partir daí Voz/Mute/Deafen/Compartilhar tela/Vídeo (prioridade especial do pedido original).
