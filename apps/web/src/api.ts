@@ -107,7 +107,7 @@ export const api = {
   getServers: () => request<{ servers: Server[] }>('/api/servers'),
   createServer: (name: string, description: string) =>
     request<{ server: Server }>('/api/servers', { method: 'POST', body: JSON.stringify({ name, description }) }),
-  updateServer: (serverId: string, patch: { name?: string; description?: string; iconDataUrl?: string }) =>
+  updateServer: (serverId: string, patch: { name?: string; description?: string; iconDataUrl?: string; accentColor?: AccentColor | null }) =>
     request<{ server: Server }>(s(serverId), { method: 'PATCH', body: JSON.stringify(patch) }),
   getServerMember: (serverId: string) => request<{ member: ServerMember }>(`${s(serverId)}/members/me`),
   leaveServer: (serverId: string) => request<void>(`${s(serverId)}/members/me`, { method: 'DELETE' }),
@@ -199,13 +199,21 @@ export const api = {
     }),
   getTextMessages: (serverId: string, channelId: string) =>
     request<{ messages: TextMessage[] }>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages`),
-  sendTextMessage: (serverId: string, channelId: string, text: string, replyToMessageId?: string, attachmentIds?: string[]) =>
+  sendTextMessage: (
+    serverId: string,
+    channelId: string,
+    text: string,
+    replyToMessageId?: string,
+    attachmentIds?: string[],
+    postedAsSystem?: boolean,
+  ) =>
     request<{ message: TextMessage }>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages`, {
       method: 'POST',
       body: JSON.stringify({
         text,
         ...(replyToMessageId ? { replyToMessageId } : {}),
         ...(attachmentIds?.length ? { attachmentIds } : {}),
+        ...(postedAsSystem ? { postedAsSystem } : {}),
       }),
     }),
   uploadAttachment: (serverId: string, channelId: string, file: File) =>

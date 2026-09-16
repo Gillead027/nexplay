@@ -1,11 +1,14 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ACCENT_COLORS,
+  AVATAR_DATA_URL_MAX_LENGTH,
   hasPermission,
   PERMISSION_DEFINITIONS,
   Permission,
   ROLE_NAME_MAX_LENGTH,
   SERVER_DESCRIPTION_MAX_LENGTH,
   SERVER_NAME_MAX_LENGTH,
+  type AccentColor,
   type BanRecord,
   type Invite,
   type MemberSummary,
@@ -14,10 +17,11 @@ import {
   type ServerMember,
 } from '@nexplay/shared';
 import { api } from '../api';
+import { fileToResizedDataUrl } from '../imageResize';
 import { onRealtimeEvent } from '../realtime';
-import { CloseIcon, CopyIcon, PlusIcon, SearchIcon, SettingsIcon, TrashIcon, UserIcon } from './Icons';
+import { CloseIcon, CopyIcon, ImageIcon, PlusIcon, SearchIcon, SettingsIcon, TrashIcon, UserIcon } from './Icons';
 
-type ServerSettingsSection = 'profile' | 'roles' | 'members' | 'invites';
+type ServerSettingsSection = 'profile' | 'roles' | 'members' | 'invites' | 'integrations';
 
 const ROLE_COLOR_SWATCHES = ['#7c6ff2', '#4fc6ad', '#ee7798', '#f2ad5c', '#4f8edc', '#a76de0', '#68708b', '#8a91a6'];
 
@@ -76,8 +80,6 @@ export function ServerSettings({
         <button type="button" className={section === 'profile' ? 'active' : ''} onClick={() => setSection('profile')}>
           <SettingsIcon size={17} /> Perfil do servidor
         </button>
-        <button type="button"><span className="nav-glyph">⌁</span> Visão geral</button>
-        <button type="button"><span className="nav-glyph">✦</span> Impulsos</button>
         <span className="settings-nav-group">Pessoas</span>
         <button type="button" className={section === 'roles' ? 'active' : ''} onClick={() => setSection('roles')}>
           <UserIcon size={17} /> Cargos
@@ -88,14 +90,10 @@ export function ServerSettings({
         <button type="button" className={section === 'invites' ? 'active' : ''} onClick={() => setSection('invites')}>
           <span className="nav-glyph">⌘</span> Convites
         </button>
-        <span className="settings-nav-group">Moderação</span>
-        <button type="button"><span className="nav-glyph">◇</span> Segurança</button>
-        <button type="button"><span className="nav-glyph">▤</span> Registro de auditoria</button>
         <span className="settings-nav-group">Comunidade</span>
-        <button type="button"><span className="nav-glyph">◉</span> Integrações</button>
-        <button type="button"><span className="nav-glyph">▱</span> Widgets</button>
-        <div className="server-settings-nav-spacer" />
-        <button type="button" className="server-settings-danger"><span className="nav-glyph">⊘</span> Excluir servidor</button>
+        <button type="button" className={section === 'integrations' ? 'active' : ''} onClick={() => setSection('integrations')}>
+          <span className="nav-glyph">◉</span> Integrações
+        </button>
       </nav>
 
       <div className="server-settings-content">
@@ -103,6 +101,11 @@ export function ServerSettings({
         {section === 'roles' && <RolesPane serverId={server.id} member={member} />}
         {section === 'members' && <MembersPane serverId={server.id} member={member} />}
         {section === 'invites' && <InvitesPane serverId={server.id} canManageServer={canManageServer} />}
+        {section === 'integrations' && (
+          <div className="server-profile-page">
+            <div className="server-page-title"><div><h1>Integrações</h1><p>Nenhuma integração disponível.</p></div></div>
+          </div>
+        )}
       </div>
       <button type="button" className="server-settings-close" onClick={onClose} aria-label="Fechar configurações do servidor">
         <CloseIcon size={20} /><span>ESC</span>
@@ -122,22 +125,29 @@ function ServerProfilePane({
 }) {
   const [name, setName] = useState(server.name);
   const [description, setDescription] = useState(server.description);
+  const [iconDataUrl, setIconDataUrl] = useState(server.iconDataUrl);
+  const [accentColor, setAccentColor] = useState<AccentColor | null>(server.accentColor);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [iconError, setIconError] = useState('');
+  const iconInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setName(server.name);
     setDescription(server.description);
-  }, [server.id, server.name, server.description]);
+    setIconDataUrl(server.iconDataUrl);
+    setAccentColor(server.accentColor);
+  }, [server.id, server.name, server.description, server.iconDataUrl, server.accentColor]);
 
-  const dirty = name.trim() !== server.name || description !== server.description;
+  const dirty = name.trim() !== server.name || description !== server.description
+    || iconDataUrl !== server.iconDataUrl || accentColor !== server.accentColor;
 
   async function save() {
     if (!name.trim() || saving) return;
     setSaving(true);
     setError('');
     try {
-      const { server: updated } = await api.updateServer(server.id, { name: name.trim(), description });
+      const { server: updated } = await api.updateServer(server.id, { name: name.trim(), description, iconDataUrl, accentColor });
       onServerUpdated(updated);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível salvar as alterações.');
@@ -149,8 +159,22 @@ function ServerProfilePane({
   function discard() {
     setName(server.name);
     setDescription(server.description);
+    setIconDataUrl(server.iconDataUrl);
+    setAccentColor(server.accentColor);
     setError('');
   }
+
+  async function handleIconFile(file: File | undefined) {
+    if (!file) return;
+    setIconError('');
+    try {
+      setIconDataUrl(await fileToResizedDataUrl(file, 256, AVATAR_DATA_URL_MAX_LENGTH));
+    } catch {
+      setIconError('Não foi possível usar essa imagem. Tente um arquivo menor.');
+    }
+  }
+
+  const iconGlyph = name.charAt(0).toUpperCase() || 'S';
 
   return (
     <div className="server-profile-page">
@@ -160,7 +184,7 @@ function ServerProfilePane({
       <div className="server-profile-columns">
         <div className="server-profile-form">
           <section className="server-settings-card server-identity-card">
-            <div className="server-icon-large">{name.charAt(0).toUpperCase() || 'S'}</div>
+            {iconDataUrl ? <img className="server-icon-large" src={iconDataUrl} alt="" draggable={false} /> : <div className="server-icon-large">{iconGlyph}</div>}
             <div className="server-name-fields">
               <label>
                 Nome do servidor
@@ -183,6 +207,41 @@ function ServerProfilePane({
               </label>
             </div>
           </section>
+          {canManageServer && (
+            <section className="server-settings-card">
+              <span className="field-eyebrow">Ícone</span>
+              <p className="settings-hint">Recomendado: pelo menos 512×512.</p>
+              <input ref={iconInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden
+                onChange={(event) => void handleIconFile(event.target.files?.[0])} />
+              <div className="server-form-actions" style={{ marginTop: 10 }}>
+                <button type="button" className="secondary-pill" onClick={() => iconInputRef.current?.click()}>
+                  <ImageIcon size={13} /> Alterar ícone
+                </button>
+                {iconDataUrl && (
+                  <button type="button" className="secondary-pill" onClick={() => setIconDataUrl('')}>Remover ícone</button>
+                )}
+              </div>
+              {iconError && <p className="form-error" role="alert">{iconError}</p>}
+            </section>
+          )}
+          <section className="server-settings-card">
+            <span className="field-eyebrow">Faixa</span>
+            <div className="accent-picker" role="radiogroup" aria-label="Cor da faixa do servidor">
+              {ACCENT_COLORS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  role="radio"
+                  aria-checked={accentColor === color}
+                  aria-label={`Cor ${color}`}
+                  className={`accent-swatch ${accentColor === color ? 'selected' : ''}`}
+                  data-color={color}
+                  disabled={!canManageServer}
+                  onClick={() => setAccentColor(accentColor === color ? null : color)}
+                />
+              ))}
+            </div>
+          </section>
           {error && <p className="form-error" role="alert">{error}</p>}
           {canManageServer && (
             <div className="server-form-actions">
@@ -196,9 +255,11 @@ function ServerProfilePane({
         <aside className="server-live-preview">
           <span className="field-eyebrow">Pré-visualização</span>
           <div className="server-preview-card">
-            <div className="server-preview-banner"><i /><i /><i /></div>
+            <div className="server-preview-banner" style={accentColor ? { background: accentColor } : undefined}>
+              {!accentColor && <><i /><i /><i /></>}
+            </div>
             <div className="server-preview-body">
-              <span className="server-icon-large">{name.charAt(0).toUpperCase() || 'S'}</span>
+              {iconDataUrl ? <img className="server-icon-large" src={iconDataUrl} alt="" draggable={false} /> : <span className="server-icon-large">{iconGlyph}</span>}
               <h2>{name || server.name}</h2>
               <p>{description}</p>
             </div>

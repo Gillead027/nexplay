@@ -287,6 +287,17 @@ ensureColumns('text_messages', [
   ['reply_to_message_id', 'TEXT'],
   ['pinned_at', 'INTEGER'],
   ['pinned_by', 'TEXT'],
+  // Mensagem postada com a identidade do servidor (nome + ícone) em vez do
+  // autor real — sender_id continua sendo quem de fato postou, preservado
+  // pra moderação/auditoria; só a exibição muda (ver toMessage em textChannels.ts).
+  ['posted_as_system', 'INTEGER NOT NULL DEFAULT 0'],
+]);
+
+ensureColumns('servers', [
+  // Reaproveita a mesma paleta ACCENT_COLORS de usuários (packages/shared)
+  // pra "faixa" colorida do perfil do servidor — sem inventar uma segunda
+  // paleta. NULL = ainda sem cor escolhida (perfil mostra o degradê padrão).
+  ['accent_color', 'TEXT'],
 ]);
 
 db.exec(`

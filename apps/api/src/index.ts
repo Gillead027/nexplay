@@ -373,6 +373,7 @@ const serverUpdateSchema = z.object({
     .max(AVATAR_DATA_URL_MAX_LENGTH)
     .refine((value) => value === '' || dataUrlPattern.test(value), 'Ícone inválido.')
     .optional(),
+  accentColor: z.enum(ACCENT_COLORS).nullable().optional(),
 });
 
 const inviteCodeSchema = z.string().trim().min(1).max(32);
@@ -400,6 +401,10 @@ const textMessageSchema = z.object({
   text: z.string().trim().max(CHAT_MESSAGE_MAX_LENGTH),
   replyToMessageId: z.string().min(1).max(64).optional(),
   attachmentIds: z.array(z.string().min(1)).max(ATTACHMENT_MAX_PER_MESSAGE).optional(),
+  // Exige MANAGE_MESSAGES na própria rota (não aqui, que só valida forma) —
+  // publica com nome/ícone do servidor em vez do autor (ver toMessage,
+  // textChannels.ts).
+  postedAsSystem: z.boolean().optional(),
 });
 
 const reactionSchema = z.object({
@@ -1165,6 +1170,10 @@ app.post(
     if (rejectIfTimedOut(serverId, currentUser(response).id, response)) return;
 
     const canManageMessages = hasPermission(getUserPermissionBitfield(currentUser(response).id, serverId), Permission.MANAGE_MESSAGES);
+    if (body.data.postedAsSystem && !canManageMessages) {
+      response.status(403).json({ error: 'Você não tem permissão para postar como o servidor.' });
+      return;
+    }
     const slowModeWait = slowModeRemainingSeconds(channelId as string, currentUser(response).id, canManageMessages);
     if (slowModeWait > 0) {
       response.status(429).json({ error: `Modo lento ativo: aguarde ${slowModeWait}s para enviar outra mensagem.` });
@@ -1177,6 +1186,7 @@ app.post(
       currentUser(response),
       body.data.replyToMessageId,
       body.data.attachmentIds,
+      body.data.postedAsSystem,
     );
     sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_CREATE', serverId, channelId: channelId as string, message });
     response.status(201).json({ message });

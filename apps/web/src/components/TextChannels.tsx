@@ -33,6 +33,7 @@ import {
   PinIcon,
   ReplyIcon,
   SearchIcon,
+  SettingsIcon,
   SmileIcon,
   TrashIcon,
   VoiceIcon,
@@ -135,6 +136,31 @@ function BotTextMessageRow({
         ) : (
           <p><MarkdownText text={message.text} /></p>
         )}
+      </div>
+    </article>
+  );
+}
+
+// Mensagem postada com a identidade do servidor (ver postedAsSystem,
+// apps/api/src/textChannels.ts) — mesmo tratamento visual (avatar + selo
+// APP) do card do NexMusic, mas sem nada específico de música: qualquer
+// admin com MANAGE_MESSAGES usa isto pra publicar avisos/regras formatados
+// como se fosse o próprio servidor falando, não um bot externo.
+function SystemTextMessageRow({ message }: { message: TextMessage }) {
+  return (
+    <article className="message text-message system-message">
+      <div className="system-message-avatar" aria-hidden="true">
+        {message.senderAvatarUrl ? <img src={message.senderAvatarUrl} alt="" draggable={false} /> : <SettingsIcon size={18} />}
+      </div>
+      <div className="system-message-content">
+        <header className="system-message-header">
+          <strong>{message.senderName}</strong>
+          <span className="system-app-badge">APP</span>
+          <time dateTime={new Date(message.sentAt).toISOString()}>
+            {new Date(message.sentAt).toLocaleDateString('pt-BR')} {new Date(message.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          </time>
+        </header>
+        <p className="system-message-body"><MarkdownText text={message.text} /></p>
       </div>
     </article>
   );
@@ -452,6 +478,8 @@ function TextMessageRow(props: {
 }) {
   return props.message.senderType === 'BOT'
     ? <BotTextMessageRow message={props.message} onMusicCommand={props.onMusicCommand} />
+    : props.message.senderType === 'SYSTEM'
+    ? <SystemTextMessageRow message={props.message} />
     : (
       <HumanTextMessageRow
         message={props.message}
@@ -609,6 +637,7 @@ export function TextChannelView({
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [postAsSystem, setPostAsSystem] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState<MusicCommandResponse | null>(null);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
@@ -814,7 +843,7 @@ export function TextChannelView({
         sendMusicCommand: (roomId, commandText, textChannelId) =>
           api.sendMusicCommand(channel.serverId, roomId, commandText, textChannelId),
         sendTextMessage: async (messageText) =>
-          (await api.sendTextMessage(channel.serverId, channel.id, messageText, replyingTo?.id, attachmentIds)).message,
+          (await api.sendTextMessage(channel.serverId, channel.id, messageText, replyingTo?.id, attachmentIds, postAsSystem)).message,
       });
       setReplyingTo(null);
       setPendingAttachments([]);
@@ -1023,10 +1052,22 @@ export function TextChannelView({
                 event.currentTarget.form?.requestSubmit();
               }
             }}
-            placeholder={isTimedOut ? 'Você está em timeout' : uploading ? 'Enviando arquivo…' : `Conversar em #${channel.name}`}
+            placeholder={
+              isTimedOut ? 'Você está em timeout'
+                : uploading ? 'Enviando arquivo…'
+                : postAsSystem ? `Publicar como o servidor em #${channel.name}`
+                : `Conversar em #${channel.name}`
+            }
           />
         </div>
         <div className="text-channel-form-meta">
+          {canManageMessages && (
+            <button type="button" className={`system-post-toggle ${postAsSystem ? 'active' : ''}`}
+              title="Publicar como o servidor (aparece com o ícone e nome do servidor, selo APP)"
+              aria-pressed={postAsSystem} onClick={() => setPostAsSystem((value) => !value)}>
+              <SettingsIcon size={13} /> {postAsSystem ? 'Publicando como servidor' : 'Publicar como servidor'}
+            </button>
+          )}
           <span>{draft.length}/{CHAT_MESSAGE_MAX_LENGTH}</span>
           <button type="submit" disabled={isTimedOut || sending || uploading || (!draft.trim() && pendingAttachments.length === 0)}>
             {sending ? 'Enviando…' : 'Enviar'}

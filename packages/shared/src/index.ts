@@ -154,6 +154,9 @@ export interface Server {
   name: string;
   description: string;
   iconDataUrl: string;
+  // Reaproveita a mesma paleta ACCENT_COLORS de usuários pra "faixa" do
+  // perfil do servidor — null = ainda sem cor escolhida.
+  accentColor: AccentColor | null;
   ownerId: string | null;
   createdAt: number;
 }
@@ -693,12 +696,21 @@ export interface ForwardedFromMeta {
   dmChannelId?: string;
 }
 
+// SYSTEM é só pra mensagens postadas com a identidade do servidor (ver
+// PATCH .../messages/system, gated por MANAGE_MESSAGES) — nunca corresponde
+// a um participante de voz de verdade, por isso é um type à parte do
+// ParticipantType usado pelo LiveKit, não uma extensão dele.
+export type TextMessageSenderType = ParticipantType | 'SYSTEM';
+
 export interface TextMessage extends ForwardedFromFields {
   id: string;
   channelId: string;
   senderId: string;
   senderName: string;
-  senderType: ParticipantType;
+  senderType: TextMessageSenderType;
+  // Só populado quando senderType === 'SYSTEM' (ícone do servidor) — mensagens
+  // HUMAN resolvem avatar pelo próprio senderId (ver useTextAvatar no cliente).
+  senderAvatarUrl?: string;
   text: string;
   sentAt: number;
   editedAt?: number;

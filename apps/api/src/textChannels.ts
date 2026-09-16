@@ -8,6 +8,7 @@ import {
   type MusicNowPlayingCard,
   type TextChannel,
   type TextMessage,
+  type TextMessageSenderType,
 } from '@nexplay/shared';
 import { attachToMessage, getAttachmentsByChannel, getAttachmentsForMessage } from './attachments.js';
 import { db } from './db.js';
@@ -44,6 +45,9 @@ interface TextMessageRow {
   forwarded_from_server_id: string | null;
   forwarded_from_channel_id: string | null;
   forwarded_from_dm_channel_id: string | null;
+  posted_as_system: number;
+  server_name: string;
+  server_icon_data_url: string;
 }
 
 interface TextBotMessageRow {
@@ -69,11 +73,14 @@ const insertMessageStatement = db.prepare(`
   INSERT INTO text_messages (
     id, channel_id, sender_id, text, created_at, reply_to_message_id,
     forwarded_from_author_name, forwarded_from_message_id, forwarded_from_server_id,
-    forwarded_from_channel_id, forwarded_from_dm_channel_id
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    forwarded_from_channel_id, forwarded_from_dm_channel_id, posted_as_system
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 // Reaproveitada nas 4 SELECTs abaixo pra nunca esquecer de adicionar uma
-// coluna nova numa delas e ter busca/pins silenciosamente sem o dado.
+// coluna nova numa delas e ter busca/pins silenciosamente sem o dado. O JOIN
+// em servers (via text_channels) só serve pra resolver nome/ícone de
+// mensagens postadas como sistema (posted_as_system) — barato mesmo em
+// mensagens normais, sempre a mesma linha de servidor por canal.
 const TEXT_MESSAGE_SELECT_COLUMNS = `
     messages.id,
     messages.channel_id,
@@ -88,12 +95,20 @@ const TEXT_MESSAGE_SELECT_COLUMNS = `
     messages.forwarded_from_message_id,
     messages.forwarded_from_server_id,
     messages.forwarded_from_channel_id,
-    messages.forwarded_from_dm_channel_id
+    messages.forwarded_from_dm_channel_id,
+    messages.posted_as_system,
+    servers.name AS server_name,
+    servers.icon_data_url AS server_icon_data_url
+`;
+const TEXT_MESSAGE_SELECT_JOINS = `
+  INNER JOIN users ON users.id = messages.sender_id
+  INNER JOIN text_channels ON text_channels.id = messages.channel_id
+  INNER JOIN servers ON servers.id = text_channels.server_id
 `;
 const listMessagesStatement = db.prepare(`
   SELECT ${TEXT_MESSAGE_SELECT_COLUMNS}
   FROM text_messages AS messages
-  INNER JOIN users ON users.id = messages.sender_id
+  ${TEXT_MESSAGE_SELECT_JOINS}
   WHERE messages.channel_id = ?
   ORDER BY messages.created_at DESC
   LIMIT ?
@@ -101,7 +116,7 @@ const listMessagesStatement = db.prepare(`
 const selectMessageByIdStatement = db.prepare(`
   SELECT ${TEXT_MESSAGE_SELECT_COLUMNS}
   FROM text_messages AS messages
-  INNER JOIN users ON users.id = messages.sender_id
+  ${TEXT_MESSAGE_SELECT_JOINS}
   WHERE messages.id = ? AND messages.channel_id = ?
 `);
 const updateMessageStatement = db.prepare(
@@ -120,7 +135,7 @@ const countPinnedStatement = db.prepare(
 const listPinnedStatement = db.prepare(`
   SELECT ${TEXT_MESSAGE_SELECT_COLUMNS}
   FROM text_messages AS messages
-  INNER JOIN users ON users.id = messages.sender_id
+  ${TEXT_MESSAGE_SELECT_JOINS}
   WHERE messages.channel_id = ? AND messages.pinned_at IS NOT NULL
   ORDER BY messages.pinned_at DESC
 `);
@@ -130,7 +145,7 @@ const listPinnedStatement = db.prepare(`
 const searchMessagesStatement = db.prepare(`
   SELECT ${TEXT_MESSAGE_SELECT_COLUMNS}
   FROM text_messages AS messages
-  INNER JOIN users ON users.id = messages.sender_id
+  ${TEXT_MESSAGE_SELECT_JOINS}
   WHERE messages.channel_id = ? AND messages.text LIKE ? ESCAPE '\\' COLLATE NOCASE
   ORDER BY messages.created_at DESC
   LIMIT ?
@@ -176,12 +191,14 @@ function toChannel(row: TextChannelRow): TextChannel {
 }
 
 function toMessage(row: TextMessageRow): TextMessage {
+  const postedAsSystem = Boolean(row.posted_as_system);
   return {
     id: row.id,
     channelId: row.channel_id,
     senderId: row.sender_id,
-    senderName: row.sender_name,
-    senderType: 'HUMAN',
+    senderName: postedAsSystem ? row.server_name : row.sender_name,
+    senderType: (postedAsSystem ? 'SYSTEM' : 'HUMAN') as TextMessageSenderType,
+    ...(postedAsSystem && row.server_icon_data_url ? { senderAvatarUrl: row.server_icon_data_url } : {}),
     text: row.text,
     sentAt: row.created_at,
     ...(row.edited_at !== null ? { editedAt: row.edited_at } : {}),
@@ -302,6 +319,7 @@ export function createTextMessage(
   sender: UserRecord,
   replyToMessageId?: string,
   attachmentIds?: string[],
+  postedAsSystem = false,
 ): TextMessage {
   const message: TextMessage = {
     id: randomUUID(),
@@ -325,7 +343,15 @@ export function createTextMessage(
     null,
     null,
     null,
+    postedAsSystem ? 1 : 0,
   );
+  // posted_as_system exige nome/ícone do servidor pra exibição (ver
+  // toMessage) — mais simples reconsultar já resolvido do que duplicar aqui
+  // a lógica de JOIN só pra este caminho pouco frequente.
+  if (postedAsSystem) {
+    const resolved = getTextMessageById(channelId, message.id);
+    if (resolved) Object.assign(message, resolved);
+  }
   if (attachmentIds?.length) {
     const attachments = attachToMessage(attachmentIds, message.id, channelId, sender.id);
     if (attachments.length) message.attachments = attachments;
@@ -370,6 +396,7 @@ export function createForwardedTextMessage(
     forwardedFrom.serverId ?? null,
     forwardedFrom.channelId ?? null,
     forwardedFrom.dmChannelId ?? null,
+    0,
   );
   return message;
 }

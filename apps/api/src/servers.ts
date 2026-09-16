@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Server } from '@nexplay/shared';
+import type { AccentColor, Server } from '@nexplay/shared';
 import { bootstrapServerRoles, db } from './db.js';
 import { addServerMember } from './serverMembers.js';
 import { createTextChannel } from './textChannels.js';
@@ -11,6 +11,7 @@ interface ServerRow {
   name: string;
   description: string;
   icon_data_url: string;
+  accent_color: AccentColor | null;
   owner_id: string | null;
   created_at: number;
 }
@@ -27,7 +28,7 @@ const insertServerStatement = db.prepare(
   'INSERT INTO servers (id, name, description, icon_data_url, owner_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
 );
 const updateServerStatement = db.prepare(
-  'UPDATE servers SET name = ?, description = ?, icon_data_url = ? WHERE id = ?',
+  'UPDATE servers SET name = ?, description = ?, icon_data_url = ?, accent_color = ? WHERE id = ?',
 );
 const deleteServerStatement = db.prepare('DELETE FROM servers WHERE id = ?');
 
@@ -37,6 +38,7 @@ function toServer(row: ServerRow): Server {
     name: row.name,
     description: row.description,
     iconDataUrl: row.icon_data_url,
+    accentColor: row.accent_color,
     ownerId: row.owner_id,
     createdAt: row.created_at,
   };
@@ -64,6 +66,7 @@ export function createServer(name: string, description: string, owner: UserRecor
     name,
     description,
     iconDataUrl: '',
+    accentColor: null,
     ownerId: owner.id,
     createdAt: Date.now(),
   };
@@ -79,7 +82,12 @@ export type UpdateServerResult = { ok: true; server: Server } | { ok: false; rea
 
 export function updateServer(
   id: string,
-  patch: { name?: string | undefined; description?: string | undefined; iconDataUrl?: string | undefined },
+  patch: {
+    name?: string | undefined;
+    description?: string | undefined;
+    iconDataUrl?: string | undefined;
+    accentColor?: AccentColor | null | undefined;
+  },
 ): UpdateServerResult {
   const existing = getServerById(id);
   if (!existing) return { ok: false, reason: 'NOT_FOUND' };
@@ -88,8 +96,9 @@ export function updateServer(
     name: patch.name ?? existing.name,
     description: patch.description ?? existing.description,
     iconDataUrl: patch.iconDataUrl ?? existing.iconDataUrl,
+    accentColor: patch.accentColor !== undefined ? patch.accentColor : existing.accentColor,
   };
-  updateServerStatement.run(next.name, next.description, next.iconDataUrl, id);
+  updateServerStatement.run(next.name, next.description, next.iconDataUrl, next.accentColor, id);
   return { ok: true, server: next };
 }
 
