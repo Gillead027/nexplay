@@ -90,6 +90,7 @@ interface BotVoiceParticipantOptions {
   ffmpegPath: string;
   ytdlpPath: string;
   ytdlpCookiesPath?: string;
+  ytdlpProxyUrl?: string;
   ytdlpPluginDir: string;
   ytdlpPotBaseUrl: string;
   log: MusicLog;
@@ -201,6 +202,7 @@ export class BotVoiceParticipant implements MusicVoiceParticipant {
       webUrl: playable.input,
       ytdlpPath: this.options.ytdlpPath,
       cookiesPath: this.options.ytdlpCookiesPath ?? '',
+      proxyUrl: this.options.ytdlpProxyUrl ?? '',
       ffmpegPath: this.options.ffmpegPath,
       pluginDir: this.options.ytdlpPluginDir,
       potBaseUrl: this.options.ytdlpPotBaseUrl,

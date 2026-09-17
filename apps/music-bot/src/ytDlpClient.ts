@@ -32,7 +32,11 @@ function boundedAppend(current: string, chunk: Buffer, limit: number): string {
 }
 
 export class YtDlpClient {
-  constructor(private readonly executablePath: string, private readonly cookiesPath = '') {}
+  constructor(
+    private readonly executablePath: string,
+    private readonly cookiesPath = '',
+    private readonly proxyUrl = '',
+  ) {}
 
   private run(args: string[], options: RunOptions = {}): Promise<string> {
     const timeoutMs = options.timeoutMs ?? 15_000;
@@ -40,8 +44,9 @@ export class YtDlpClient {
     const stderrLimit = options.stderrLimit ?? 16_000;
 
     const cookies = prepareYtDlpCookies(this.cookiesPath);
+    const proxyArgs = this.proxyUrl ? ['--proxy', this.proxyUrl] : [];
     return new Promise<string>((resolve, reject) => {
-      const child = spawn(this.executablePath, ['--ignore-config', ...cookies.args, ...args], {
+      const child = spawn(this.executablePath, ['--ignore-config', ...cookies.args, ...proxyArgs, ...args], {
         shell: false,
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe'],

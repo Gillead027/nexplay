@@ -16,7 +16,7 @@ const log: MusicLog = (event, context) => {
   console.log(`[MUSIC] ${event}${fields ? ` ${fields}` : ''}`);
 };
 
-const ytDlpClient = new YtDlpClient(config.YTDLP_PATH, config.YTDLP_COOKIES_PATH);
+const ytDlpClient = new YtDlpClient(config.YTDLP_PATH, config.YTDLP_COOKIES_PATH, config.YTDLP_PROXY_URL);
 const youtubeProvider = new YouTubeProvider(ytDlpClient);
 const providers = new MusicProviderRegistry([
   youtubeProvider,
@@ -41,6 +41,7 @@ const sessionManager = new MusicSessionManager(
       ffmpegPath: config.FFMPEG_PATH,
       ytdlpPath: config.YTDLP_PATH,
       ytdlpCookiesPath: config.YTDLP_COOKIES_PATH,
+      ytdlpProxyUrl: config.YTDLP_PROXY_URL,
       ytdlpPluginDir: config.YTDLP_PLUGIN_DIR,
       ytdlpPotBaseUrl: config.YTDLP_POT_BASE_URL,
       log,

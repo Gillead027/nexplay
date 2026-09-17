@@ -100,6 +100,7 @@ services:
       YTDLP_PLUGIN_DIR: /app/.tools/yt-dlp-plugins
       YTDLP_POT_BASE_URL: http://pot-provider:4416
       YTDLP_COOKIES_PATH: "${YTDLP_COOKIES_PATH:-}"
+      YTDLP_PROXY_URL: "${YTDLP_PROXY_URL:-}"
       MUSIC_DJ_USER_IDS: "${MUSIC_DJ_USER_IDS:-}"
     volumes:
       - ./secrets:/run/music-secrets:ro

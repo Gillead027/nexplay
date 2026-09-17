@@ -24,6 +24,7 @@ interface YtDlpAudioSourceOptions {
   webUrl: string;
   ytdlpPath: string;
   cookiesPath?: string;
+  proxyUrl?: string;
   ffmpegPath: string;
   pluginDir: string;
   potBaseUrl: string;
@@ -98,8 +99,9 @@ export class YtDlpAudioSource {
     if (this.ytdlp || this.ffmpeg) throw new Error('Pipeline externo já está em execução.');
 
     const cookies = prepareYtDlpCookies(this.options.cookiesPath);
+    const proxyArgs = this.options.proxyUrl ? ['--proxy', this.options.proxyUrl] : [];
     const ytdlpArgs = [
-      '--ignore-config', ...cookies.args,
+      '--ignore-config', ...cookies.args, ...proxyArgs,
       '--plugin-dirs', this.options.pluginDir,
       '--js-runtimes', 'node',
       '--no-warnings', '--no-playlist',

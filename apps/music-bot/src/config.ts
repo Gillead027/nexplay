@@ -15,6 +15,12 @@ const envSchema = z.object({
   YTDLP_PLUGIN_DIR: z.string().min(1).default(defaultYtDlpPluginDir),
   YTDLP_POT_BASE_URL: z.string().url().default('http://127.0.0.1:4416'),
   YTDLP_COOKIES_PATH: z.string().default(''),
+  // Proxy residencial/móvel opcional pro tráfego do yt-dlp (não afeta LiveKit
+  // nem o resto do app) — contorna o YouTube tratando o IP de datacenter da
+  // VPS como suspeito, algo que cookies sozinhos não resolvem de forma
+  // estável. Vazio por padrão: sem isso configurado, o comportamento é
+  // idêntico a antes (sem proxy nenhum).
+  YTDLP_PROXY_URL: z.string().default(''),
   MUSIC_DJ_USER_IDS: z.string().default(''),
 });
 
