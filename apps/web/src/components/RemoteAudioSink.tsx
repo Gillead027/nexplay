@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { RemoteAudioTrack, RemoteParticipant, Track, type RemoteTrackPublication } from 'livekit-client';
+import { shouldPlayAudioPublication } from '../streamAudio';
 
 interface RemoteAudioSinkProps {
   participant: RemoteParticipant;
@@ -9,6 +10,9 @@ interface RemoteAudioSinkProps {
   soundboardVolume: number;
   deafened: boolean;
   trackVersion: string;
+  // O usuário abriu a transmissão de tela dessa pessoa ("Ver transmissão").
+  // Sem isso o áudio da transmissão não é ligado, ver streamAudio.ts.
+  watchingStream: boolean;
 }
 
 // Tracks de soundboard não têm Source dedicado no LiveKit — publicadas como
@@ -27,6 +31,7 @@ export function RemoteAudioSink({
   soundboardVolume,
   deafened,
   trackVersion,
+  watchingStream,
 }: RemoteAudioSinkProps) {
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -36,11 +41,15 @@ export function RemoteAudioSink({
 
     const publications = Array.from(participant.audioTrackPublications.values()) as RemoteTrackPublication[];
     const elements = publications
-      .filter(
-        (publication) =>
-          publication.source === Track.Source.Microphone ||
-          publication.source === Track.Source.ScreenShareAudio ||
-          isSoundboardPublication(publication),
+      .filter((publication) =>
+        shouldPlayAudioPublication(
+          {
+            isMicrophone: publication.source === Track.Source.Microphone,
+            isScreenShareAudio: publication.source === Track.Source.ScreenShareAudio,
+            isSoundboard: isSoundboardPublication(publication),
+          },
+          watchingStream,
+        ),
       )
       .filter((publication): publication is RemoteTrackPublication & { track: RemoteAudioTrack } => publication.track instanceof RemoteAudioTrack)
       .map((publication) => {
@@ -66,7 +75,7 @@ export function RemoteAudioSink({
         element.remove();
       }
     };
-  }, [participant, volume, streamVolume, outputVolume, soundboardVolume, deafened, trackVersion]);
+  }, [participant, volume, streamVolume, outputVolume, soundboardVolume, deafened, trackVersion, watchingStream]);
 
   return <div ref={containerRef} className="audio-sink" aria-hidden="true" />;
 }

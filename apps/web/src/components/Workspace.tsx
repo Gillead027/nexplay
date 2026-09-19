@@ -28,6 +28,7 @@ import {
   ConnectionState,
   LocalParticipant,
   RemoteParticipant,
+  Track,
   type TrackPublication,
 } from 'livekit-client';
 import { AVATAR_DATA_URL_MAX_LENGTH, BANNER_DATA_URL_MAX_LENGTH } from '@nexplay/shared';
@@ -82,6 +83,7 @@ import {
 import { ActivityLine } from './ActivityDisplay';
 import { connectRealtime, onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { copyText } from '../clipboard';
+import { watchedStreamIdentities } from '../streamAudio';
 import { DmChannelView } from './DmChannelView';
 import { FriendsHome, FriendsSidebar, isBlockedByMe as computeIsBlockedByMe, relationshipStatus, useFriendsState } from './Friends';
 import { ProfilePopover, type ProfilePopoverTarget } from './ProfilePopover';
@@ -592,6 +594,7 @@ function VoiceAudioSinks({
   outputVolume,
   soundboardVolume,
   deafened,
+  watchedIdentities,
 }: {
   participants: (LocalParticipant | RemoteParticipant)[];
   volumes: Record<string, number>;
@@ -599,6 +602,9 @@ function VoiceAudioSinks({
   outputVolume: number;
   soundboardVolume: number;
   deafened: boolean;
+  // Identidades cuja transmissão de tela o usuário abriu; só delas o áudio da
+  // transmissão toca (ver streamAudio.ts).
+  watchedIdentities: ReadonlySet<string>;
 }) {
   return (
     <>
@@ -619,6 +625,7 @@ function VoiceAudioSinks({
               soundboardVolume={soundboardVolume}
               deafened={deafened}
               trackVersion={trackVersion}
+              watchingStream={watchedIdentities.has(participant.identity)}
             />
           );
         })}
@@ -2259,6 +2266,21 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   // connectionLabel puro, onde "Desconectado" descreve a voz de fato.
   const userStatusLabel = voice.connectionState === ConnectionState.Disconnected ? 'Online' : connectionLabel;
 
+  // Quem tem a transmissão de tela aberta por este usuário: só o áudio dessas
+  // transmissões toca (o resto continua em silêncio até "Ver transmissão").
+  const watchedIdentities = useMemo(
+    () =>
+      watchedStreamIdentities(
+        voice.screenTracks.map((screen) => ({
+          id: screen.id,
+          participantIdentity: screen.participant.identity,
+          isScreenShare: screen.publication.source === Track.Source.ScreenShare,
+        })),
+        watchingScreenIds,
+      ),
+    [voice.screenTracks, watchingScreenIds],
+  );
+
   async function startOrStopScreenShare() {
     if (voice.screenEnabled) {
       await voice.toggleScreenShare(quality);
@@ -2545,6 +2567,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           outputVolume={outputVolume}
           soundboardVolume={soundboardVolume}
           deafened={voice.deafened || (voice.shareAudioActive && !allowListenWhileSharing)}
+          watchedIdentities={watchedIdentities}
         />
       )}
       <ProfilePopover
