@@ -31,7 +31,7 @@ Escopo: roteiros 0 a 12 do Atlas. Jornadas que dependem de roteiros ainda não a
 | J5 | Fechar a janela sem sair da call | MISSING: não há como |
 | J6 | Sair de verdade | PARTIAL: só existe uma forma de sair |
 | J7 | Recarregar ou perder a rede durante a call | PARTIAL |
-| J8 | Sessão expira com o app aberto | BROKEN: loop silencioso |
+| J8 | Sessão expira com o app aberto | BROKEN em produção; corrigido no código, aguardando deploy |
 | J9 | Atualização chega no meio de uma call | PARTIAL |
 
 J1 a J6 são as jornadas pedidas. J7 a J9 foram adicionadas porque a auditoria mostrou falhas que só aparecem quando se encadeia o fluxo.
@@ -243,6 +243,8 @@ Jornada extra. Mostra o que sobrevive quando a conexão é interrompida.
 
 Jornada extra e o único **BROKEN** confirmado nesta lista.
 
+> **Atualização:** corrigido no código (commit `9dc41a6`), mas **ainda não publicado**. A tabela abaixo descreve o que a auditoria comprovou e o que continua valendo em produção até o deploy do `web`. Com o conserto, os passos 2 a 5 passam a: o WebSocket recusado consulta `GET /api/session`, um 401 para o loop e leva à tela de entrada com "Sua sessão expirou. Entre novamente para continuar." O passo 1 (nenhum aviso *antes* de expirar) continua como está.
+
 | # | O que a pessoa faz | O que o app faz (verificado) | Ficha | Status |
 |---|---|---|---|---|
 | 1 | Deixa o app aberto por mais de 12 h | Nenhum aviso proativo de expiração. O cliente não tem timer vigiando `expiresAt`. | SESSION_EXPIRE_NATURAL (1.16) | MISSING |
@@ -278,7 +280,7 @@ Cada lacuna abaixo aparece em mais de uma jornada ou bloqueia uma inteira. Estã
 | # | Lacuna | Jornadas | Causa raiz | Tipo |
 |---|---|---|---|---|
 | 1 | Sem bandeja do sistema (fechar sempre encerra) | J5, J6 | `main.ts` não usa `Tray` e o `window-all-closed` sempre chama `app.quit()` | MISSING |
-| 2 | Sessão expirada vira loop silencioso de reconexão | J8 | O cliente de tempo real ignora o motivo do fechamento | BROKEN |
+| 2 | Sessão expirada vira loop silencioso de reconexão | J8 | O cliente de tempo real ignora o motivo do fechamento | BROKEN em produção; corrigido no código, aguardando deploy |
 | 3 | Sem atalho de teclado para mutar e ensurdecer | J2 | Nenhum `keydown` ligado a `toggleMicrophone` fora do PTT | MISSING |
 | 4 | Diálogo de atualização ignora se há call | J9 | Nenhuma checagem de estado de voz antes de mostrar ou aplicar | PARTIAL |
 | 5 | F5 derruba a call | J1, J7 | `disconnectOnPageLeave: true` no `Room` | PARTIAL |
