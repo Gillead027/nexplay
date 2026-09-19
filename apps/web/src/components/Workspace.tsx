@@ -1927,26 +1927,6 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     }
   }
 
-  // "Silenciar" é só um atalho pro modo 'none'; "Config. de notificação"
-  // percorre os 3 modos a cada clique — sem submenu flutuante (ver
-  // ContextMenu.tsx), simplificação deliberada frente ao Discord real.
-  function toggleCategoryMuted(categoryId: string) {
-    if (!activeServerId) return;
-    const current = categoryPrefFor(categoryId);
-    const next = current.notificationMode === 'none' ? 'all' : 'none';
-    setCategoryPrefs((prev) => ({ ...prev, [categoryId]: { ...current, notificationMode: next } }));
-    void api.setCategoryPrefs(activeServerId, categoryId, { notificationMode: next });
-  }
-
-  function cycleCategoryNotificationMode(categoryId: string) {
-    if (!activeServerId) return;
-    const current = categoryPrefFor(categoryId);
-    const order = ['all', 'mentions', 'none'] as const;
-    const next = order[(order.indexOf(current.notificationMode) + 1) % order.length]!;
-    setCategoryPrefs((prev) => ({ ...prev, [categoryId]: { ...current, notificationMode: next } }));
-    void api.setCategoryPrefs(activeServerId, categoryId, { notificationMode: next });
-  }
-
   async function removeCategory(categoryId: string) {
     if (!activeServerId || !window.confirm('Excluir esta categoria? Os canais dentro dela ficam sem categoria.')) return;
     try {
@@ -1959,17 +1939,17 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     }
   }
 
+  // Sem "Marcar como lida", "Silenciar categoria" e "Config. de notificação" de
+  // propósito: os três eram controles sem efeito, porque o app ainda não tem
+  // rastreio de leitura nem notificação para eles agirem (o modo de notificação
+  // por categoria continua gravado em category_prefs). Voltam junto com essas
+  // funções, ver DISCORD_UI_ATLAS.md, Roteiro 14.
   function openCategoryMenu(event: { preventDefault: () => void; clientX: number; clientY: number }, category: Category) {
     const pref = categoryPrefFor(category.id);
     categoryMenu.open(event, [
-      { items: [{ key: 'mark-read', label: 'Marcar como lida', onSelect: () => {} }] },
       { items: [
         { key: 'collapse', label: 'Recolher categoria', checked: pref.collapsed, onSelect: () => toggleCategoryCollapsed(category.id) },
         { key: 'collapse-all', label: 'Recolher todas as categorias', onSelect: collapseAllCategories },
-      ] },
-      { items: [
-        { key: 'mute', label: 'Silenciar categoria', checked: pref.notificationMode === 'none', onSelect: () => toggleCategoryMuted(category.id) },
-        { key: 'notif', label: 'Config. de notificação', onSelect: () => cycleCategoryNotificationMode(category.id) },
       ] },
       { items: [
         { key: 'edit', label: 'Editar categoria', onSelect: () => categoryEditRefs.current[category.id]?.open() },
