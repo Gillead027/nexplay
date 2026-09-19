@@ -48,8 +48,10 @@ test('rename channels: persistence, validation, permissions and server isolation
     const user = db.prepare('SELECT id FROM users WHERE username = ?').get('RenameMember') as { id: string };
     db.prepare('INSERT INTO server_members(server_id,user_id,joined_at) VALUES(?,?,?)').run(server.id, user.id, Date.now());
     db.close();
-    const { servers } = await (await request('/servers', owner)).json() as { servers: { id: string }[] };
-    const other = servers.find((item) => item.id !== server.id)!;
+    // Conta nova não entra em nenhum servidor sozinha: o segundo servidor (pra provar o isolamento) é criado à parte.
+    const createOther = await request('/servers', owner, 'POST', { name: 'Other server' });
+    assert.equal(createOther.status, 201);
+    const other = (await createOther.json() as { server: { id: string } }).server;
     const setup = new DatabaseSync(join(directory, 'test.db'));
     const admin = setup.prepare('SELECT id FROM users WHERE username = ?').get('RenameOwner') as { id: string };
     setup.prepare('INSERT INTO roles(id,server_id,name,color,position,hoist,permissions,created_at) VALUES(?,?,?,?,?,?,?,?)').run('test-admin', other.id, 'Test admin', '#ffffff', 100, 1, 8192, Date.now());

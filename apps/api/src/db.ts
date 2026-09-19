@@ -435,18 +435,8 @@ if (serverCount === 0) {
   } else {
     db.prepare('UPDATE roles SET server_id = ? WHERE server_id IS NULL').run(defaultServerId);
   }
-} else {
-  defaultServerId = (db.prepare('SELECT id FROM servers ORDER BY created_at ASC LIMIT 1').get() as { id: string }).id;
 }
 
-// O servidor mais antigo da instância — é a ele que uma conta nova se junta
-// automaticamente ao se registrar com INVITE_TOKEN (ver index.ts), exatamente
-// como "criar uma conta" já significava "entrar no único servidor" antes de
-// múltiplos servidores existirem. Servidores criados depois exigem convite
-// próprio (ver invites.ts) — só este, o migrado, tem entrada automática.
-export function getDefaultServerId(): string {
-  return defaultServerId;
-}
 
 // text_channels.name e roles.name eram UNIQUE globais (antes de múltiplos
 // servidores existirem) — sem corrigir isso, o primeiro servidor novo que

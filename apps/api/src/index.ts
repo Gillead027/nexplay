@@ -135,7 +135,6 @@ import {
 } from './attachments.js';
 import { deleteAttachmentObject, ensureAttachmentsBucket, getAttachmentObjectStream, uploadAttachmentObject } from './storage.js';
 import {
-  assignDefaultRole,
   assignRole,
   createRole,
   deleteRole,
@@ -149,10 +148,8 @@ import {
   updateRole,
 } from './roles.js';
 import { authorizeModerationAction, banUser, isBanned, listBans, unbanUser } from './moderation.js';
-import { getDefaultServerId } from './db.js';
 import { createServer, deleteServer, getServerById, listServersForUser, updateServer } from './servers.js';
 import {
-  addServerMember,
   getServerMember,
   isServerMember,
   listMemberUserIdsForServer,
@@ -661,14 +658,9 @@ app.post('/api/auth/register', authLimiter, (request, response) => {
   }
 
   const user = createUser(username, body.data.password, body.data.accentColor);
-  // Criar uma conta com o INVITE_TOKEN global sempre junta a pessoa ao
-  // servidor mais antigo da instância automaticamente — exatamente como
-  // "criar uma conta" já significava "entrar no único servidor" antes de
-  // múltiplos servidores existirem. Servidores criados depois exigem
-  // convite próprio (ver POST /api/invites/:code/redeem).
-  const defaultServerId = getDefaultServerId();
-  addServerMember(defaultServerId, user.id);
-  assignDefaultRole(defaultServerId, user.id);
+  // Conta nova não entra em servidor nenhum sozinha: só vê os servidores em que
+  // entrar por convite (POST /api/invites/:code/redeem) ou que ela mesma criar.
+  // O código de cadastro só libera criar a conta.
   const session = createSession(user.id, user.username);
   setSessionCookie(response, session);
   response.status(201).json({ user: toUserSession(user) });

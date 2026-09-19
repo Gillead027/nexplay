@@ -7,11 +7,12 @@ import { CloseIcon } from './Icons';
 // Mesmo padrão de useFriendsState (Friends.tsx) — um único fetch + assinatura
 // de tempo real, centralizado em Workspace.tsx, alimenta a rail de
 // servidores e o modal de adicionar servidor ao mesmo tempo.
-export function useServersState(session: UserSession): { servers: Server[]; refresh: () => void } {
+export function useServersState(session: UserSession): { servers: Server[]; loaded: boolean; refresh: () => void } {
   const [servers, setServers] = useState<Server[]>([]);
+  const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(() => {
-    void api.getServers().then(({ servers }) => setServers(servers)).catch(() => {});
+    void api.getServers().then(({ servers }) => { setServers(servers); setLoaded(true); }).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -35,7 +36,7 @@ export function useServersState(session: UserSession): { servers: Server[]; refr
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id, refresh]);
 
-  return { servers, refresh };
+  return { servers, loaded, refresh };
 }
 
 // A filiação (cargos/permissões/timeout) do próprio usuário no servidor
@@ -79,13 +80,15 @@ export function AddServerModal({
   onClose,
   onServerReady,
   returnFocusRef,
+  initialTab = 'create',
 }: {
   open: boolean;
   onClose: () => void;
   onServerReady: (serverId: string) => void;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
+  initialTab?: 'create' | 'join';
 }) {
-  const [tab, setTab] = useState<'create' | 'join'>('create');
+  const [tab, setTab] = useState<'create' | 'join'>(initialTab);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [inviteCode, setInviteCode] = useState('');
@@ -105,7 +108,7 @@ export function AddServerModal({
     setDescription('');
     setInviteCode('');
     setError('');
-    setTab('create');
+    setTab(initialTab);
     window.requestAnimationFrame(() => nameInputRef.current?.focus());
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !saving) close();

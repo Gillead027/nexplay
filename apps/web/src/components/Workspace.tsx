@@ -1845,10 +1845,13 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     setActiveServerId(serversState.servers[0]?.id ?? null);
   }, [serversState.servers, activeServerId]);
   const activeServer = serversState.servers.find((server) => server.id === activeServerId) ?? null;
+  // Conta nova não entra em servidor nenhum sozinha: sem servidor, a tela mostra como criar um ou entrar com convite.
+  const noServers = serversState.loaded && serversState.servers.length === 0;
   const member = useActiveServerMember(activeServerId, session);
   const canManageChannels = hasPermission(member?.permissions ?? 0, Permission.MANAGE_CHANNELS);
   const canManageServer = hasPermission(member?.permissions ?? 0, Permission.MANAGE_SERVER);
   const [addServerOpen, setAddServerOpen] = useState(false);
+  const [addServerTab, setAddServerTab] = useState<'create' | 'join'>('create');
   const [forwardingMessage, setForwardingMessage] = useState<ForwardSource | null>(null);
   const addServerButtonRef = useRef<HTMLButtonElement>(null);
   const [createChannelOpen, setCreateChannelOpen] = useState(false);
@@ -2518,6 +2521,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       )}
       <AddServerModal
         open={addServerOpen}
+        initialTab={addServerTab}
         onClose={() => setAddServerOpen(false)}
         onServerReady={(serverId) => {
           serversState.refresh();
@@ -2589,7 +2593,10 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           type="button"
           title="Adicionar servidor"
           aria-label="Adicionar servidor"
-          onClick={() => setAddServerOpen(true)}
+          onClick={() => {
+            setAddServerTab('create');
+            setAddServerOpen(true);
+          }}
         >
           <PlusIcon size={18} />
         </button>
@@ -2599,13 +2606,13 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         {view === 'server' ? (
           <>
             <header className="sidebar-header">
-              <button type="button" className="server-menu-trigger" onClick={() => setServerSettingsOpen(true)} aria-label="Abrir configurações do servidor">
-                <strong>{activeServer?.name ?? 'Carregando…'}</strong>
+              <button type="button" className="server-menu-trigger" onClick={() => setServerSettingsOpen(true)} aria-label="Abrir configurações do servidor" disabled={noServers}>
+                <strong>{activeServer?.name ?? (noServers ? 'Sem servidor' : 'Carregando…')}</strong>
                 <ChevronIcon size={16} />
               </button>
             </header>
 
-            <nav className="channels" aria-label="Canais do servidor">
+            <nav className="channels" aria-label="Canais do servidor" hidden={noServers}>
               {(() => {
                 const uncategorizedText = textChannels.filter((channel) => !channel.categoryId);
                 const uncategorizedRooms = rooms.filter((room) => !room.categoryId);
@@ -2897,6 +2904,20 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
               onRefresh={friendsState.refresh}
             />
           )
+        ) : noServers ? (
+          <div className="disconnected-stage no-servers">
+            <PlusIcon size={20} />
+            <h2>Você ainda não está em nenhum servidor</h2>
+            <p>Crie o seu ou entre em um servidor com um código de convite.</p>
+            <div className="no-servers-actions">
+              <button type="button" className="primary-button" onClick={() => { setAddServerTab('join'); setAddServerOpen(true); }}>
+                Entrar com convite
+              </button>
+              <button type="button" className="dialog-cancel" onClick={() => { setAddServerTab('create'); setAddServerOpen(true); }}>
+                Criar servidor
+              </button>
+            </div>
+          </div>
         ) : (
         <>
         <header className="room-header">
