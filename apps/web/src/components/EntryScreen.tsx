@@ -4,11 +4,13 @@ import { api } from '../api';
 
 interface EntryScreenProps {
   onAuthenticated: (session: UserSession) => void | Promise<void>;
+  // Explica por que a pessoa caiu aqui sem ter pedido (ex.: sessão expirada).
+  notice?: string | undefined;
 }
 
 type Mode = 'login' | 'register';
 
-export function EntryScreen({ onAuthenticated }: EntryScreenProps) {
+export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
   const [mode, setMode] = useState<Mode>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -60,6 +62,8 @@ export function EntryScreen({ onAuthenticated }: EntryScreenProps) {
         </div>
 
         <form className="entry-form" onSubmit={handleSubmit}>
+          {notice && <div className="form-notice" role="status">{notice}</div>}
+
           <label htmlFor="username">Usuário</label>
           <input
             id="username"

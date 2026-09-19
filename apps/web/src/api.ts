@@ -30,8 +30,18 @@ import type {
   VoiceChannel,
 } from '@nexplay/shared';
 
+import { reportSessionExpired } from './sessionExpiry';
+
 interface ApiErrorBody {
   error?: string;
+}
+
+// 401 fora de /api/auth/ é sempre "sessão ausente ou expirada" (requireSession).
+// Dentro de /api/auth/ o mesmo 401 significa outra coisa — senha errada no
+// login, convite inválido no cadastro, senha atual errada na troca — e não
+// pode derrubar quem ainda está logado.
+function reportIfSessionRejected(path: string, status: number): void {
+  if (status === 401 && !path.startsWith('/api/auth/')) reportSessionExpired();
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -45,6 +55,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
+    reportIfSessionRejected(path, response.status);
     const body = (await response.json().catch(() => ({}))) as ApiErrorBody;
     throw new Error(body.error || `Falha na requisição (${response.status}).`);
   }
@@ -61,6 +72,7 @@ async function uploadFile<T>(path: string, file: File): Promise<T> {
   body.append('file', file);
   const response = await fetch(path, { method: 'POST', credentials: 'include', body });
   if (!response.ok) {
+    reportIfSessionRejected(path, response.status);
     const responseBody = (await response.json().catch(() => ({}))) as ApiErrorBody;
     throw new Error(responseBody.error || `Falha no envio do arquivo (${response.status}).`);
   }

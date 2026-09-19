@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect, useState } from 'react';
 import type { PublicConfig, UserSession } from '@nexplay/shared';
 import { api } from './api';
+import { disconnectRealtime } from './realtime';
+import { onSessionExpired } from './sessionExpiry';
 import { EntryScreen } from './components/EntryScreen';
 import { AppFrame } from './components/AppChrome';
 
@@ -10,7 +12,7 @@ const Workspace = lazy(() =>
 
 type BootState =
   | { status: 'loading' }
-  | { status: 'signed-out' }
+  | { status: 'signed-out'; notice?: string }
   | { status: 'ready'; session: UserSession; config: PublicConfig }
   | { status: 'error'; message: string };
 
@@ -57,8 +59,24 @@ export function App() {
     };
   }, []);
 
+  // Sessão recusada pelo servidor com o app já aberto (cookie de 12 h vencido):
+  // volta pra tela de entrada dizendo por quê, em vez de deixar a tela parecendo
+  // logada com o tempo real morto. Só age em 'ready' — durante o boot ou já
+  // deslogado, um 401 é esperado e o fluxo normal cuida dele. Sair do Workspace
+  // desmonta a chamada de voz junto.
+  useEffect(() => {
+    return onSessionExpired(() => {
+      disconnectRealtime();
+      setState((current) =>
+        current.status === 'ready'
+          ? { status: 'signed-out', notice: 'Sua sessão expirou. Entre novamente para continuar.' }
+          : current,
+      );
+    });
+  }, []);
+
   if (state.status === 'loading') return <AppFrame><LoadingWindow label="Carregando usuário…" /></AppFrame>;
-  if (state.status === 'signed-out') return <AppFrame><EntryScreen onAuthenticated={loadAuthenticatedApp} /></AppFrame>;
+  if (state.status === 'signed-out') return <AppFrame><EntryScreen onAuthenticated={loadAuthenticatedApp} notice={state.notice} /></AppFrame>;
 
   if (state.status === 'error') {
     return (
@@ -79,6 +97,7 @@ export function App() {
         config={state.config}
         onSignOut={async () => {
           await api.deleteSession().catch(() => undefined);
+          disconnectRealtime();
           setState({ status: 'signed-out' });
         }}
         onProfileUpdated={(session) =>

@@ -1,4 +1,5 @@
 import type { RealtimeEvent } from '@nexplay/shared';
+import { reportSessionExpired } from './sessionExpiry';
 
 type EventHandler = (event: RealtimeEvent) => void;
 type ConnectHandler = () => void;
@@ -13,6 +14,10 @@ let socket: WebSocket | null = null;
 let reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
 let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 let started = false;
+// Cada open() pertence a uma "geração". disconnectRealtime() avança a geração,
+// e qualquer callback de uma conexão antiga (onclose, ou a checagem de sessão
+// que ainda estava no ar) vê que ficou pra trás e não agenda mais nada.
+let generation = 0;
 
 function realtimeUrl(): string {
   const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -28,11 +33,28 @@ function scheduleReconnect(): void {
   reconnectDelayMs = Math.min(reconnectDelayMs * 2, MAX_RECONNECT_DELAY_MS);
 }
 
+// O navegador não expõe o motivo de um handshake recusado: um 401 do servidor
+// chega aqui como um fechamento genérico (código 1006), idêntico a uma queda de
+// rede. Por isso, quando uma tentativa nem chegou a abrir, pergunta-se à API se
+// a sessão ainda vale. Só um 401 explícito conta como "sessão expirada" — falha
+// de rede (a checagem também rejeita) segue no ciclo normal de reconexão.
+async function sessionIsRejected(): Promise<boolean> {
+  try {
+    const response = await fetch('/api/session', { credentials: 'include' });
+    return response.status === 401;
+  } catch {
+    return false;
+  }
+}
+
 function open(): void {
+  const attempt = generation;
   const ws = new WebSocket(realtimeUrl());
   socket = ws;
+  let opened = false;
 
   ws.onopen = () => {
+    opened = true;
     reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
     for (const handler of connectHandlers) handler();
   };
@@ -46,7 +68,20 @@ function open(): void {
   };
   ws.onclose = () => {
     if (socket === ws) socket = null;
-    scheduleReconnect();
+    if (attempt !== generation) return;
+    if (opened) {
+      scheduleReconnect();
+      return;
+    }
+    void sessionIsRejected().then((rejected) => {
+      if (attempt !== generation) return;
+      if (rejected) {
+        disconnectRealtime();
+        reportSessionExpired();
+      } else {
+        scheduleReconnect();
+      }
+    });
   };
   ws.onerror = () => ws.close();
 }
@@ -57,6 +92,29 @@ export function connectRealtime(): void {
   if (started) return;
   started = true;
   open();
+}
+
+// Encerra a conexão e o ciclo de reconexão. Necessário ao sair da conta: o
+// servidor só apaga o cookie e não fecha o socket, então sem isso a conexão
+// continuaria aberta como o usuário anterior — e uma nova entrada na mesma aba
+// (com connectRealtime() já marcado como iniciado) nunca abriria uma própria.
+export function disconnectRealtime(): void {
+  generation += 1;
+  started = false;
+  reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  const ws = socket;
+  socket = null;
+  if (ws) {
+    ws.onopen = null;
+    ws.onmessage = null;
+    ws.onerror = null;
+    ws.onclose = null;
+    ws.close();
+  }
 }
 
 // Cada consumidor assina o fluxo inteiro e filtra pelo próprio `event.type`/

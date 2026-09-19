@@ -238,6 +238,7 @@ button:disabled { cursor: default; opacity: .45; }
 .entry-form input::placeholder { color: #626970; }
 .entry-submit { width: 100%; margin-top: 22px; }
 .form-error { margin-top: 15px; padding: 9px 10px; border: 1px solid #713f42; border-radius: var(--radius-sm); color: #e0a5a8; background: #28191b; font-size: 11px; line-height: 1.4; animation: shake 550ms ease-in-out; }
+.form-notice { margin-bottom: 4px; padding: 9px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); color: var(--text-secondary); background: var(--panel-raised); font-size: 11px; line-height: 1.4; }
 .button-spinner-row { display: inline-flex; align-items: center; gap: 8px; }
 .spinner { width: 13px; height: 13px; border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff; border-radius: 50%; animation: spin 700ms linear infinite; }
 
