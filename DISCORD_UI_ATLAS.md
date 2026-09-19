@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). **Roteiro 10 completo** (7 fichas, configurações — aparência). **Roteiro 11 completo** (13 fichas, amigos e DMs). **Roteiro 12 completo** (8 fichas, configurações — meu perfil/conta e segurança/privacidade). **Roteiro 13 completo** (17 fichas, lista de membros, mini-perfil e painel do próprio usuário; numeração do Atlas, equivale aos roteiros 18 a 20 do pedido original). Próximos (numeração do Atlas): 14 notificações e não lidas, 15 atalhos/Esc/hover/scroll, 16 estados vazios/carregando/offline/permissões de dispositivo, 17 Premium/Loja/Sobre.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). **Roteiro 10 completo** (7 fichas, configurações — aparência). **Roteiro 11 completo** (13 fichas, amigos e DMs). **Roteiro 12 completo** (8 fichas, configurações — meu perfil/conta e segurança/privacidade). **Roteiro 13 completo** (17 fichas, lista de membros, mini-perfil e painel do próprio usuário; numeração do Atlas, equivale aos roteiros 18 a 20 do pedido original). **Roteiro 14 completo** (14 fichas, notificações, não lidas, badges e avisos do desktop; equivale aos roteiros 32, 34 a 36, 52 e 53 do pedido original). Próximos (numeração do Atlas): 15 atalhos/Esc/hover/scroll, 16 estados vazios/carregando/offline/permissões de dispositivo, 17 Premium/Loja/Sobre.
 
 ---
 
@@ -2433,6 +2433,239 @@ Cobre os roteiros 18 (Member List), 19 (Mini Profile) e 20 (Painel do próprio u
 6. **Painel do usuário mostra "Desconectado" com o app aberto** e o avatar e o nome não são clicáveis (`USER_PANEL_IDENTITY`).
 7. **Acessibilidade do popover**: sem foco de entrada, sem devolução de foco e provavelmente inalcançável por Tab (`MINI_PROFILE_CLOSE`).
 8. **Inconsistência**: "Remover amigo" sem confirmação no popover, com confirmação em Amigos (`MINI_PROFILE_FRIEND_BLOCK_ACTIONS`).
+---
+
+# ROTEIRO 14 — NOTIFICAÇÕES, NÃO LIDAS, BADGES E AVISOS DO DESKTOP
+
+Cobre os roteiros 32 (Receber call), 34 (Inbox), 35 (Notificações), 36 (Badges e unread), 52 (Desktop notifications) e 53 (Taskbar flash/badge) do pedido original. Método: busca por todo o código de cliente, API e desktop (`Notification`, `flashFrame`, `setBadgeCount`, `setOverlayIcon`, `unread`, `lastRead`, `mention`, `document.title`), leitura de `Workspace.tsx`, `categories.ts`, `sounds.ts`, `useVoiceRoom.ts`, `apps/desktop/src/main.ts`, e **medição num Chromium real** do único trecho interativo (o menu de notificação da categoria).
+
+**Resumo dos achados deste roteiro**:
+
+1. **Quase tudo aqui é `MISSING`, e por três causas só**: não existe rastreio de leitura (nenhum `lastRead` em lugar nenhum), não existe sistema de menções (nenhum `@usuário` é reconhecido) e o desktop não tem nenhuma ponte de aviso (nenhum `Notification`, `flashFrame`, `setOverlayIcon` nem `setBadgeCount`).
+2. **Há uma configuração salva e sincronizada que não tem nenhum efeito**: o modo de notificação por categoria (`all`, `mentions`, `none`). É gravada no banco por usuário, mas **nenhum trecho do cliente a lê** além do próprio menu, e não existe notificação para filtrar. "Silenciar categoria" silencia o nada. É o mesmo padrão da cor de cargo (`ROLE_COLOR_ON_NAMES`, Roteiro 13).
+3. **"Config. de notificação" muda o modo em silêncio.** Medido: cada clique envia `PATCH` com o próximo modo (`mentions`, `none`, `all`) e o menu fecha sem mostrar nada; só o modo `none` aparece, como um "✓" em outro item. Não há como saber que se está em `mentions`.
+4. **O Electron nega a permissão `notifications` de propósito.** As listas de permissões permitidas (`setPermissionCheckHandler` e `setPermissionRequestHandler`) só aceitam mídia, tela cheia, captura de tela e seleção de alto-falante. Mesmo que o cliente passasse a chamar `new Notification`, o desktop recusaria.
+5. **O título da janela é fixo em "NexPlay"** e o único badge do app é o de pedidos de amizade pendentes (`FRIEND_REQUEST_BADGE`, já auditado).
+6. **A única notificação sonora de mensagem é a do chat da call.** Mensagem de canal de texto e de DM chega em silêncio.
+
+---
+
+## 14.1 — CATEGORY_NOTIFICATION_MODE *(PARTIAL — salva, sincroniza, sem efeito e sem feedback)*
+
+**ID**: `CATEGORY_NOTIFICATION_MODE`
+**NOME**: "Config. de notificação" no menu de contexto de uma categoria
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Servidor > botão direito no cabeçalho de uma categoria > "Config. de notificação"`
+**POSIÇÃO NA INTERFACE**: `openCategoryMenu` em `Workspace.tsx`, terceira seção do `ContextMenu` (junto de "Silenciar categoria").
+**APARÊNCIA**: Item de texto simples. **Não mostra o modo atual**, não tem "✓", não tem seta de submenu. O comentário do código registra a simplificação como deliberada ("sem submenu flutuante").
+**ESTADO NORMAL**: Igual nos três modos. Medido: depois de um clique (modo `mentions`) nenhum item do menu tem marca.
+**HOVER**: Realce padrão de `context-menu-item`.
+**ACTIVE/PRESSED**: Padrão de botão.
+**SELECTED**: Nunca aparece como selecionado.
+**DISABLED**: Nunca.
+**LOADING**: Nenhum.
+**TRIGGER**: Clique no item.
+**PRÉ-CONDIÇÕES**: Ter um servidor ativo (`activeServerId`). Qualquer membro pode, é preferência pessoal.
+**RESULTADO IMEDIATO**: `cycleCategoryNotificationMode` percorre `all → mentions → none → all`. Atualiza o estado local na hora (otimista) e faz `PATCH` para `/api/servers/:serverId/categories/:categoryId/prefs` com `{ notificationMode }`. **Medido em três cliques seguidos**: os corpos enviados foram `mentions`, `none` e `all`, nessa ordem.
+**RESULTADO VISUAL**: **Nenhum.** O menu fecha (`onClose` depois de `onSelect`) e a categoria não muda de aparência. O único sinal indireto é o "✓" de "Silenciar categoria", que aparece apenas no modo `none` (medido no segundo clique).
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER / MODAL / SEGUNDA ETAPA**: Não aplicável.
+**MENU**: O próprio menu de contexto, que fecha ao escolher.
+**RESULTADO FINAL**: O modo fica gravado, mas **nada no app o consulta**. A busca por `notificationMode` no cliente só encontra o `Workspace.tsx` (as duas funções do menu e o "✓"), o `api.ts` (o `PATCH`) e o tipo compartilhado. Como não existe notificação, badge, som por canal nem "não lida" para filtrar, escolher `none` não silencia nada, e `mentions` não tem significado porque não há sistema de menções.
+**EFEITO LOCAL**: Só a preferência. **EFEITO REMOTO**: Nenhum sobre os outros. Não confirmei se outra aba do mesmo usuário recebe evento de mudança.
+**REALTIME**: Nenhum evento dedicado encontrado. **BACKEND**: `PATCH .../categories/:categoryId/prefs`, validado por `notificationMode: z.enum(['all','mentions','none'])`. **BANCO**: Tabela `category_prefs (user_id, category_id, collapsed, notification_mode)`, **por usuário**, gravada com `INSERT ... ON CONFLICT`.
+**REFRESH**: O valor volta do servidor (`getCategoryPrefs`) e sobrevive a F5 e a trocar de dispositivo, diferente das preferências de aparência e voz, que são `localStorage`.
+**RECONEXÃO**: Sem tratamento específico.
+**ERRO**: A chamada é `void api.setCategoryPrefs(...)`, **sem `catch`**. Se falhar, o estado local já mudou e o servidor não, e nada avisa. Diverge até recarregar.
+**CANCELAMENTO**: Fechar o menu antes de clicar cancela. **REVERSÃO**: Continuar clicando (o ciclo tem três passos) ou usar "Silenciar categoria".
+**ATALHO**: Nenhum. **MENU DE CONTEXTO**: É o próprio.
+**ACESSIBILIDADE**: `role="menuitem"`. Nada anuncia o modo escolhido.
+
+**Nota de auditoria — configuração sem consequência**: o item está na lista do que a regra "nada sem função" manda tratar. **Correção proposta, sem executar**: enquanto não houver notificação, esconder os dois itens (este e "Silenciar categoria"); quando houver, mostrar o modo atual no rótulo (por exemplo "Notificações: só menções").
+
+---
+
+## 14.2 — CATEGORY_MUTE_TOGGLE *(PARTIAL — marca "✓", mas não há o que silenciar)*
+
+**ID**: `CATEGORY_MUTE_TOGGLE`
+**NOME**: "Silenciar categoria"
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Servidor > botão direito no cabeçalho de uma categoria > "Silenciar categoria"`
+**POSIÇÃO NA INTERFACE**: Mesma seção de `CATEGORY_NOTIFICATION_MODE`, um item acima.
+**APARÊNCIA**: Texto, com um "✓" à direita (`.context-menu-check`) quando o modo é `none`.
+**ESTADO NORMAL**: Sem marca nos modos `all` e `mentions`.
+**HOVER / ACTIVE / SELECTED**: Padrão. O "✓" faz o papel de selecionado.
+**DISABLED**: Nunca.
+**LOADING**: Nenhum.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Servidor ativo.
+**RESULTADO IMEDIATO**: `toggleCategoryMuted` alterna `none ↔ all` e faz o mesmo `PATCH` de `CATEGORY_NOTIFICATION_MODE`. **Detalhe**: se o modo era `mentions`, silenciar e depois "dessilenciar" volta para `all`, não para `mentions`. A escolha anterior se perde.
+**RESULTADO VISUAL**: Ao silenciar, o "✓" aparece na próxima abertura do menu (medido). **A categoria em si não muda**: nenhum ícone de sino cortado, nenhum texto apagado no cabeçalho ou nos canais.
+**RESULTADO SONORO / ANIMAÇÃO / POPOVER / MODAL / SEGUNDA ETAPA**: Nenhum.
+**MENU**: Fecha ao escolher.
+**RESULTADO FINAL**: Preferência `none` gravada. Nada é silenciado.
+**EFEITO LOCAL / REMOTO**: Só a preferência / nenhum.
+**REALTIME**: Nenhum. **BACKEND / BANCO / REFRESH / RECONEXÃO / ERRO**: Idênticos a `CATEGORY_NOTIFICATION_MODE`, inclusive o `PATCH` sem `catch`.
+**CANCELAMENTO**: Fechar o menu. **REVERSÃO**: Clicar de novo.
+**ATALHO / MENU DE CONTEXTO**: Nenhum / é o próprio.
+**ACESSIBILIDADE**: `role="menuitem"`; o "✓" é `aria-hidden`, então um leitor de tela **não anuncia** se a categoria está silenciada.
+
+**Nota**: não existe "Silenciar servidor", "Silenciar canal" nem "Silenciar DM" (ver `NOTIFICATION_SETTINGS_SERVER_AND_CHANNEL`). A categoria é o único nível.
+
+---
+
+## 14.3 — NOTIFICATION_SETTINGS_SERVER_AND_CHANNEL *(MISSING)*
+
+**ID**: `NOTIFICATION_SETTINGS_SERVER_AND_CHANNEL`
+**NOME**: Configuração de notificação por servidor, por canal e por conversa
+**STATUS**: **`MISSING` por completo.** A ficha documenta o esperado.
+**Esperado (Discord)**: no menu do servidor e no botão direito de um canal ou DM: silenciar por tempo (15 min, 1 h, 8 h, 24 h, até reativar), nível (todas, só menções, nenhuma) e supressão de `@everyone`.
+**Real**: a busca por "Silenciar" em `apps/web/src` só encontra o item de categoria. O botão direito num canal abre só "mover canal" (Roteiro 3) e o botão direito num servidor da rail não existe (`SERVER_CONTEXT_MENU`, `MISSING`).
+**Dependência**: só faz sentido depois de existir alguma notificação (`UNREAD_TRACKING_AND_BADGES`, `DESKTOP_NOTIFICATION`).
+
+---
+
+## 14.4 — NOTIFICATION_SETTINGS_SECTION *(MISSING)*
+
+**ID**: `NOTIFICATION_SETTINGS_SECTION`
+**NOME**: Seção "Notificações" em Configurações
+**STATUS**: **`MISSING` por completo.**
+**Esperado**: ligar e desligar notificações do desktop, sons de mensagem, sons de call, flash da barra de tarefas e o nível padrão do servidor.
+**Real**: as configurações têm **cinco seções**: Meu perfil, Conta e segurança, Privacidade, Voz e vídeo e Aparência (medido na barra lateral do modal). Não há Notificações, Atalhos, Idioma nem Sobre. O `DISCORD_PARITY_PLAN.md` já registra que as seções mortas foram removidas de propósito, na caça a controles decorativos.
+**Consequência**: não existe hoje nenhum lugar para desligar o som de mensagem da call (`MESSAGE_RECEIVED_SOUND`), que só se controla pelo volume geral de saída.
+
+---
+
+## 14.5 — MENTION_SYSTEM *(MISSING)*
+
+**ID**: `MENTION_SYSTEM`
+**NOME**: Menções (`@pessoa`, `@cargo`, `@everyone`, `#canal`)
+**STATUS**: **`MISSING` por completo.**
+**Esperado**: digitar `@` abre autocomplete; a menção fica destacada na mensagem e notifica quem foi citado.
+**Real**: a busca por `mention` e `menção` em cliente, API e tipos compartilhados só encontra o valor `'mentions'` do `NotificationMode`. **Nenhum trecho reconhece `@usuário` em texto**, nem no composer nem no renderizador de markdown. O modo `mentions` da categoria, portanto, não tem como significar nada.
+**Dependência**: base de todo o resto deste roteiro. Sem menções, "só menções" e o contador vermelho de menção não existem.
+
+---
+
+## 14.6 — UNREAD_TRACKING_AND_BADGES *(MISSING)*
+
+**ID**: `UNREAD_TRACKING_AND_BADGES`
+**NOME**: Rastreio de mensagens não lidas e os indicadores que dependem dele
+**STATUS**: **`MISSING` por completo.** Consolida e amplia `RAIL_UNREAD_MENTION_INDICATOR` (2.9), já registrado.
+**Esperado**: ponto branco ou contador na rail por servidor, nome de canal em negrito quando há mensagem nova, faixa "Novas mensagens", contador vermelho por menção, indicador de DM não lida, e o marcador de "última mensagem lida" por pessoa e canal.
+**Real**: não existe `lastRead`, `last_read` nem `unread` em cliente ou API. O servidor não guarda até onde cada pessoa leu. Uma mensagem que chega em outro canal, servidor ou DM **não muda nada na tela**.
+**Onde o dado teria de morar**: uma tabela por usuário e canal (`last_read_message_id`), atualizada ao abrir o canal, mais um evento de tempo real para sincronizar entre abas.
+**Consequência**: qualquer conversa fora da tela aberta é invisível até alguém abri-la. Nas DMs isso é mais grave, porque a lista de conversas só reordena pela última mensagem (`DM_SIDEBAR_LIST`, Roteiro 11), sem nada que diga que há algo novo.
+
+---
+
+## 14.7 — MARK_AS_READ *(BROKEN — item de menu sem função)*
+
+**ID**: `MARK_AS_READ`
+**NOME**: "Marcar como lida" no menu de contexto da categoria
+**STATUS**: **`BROKEN`.** Já registrado em `CATEGORY_CONTEXT_MENU` (Roteiro 3); mantido aqui porque é a peça que depende do rastreio de leitura.
+**Real**: `{ key: 'mark-read', label: 'Marcar como lida', onSelect: () => {} }`, uma função vazia. Aparece como a primeira ação do menu e, ao clicar, o menu apenas fecha. Medido: o item está na lista (`ITENS_DO_MENU`).
+**Correção proposta, sem executar**: remover o item até existir `UNREAD_TRACKING_AND_BADGES`.
+
+---
+
+## 14.8 — INBOX *(MISSING)*
+
+**ID**: `INBOX`
+**NOME**: Caixa de entrada (menções, respostas e convites recentes)
+**STATUS**: **`MISSING` por completo.** A busca por `inbox` e `caixa de entrada` no cliente não acha nada. Não há ícone no cabeçalho nem painel.
+**Dependência**: `MENTION_SYSTEM` e `UNREAD_TRACKING_AND_BADGES`. Respostas (`MESSAGE_REPLY`, Roteiro 4) existem, mas quem foi respondido não é avisado de nenhuma forma.
+
+---
+
+## 14.9 — DESKTOP_NOTIFICATION *(MISSING — e o Electron a bloqueia)*
+
+**ID**: `DESKTOP_NOTIFICATION`
+**NOME**: Notificação nativa do sistema para mensagem, menção, pedido de amizade ou call
+**PLATAFORMA**: `DESKTOP_WINDOWS` (e `WEB`, pela API `Notification` do navegador)
+**STATUS**: **`MISSING` por completo, com um bloqueio ativo no desktop.**
+**Real, no cliente**: nenhum `new Notification(...)` nem `Notification.requestPermission()`. Medido no navegador: durante uma sessão inteira o app **não chamou** a API de notificação nenhuma vez nem pediu permissão.
+**Real, no Electron**: em `apps/desktop/src/main.ts`, `setPermissionCheckHandler` e `setPermissionRequestHandler` só concedem `media`, `fullscreen`, `automatic-fullscreen`, `display-capture` e `speaker-selection`. **`notifications` não está na lista**, então qualquer tentativa do cliente seria negada. O desktop não tem código próprio de notificação (`Tray`, `Notification` do processo principal): a busca por `Notification` em `apps/desktop/src` não encontra nada.
+**Consequência**: com o app minimizado, ou noutra janela, nada avisa que chegou mensagem, DM, pedido de amizade ou menção. Somado a `SYSTEM_TRAY` (`MISSING`, e fechar a janela encerra o app), o desktop hoje só funciona enquanto a pessoa está olhando para ele.
+**Dependência**: liberar `notifications` na lista de permissões (ou usar a `Notification` do processo principal), e ter algo que valha notificar (`UNREAD_TRACKING_AND_BADGES`, `MENTION_SYSTEM`).
+
+---
+
+## 14.10 — TASKBAR_FLASH_BADGE *(MISSING)*
+
+**ID**: `TASKBAR_FLASH_BADGE`
+**NOME**: Piscar o botão da barra de tarefas e mostrar contador (overlay) no ícone
+**PLATAFORMA**: `DESKTOP_WINDOWS`
+**STATUS**: **`MISSING` por completo.** A busca por `flashFrame`, `setBadgeCount` e `setOverlayIcon` em `apps/desktop/src` não encontra nada.
+**Esperado**: o botão pisca quando chega mensagem com a janela sem foco, e o ícone mostra um contador vermelho de menções.
+**Relação com foco**: `WINDOW_FOCUS_BLUR` (0.12) já é `MISSING`; sem saber quando a janela perde e ganha foco, não há quando parar de piscar.
+
+---
+
+## 14.11 — DOCUMENT_TITLE_UNREAD *(MISSING)*
+
+**ID**: `DOCUMENT_TITLE_UNREAD`
+**NOME**: Título da janela e da aba com contador de não lidas
+**STATUS**: **`MISSING`.** O título é `NexPlay` no `index.html` e nenhum código o altera (`document.title` não aparece no cliente). Medido: `page.title()` = "NexPlay".
+**Esperado**: `(3) NexPlay` ou similar, o que também alimentaria a barra de tarefas do Windows e as abas do navegador.
+
+---
+
+## 14.12 — MESSAGE_RECEIVED_SOUND *(PARTIAL — só no chat da call)*
+
+**ID**: `MESSAGE_RECEIVED_SOUND`
+**NOME**: Som ao receber mensagem
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: automático ao chegar uma mensagem no **chat da call** (canal de dados do LiveKit).
+**APARÊNCIA / ESTADO NORMAL / HOVER / ACTIVE / SELECTED / DISABLED / LOADING**: Não aplicável (evento automático).
+**TRIGGER**: `RoomEvent.DataReceived` (canal de dados do LiveKit) com uma mensagem de chat válida (id e texto em texto, com até `CHAT_MESSAGE_MAX_LENGTH`).
+**PRÉ-CONDIÇÕES**: Estar conectada à call.
+**RESULTADO IMEDIATO**: A mensagem entra em `messages` (as últimas 100) e `playMessageSound(getOutputVolume())` toca.
+**RESULTADO VISUAL**: A mensagem aparece se o painel do chat estiver aberto.
+**RESULTADO SONORO**: Um tom único de 740 Hz por 90 ms (`sounds.ts`), no volume de saída escolhido. Toca **mesmo com o painel do chat fechado**, então é o único sinal de que chegou algo.
+**ANIMAÇÃO / POPOVER / MENU / MODAL / SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Mensagem no histórico efêmero da call e um bipe.
+**EFEITO LOCAL**: Bipe. **EFEITO REMOTO**: Nenhum.
+**REALTIME**: Canal de dados do LiveKit, não o WebSocket do NexPlay. **BACKEND / BANCO**: Nenhum (o chat da call não persiste).
+**REFRESH / RECONEXÃO**: O histórico some com a call.
+**ERRO**: Pacotes de dados que não são do chat são ignorados por um `catch` vazio.
+**CANCELAMENTO / REVERSÃO**: Não existe como desligar só este som. Não há opção em Configurações (`NOTIFICATION_SETTINGS_SECTION`).
+**ATALHO / MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Um bipe sem equivalente visual quando o painel está fechado.
+
+**Achado — o que NÃO tem som**: mensagens de **canal de texto** e de **DM** chegam em silêncio total (a busca por `playMessageSound` só encontra `useVoiceRoom.ts`). A auditoria do sistema de sons inteiro é o roteiro 50 do pedido, ainda pendente.
+**Não confirmado**: se este som respeita o estado de ensurdecer.
+
+---
+
+## 14.13 — INCOMING_CALL_RING *(MISSING)*
+
+**ID**: `INCOMING_CALL_RING`
+**NOME**: Receber uma chamada (toque, tela de aceitar ou recusar)
+**STATUS**: **`MISSING` por completo, por dependência.** Não existe chamada direta: `DM_VOICE_VIDEO_CALL` (11.11) já é `MISSING`, e a voz do app é sempre um canal de servidor. Não há evento de "alguém está te chamando" no `RealtimeEvent`, nem tela de aceitar, recusar ou ignorar, nem toque.
+**Dependência**: um modelo de chamada efêmera entre duas pessoas, e `DESKTOP_NOTIFICATION` para tocar com o app em segundo plano.
+
+---
+
+## 14.14 — FRIEND_REQUEST_BADGE *(referência — o único badge do app)*
+
+**ID**: `FRIEND_REQUEST_BADGE`
+**STATUS**: `CORE`, auditado em detalhe em 2.2. Aqui só o que interessa a este roteiro: é o **único** contador de "algo para ver" em todo o app. Mostra a contagem exata de pedidos recebidos (`friendsState.incoming.length`) no botão Início da rail e atualiza em tempo real por `FRIENDSHIP_UPDATE`.
+**O que não acompanha o badge**: nenhum som ao chegar o pedido, nenhuma notificação do desktop, nenhuma mudança no título da janela e nenhum item numa caixa de entrada. Quem está noutra tela vê o número mudar sozinho e mais nada.
+
+---
+
+**Achados mais importantes do Roteiro 14** (por ordem de impacto):
+
+1. **Sem nenhum aviso fora da tela aberta.** Não há não lida, menção, notificação do desktop, flash da barra de tarefas nem título com contador. Somado ao fechar-encerra do desktop (`SYSTEM_TRAY`, `MISSING`), o app só serve enquanto está sendo olhado.
+2. **"Silenciar categoria" e "Config. de notificação" gravam uma preferência que nada lê** (`CATEGORY_MUTE_TOGGLE`, `CATEGORY_NOTIFICATION_MODE`), com o segundo mudando de modo em silêncio.
+3. **O Electron nega `notifications` de propósito** (`DESKTOP_NOTIFICATION`): não basta o cliente chamar a API.
+4. **"Marcar como lida" continua sendo uma função vazia** (`MARK_AS_READ`).
+5. **Só o chat da call faz barulho ao receber mensagem** (`MESSAGE_RECEIVED_SOUND`); canal de texto e DM não.
+6. **Não há sistema de menções** (`MENTION_SYSTEM`), então o modo `mentions` nunca teve significado.
+
+**Ordem de dependência sugerida, sem executar**: (a) rastreio de leitura no servidor, que destrava não lida, badge, título, "Marcar como lida" e faixa "Novas mensagens"; (b) menções, que destravam contador vermelho, inbox e o modo `mentions`; (c) a ponte do desktop (liberar `notifications`, `flashFrame`, `setOverlayIcon`), que precisa de (a) e (b) para ter o que notificar. Antes de (a), a correção mínima e honesta é esconder os dois itens de notificação da categoria e o "Marcar como lida".
 
 ---
 
@@ -6159,3 +6392,5 @@ Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropri
 **Próximo na fila**: com a superfície de app/servidor/voz/mensagens/amigos/configurações mapeada em profundidade (175 fichas, 13 roteiros), a auditoria agora tem material suficiente pra começar os três documentos de síntese ainda não criados: `DISCORD_NAVIGATION_TREE.md` (árvore de navegação completa), `DISCORD_INTERACTION_MATRIX.md` (tabela mestra de todas as interações), e `DISCORD_USER_JOURNEYS.md` (roteiros de usuário ponta a ponta) — nessa ordem, já que a árvore de navegação é a base estrutural mais simples de montar primeiro a partir do que já foi mapeado.
 
 **Atualização — Roteiro 13 (lista de membros, mini-perfil, painel do usuário)**: acrescentou **17 fichas**, levando o total a **192 fichas em 14 roteiros** (numeração do Atlas). Os quatro documentos de síntese (`DISCORD_INTERACTION_MATRIX.md`, `DISCORD_NAVIGATION_TREE.md`, `DISCORD_USER_JOURNEYS.md`, `DISCORD_PARITY_PLAN.md`) foram atualizados para incluí-lo. Diferente dos roteiros anteriores, este teve **medição num Chromium real** além da leitura do código, e a medição corrigiu uma hipótese (o ponto de presença, ficha `PRESENCE_DOT_CLIPPED`).
+
+**Atualização — Roteiro 14 (notificações, não lidas, badges, avisos do desktop)**: acrescentou **14 fichas**, levando o total a **206 fichas em 15 roteiros**. Achado central: quase tudo é `MISSING` por três causas (sem rastreio de leitura, sem menções, sem ponte de aviso no Electron), e há uma preferência salva e sincronizada (modo de notificação por categoria) que nada lê.
