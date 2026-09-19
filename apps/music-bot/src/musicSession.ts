@@ -49,6 +49,11 @@ interface MusicSessionOptions {
   providers: MusicProviderRegistry;
 }
 
+// Uma faixa que não toca (sem versão pública, YouTube pedindo login, vídeo removido) não pode
+// derrubar a playlist inteira: o bot avisa e passa pra próxima. Se várias seguidas falham, o
+// problema é geral (cookies vencidos, rede) e continuar só gastaria tentativas à toa.
+const MAX_CONSECUTIVE_TRACK_FAILURES = 5;
+
 function formatTime(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1_000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -76,6 +81,8 @@ export class MusicSession {
   private playbackGeneration = 0;
   private playback: MusicPlaybackHandle | null = null;
   private trackSequence = 0;
+  private consecutiveFailures = 0;
+  private lastFailure = '';
   private destroyed = false;
 
   constructor(private readonly options: MusicSessionOptions) {
@@ -239,9 +246,10 @@ export class MusicSession {
       const started = await this.startTrack(first);
       if (!started) {
         this.upcomingTracks.length = 0;
-        return reply(`Não foi possível iniciar a playlist por ${first.title}.`);
+        return reply(`Não foi possível iniciar a playlist: ${this.lastFailure || `nenhuma faixa pôde ser tocada (começando por ${first.title})`}`);
       }
-      return reply(`Playlist iniciada com ${resolvedTracks.length} faixa(s). ${this.state === 'PLAYING' ? 'Tocando' : 'Carregando'}: ${first.title}.`, this.nowPlayingCard());
+      const playing = this.nowPlayingCard()?.title ?? first.title;
+      return reply(`Playlist iniciada com ${resolvedTracks.length} faixa(s). ${this.state === 'PLAYING' ? 'Tocando' : 'Carregando'}: ${playing}.`, this.nowPlayingCard());
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return reply(`Não consegui carregar essa playlist: ${message}`);
@@ -286,6 +294,7 @@ export class MusicSession {
           if (this.destroyed || generation !== this.playbackGeneration || this.state !== 'CONNECTING') return;
           this.state = 'PLAYING';
           this.startedAt = Date.now();
+          this.consecutiveFailures = 0;
           this.playedHistory.push(track);
           if (this.playedHistory.length > 20) this.playedHistory.splice(0, this.playedHistory.length - 20);
           this.options.log('playback started', { room: this.roomName, channel: this.channelId, session: this.id, track: track.id });
@@ -311,8 +320,7 @@ export class MusicSession {
       });
       return true;
     } catch (error) {
-      await this.failCurrentTrack(generation, error instanceof Error ? error : new Error(String(error)));
-      return false;
+      return this.failCurrentTrack(generation, error instanceof Error ? error : new Error(String(error)));
     }
   }
 
@@ -332,26 +340,48 @@ export class MusicSession {
     });
   }
 
-  private failPlayback(generation: number, error: Error): Promise<void> {
-    return this.exclusive(() => this.failCurrentTrack(generation, error));
+  private async failPlayback(generation: number, error: Error): Promise<void> {
+    await this.exclusive(() => this.failCurrentTrack(generation, error));
   }
 
-  private async failCurrentTrack(generation: number, error: Error): Promise<void> {
-    if (this.destroyed || generation !== this.playbackGeneration) return;
+  // Devolve true se, depois da falha, outra faixa da fila assumiu a reprodução.
+  private async failCurrentTrack(generation: number, error: Error): Promise<boolean> {
+    if (this.destroyed || generation !== this.playbackGeneration) return false;
     this.playbackGeneration += 1;
     await this.botParticipant.stopAudio().catch(() => {});
+    const failed = this.currentTrack;
     this.playback = null;
     this.currentTrack = null;
     this.startedAt = null;
-    this.upcomingTracks.length = 0;
-    this.state = 'ERROR';
+    this.consecutiveFailures += 1;
+    this.lastFailure = error.message;
     this.options.log('playback error', {
       room: this.roomName,
       channel: this.channelId,
       session: this.id,
       error: error.message,
+      remaining: this.upcomingTracks.length,
     });
-    await this.botParticipant.sendMessage(`Não foi possível reproduzir a música: ${error.message}`).catch(() => {});
+
+    if (this.upcomingTracks.length > 0 && this.consecutiveFailures < MAX_CONSECUTIVE_TRACK_FAILURES) {
+      await this.botParticipant
+        .sendMessage(`Não consegui tocar "${failed?.title ?? 'a faixa'}": ${error.message} Pulando para a próxima.`)
+        .catch(() => {});
+      await this.advanceQueue('SKIPPED');
+      return this.currentTrack !== null;
+    }
+
+    const gaveUpOnQueue = this.upcomingTracks.length > 0;
+    this.upcomingTracks.length = 0;
+    this.state = 'ERROR';
+    await this.botParticipant
+      .sendMessage(
+        gaveUpOnQueue
+          ? `Parei a fila: ${this.consecutiveFailures} faixas seguidas falharam. Último erro: ${error.message}`
+          : `Não foi possível reproduzir a música: ${error.message}`,
+      )
+      .catch(() => {});
+    return false;
   }
 
   private async advanceQueue(reason: 'NATURAL_END' | 'SKIPPED'): Promise<MusicTrack | null> {
@@ -372,7 +402,7 @@ export class MusicSession {
       track: next.id,
       remaining: this.upcomingTracks.length,
     });
-    return (await this.startTrack(next)) ? next : null;
+    return (await this.startTrack(next)) ? (this.currentTrack ?? next) : null;
   }
 
   private nowPlayingCard(): MusicNowPlayingCard | undefined {

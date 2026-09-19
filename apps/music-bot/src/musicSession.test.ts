@@ -26,6 +26,20 @@ const fakeProvider: MusicProvider = {
 };
 const fakeProviders = new MusicProviderRegistry([fakeProvider], 'youtube');
 
+// Playlist do YouTube em que só as faixas listadas em `badIds` não conseguem virar áudio
+// (sem fonte pública, vídeo pedindo login, removido...).
+function playlistWithBadTracks(badIds: string[], ids: string[] = ['t1', 't2', 't3']): MusicProviderRegistry {
+  const provider: MusicProvider = {
+    ...fakeProvider,
+    resolvePlaylist: async () => ids.map((id) => ({ providerId: 'youtube', sourceId: id, title: `Faixa ${id}`, author: 'Artist', durationMs: 120000, webUrl: `https://youtube.com/watch?v=${id}`, thumbnailUrl: undefined })),
+    resolvePlayable: async (track) => {
+      if (badIds.includes(track.sourceId)) throw new Error('O YouTube exige autenticação nesta conexão.');
+      return { input: `https://youtube.com/watch?v=${track.sourceId}`, providerId: 'youtube', transport: 'YTDLP_PIPE' };
+    },
+  };
+  return new MusicProviderRegistry([provider], 'youtube');
+}
+
 function command(text: string, channelId = 'geral'): MusicBotCommandRequest {
   const parsed = parseMusicCommand(text);
   assert.ok(parsed, `Comando inválido no teste: ${text}`);
@@ -494,6 +508,62 @@ describe('MusicSession player stateful', () => {
     assert.equal(session.currentTrack?.title, 'Playlist One');
     assert.equal(session.queue[0]?.title, 'Playlist Two');
     assert.equal(result.nowPlaying?.title, 'Playlist One');
+  });
+
+  it('playlist: se a primeira faixa não toca, pula pra próxima em vez de descartar a playlist', async () => {
+    const harness = createHarness(undefined, new Set(), playlistWithBadTracks(['t1']));
+    try {
+      const result = await harness.manager.execute(command('/playlist https://www.youtube.com/playlist?list=PL1'));
+      const session = harness.manager.getSession('geral');
+      assert.ok(session);
+      assert.match(result.message, /Playlist iniciada com 3 faixa/);
+      assert.match(result.message, /Faixa t2/);
+      assert.equal(session.currentTrack?.title, 'Faixa t2');
+      assert.equal(session.queue.length, 1);
+      assert.equal(session.state, 'PLAYING');
+    } finally { await harness.manager.shutdown(); }
+  });
+
+  it('playlist: uma faixa que falha no meio da fila é pulada e a playlist continua', async () => {
+    const harness = createHarness(undefined, new Set(), playlistWithBadTracks(['t2']));
+    try {
+      await harness.manager.execute(command('/playlist https://www.youtube.com/playlist?list=PL1'));
+      const session = harness.manager.getSession('geral');
+      assert.ok(session);
+      assert.equal(session.currentTrack?.title, 'Faixa t1');
+      harness.participants[0]!.finishNaturally();
+      await nextTurn();
+      assert.equal(session.currentTrack?.title, 'Faixa t3');
+      assert.equal(session.state, 'PLAYING');
+      assert.equal(session.queue.length, 0);
+    } finally { await harness.manager.shutdown(); }
+  });
+
+  it('playlist: erro durante a reprodução também passa pra próxima faixa', async () => {
+    const harness = createHarness(undefined, new Set(), playlistWithBadTracks([]));
+    try {
+      await harness.manager.execute(command('/playlist https://www.youtube.com/playlist?list=PL1'));
+      const session = harness.manager.getSession('geral');
+      assert.ok(session);
+      harness.participants[0]!.playbackCallbacks!.onError?.(new Error('yt-dlp caiu'));
+      await nextTurn();
+      assert.equal(session.currentTrack?.title, 'Faixa t2');
+      assert.equal(session.queue.length, 1);
+    } finally { await harness.manager.shutdown(); }
+  });
+
+  it('playlist: várias falhas seguidas param a fila em vez de tentar tudo à toa', async () => {
+    const ids = ['t1', 't2', 't3', 't4', 't5', 't6', 't7'];
+    const harness = createHarness(undefined, new Set(), playlistWithBadTracks(ids, ids));
+    try {
+      const result = await harness.manager.execute(command('/playlist https://www.youtube.com/playlist?list=PL1'));
+      const session = harness.manager.getSession('geral');
+      assert.ok(session);
+      assert.match(result.message, /Não foi possível iniciar a playlist/);
+      assert.equal(session.state, 'ERROR');
+      assert.equal(session.currentTrack, null);
+      assert.equal(session.queue.length, 0);
+    } finally { await harness.manager.shutdown(); }
   });
 
   it('/history lista faixas já iniciadas em ordem recente', async () => {
