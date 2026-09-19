@@ -14,6 +14,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Activity } from '@nexplay/shared';
 import { initAutoUpdater } from './updater.js';
+import { externalWebUrl, isAllowedPermission } from './policy.js';
 
 // windows-media-sessions calcula o caminho do próprio backend nativo relativo
 // a onde o módulo foi carregado — no build empacotado, isso caiu certo
@@ -343,12 +344,7 @@ function installSessionSecurity(appUrl: URL): void {
 
   session.defaultSession.setPermissionCheckHandler(
     (webContents, permission, requestingOrigin, details) => {
-      const allowedPermission =
-        permission === 'media' ||
-        permission === 'fullscreen' ||
-        permission === 'automatic-fullscreen' ||
-        permission === 'display-capture' ||
-        permission === 'speaker-selection';
+      const allowedPermission = isAllowedPermission(permission);
       const allowedOrigin = isAllowedPermissionOrigin(
         appOrigin,
         requestingOrigin,
@@ -379,12 +375,7 @@ function installSessionSecurity(appUrl: URL): void {
     (webContents, permission, callback, details) => {
       const securityOrigin = 'securityOrigin' in details ? details.securityOrigin : undefined;
       const mediaTypes = 'mediaTypes' in details ? details.mediaTypes : undefined;
-      const allowedPermission =
-        permission === 'media' ||
-        permission === 'fullscreen' ||
-        permission === 'automatic-fullscreen' ||
-        permission === 'display-capture' ||
-        permission === 'speaker-selection';
+      const allowedPermission = isAllowedPermission(permission);
       const allowedOrigin = isAllowedPermissionOrigin(
         appOrigin,
         details.requestingUrl,
@@ -480,7 +471,18 @@ function createMainWindow(appUrl: URL): BrowserWindow {
     },
   });
 
-  window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // Links de mensagem são <a target="_blank">. Antes este tratador negava tudo e
+  // nada abria o link no app desktop. Agora só http(s) vai pro navegador do
+  // sistema; a janela em si continua negada, e qualquer outro esquema é ignorado.
+  window.webContents.setWindowOpenHandler(({ url }) => {
+    const external = externalWebUrl(url);
+    if (external) {
+      shell.openExternal(external).catch((error: unknown) => debugLog(`openExternal falhou: ${String(error)}`));
+    } else {
+      debugLog(`window.open bloqueado: ${url.slice(0, 120)}`);
+    }
+    return { action: 'deny' };
+  });
   window.webContents.on('will-attach-webview', (event) => event.preventDefault());
   window.webContents.on('will-navigate', (event, targetUrl) => {
     if (!isAllowedAppUrl(targetUrl, appUrl.origin)) event.preventDefault();
