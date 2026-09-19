@@ -2268,6 +2268,12 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     }
   }, [voice.connectionState]);
 
+  // O painel do usuário fala da pessoa, não da chamada: fora de uma call ela está
+  // online (o app está aberto e em uso). O estado do LiveKit só aparece ali
+  // enquanto há uma call em andamento; o cabeçalho da sala segue usando
+  // connectionLabel puro, onde "Desconectado" descreve a voz de fato.
+  const userStatusLabel = voice.connectionState === ConnectionState.Disconnected ? 'Online' : connectionLabel;
+
   async function startOrStopScreenShare() {
     if (voice.screenEnabled) {
       await voice.toggleScreenShare(quality);
@@ -2835,7 +2841,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           <Avatar name={session.displayName} accentColor={session.accentColor} avatarUrl={session.avatarUrl} />
           <div className="current-user-copy">
             <strong>{session.displayName}</strong>
-            <span>{connectionLabel}</span>
+            <span>{userStatusLabel}</span>
           </div>
           <div className="sidebar-actions">
             <button
@@ -2919,8 +2925,6 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           </div>
           {!activeTextChannel && (
             <div className="room-header-actions">
-              <button type="button" className="icon-button" title="Mensagens fixadas" aria-label="Mensagens fixadas"><span className="header-glyph">⌖</span></button>
-              <button type="button" className="icon-button" title="Mostrar membros" aria-label="Mostrar membros"><UserIcon size={17} /></button>
               <div className={`connection-state ${voice.connected ? 'online' : ''}`}><span />{connectionLabel}</div>
               {voice.connected && (
                 <button

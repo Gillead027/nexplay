@@ -1,24 +1,38 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ACCENT_COLORS, type Activity, type FriendshipStatus, type UserSession } from '@nexplay/shared';
 import { api } from '../api';
 import { Avatar } from './Workspace';
 import { ActivityLine, ListeningActivityCard } from './ActivityDisplay';
 import { BlockIcon, CloseIcon, MessageIcon, UserPlusIcon } from './Icons';
+import { computePopoverPosition, POPOVER_WIDTH } from './profilePopoverPosition';
 
 export interface ProfilePopoverTarget {
   userId: string;
   rect: DOMRect;
 }
 
-const remoteProfileCache = new Map<string, UserSession | null>();
+// Só guarda perfis carregados com sucesso, e serve apenas pra mostrar algo na
+// hora ao reabrir: cada abertura rebusca (ver useUserProfile), então o cache
+// nunca deixa um avatar, status ou bio velho valendo até o próximo F5. Falhas
+// não entram aqui — antes um erro de rede ficava gravado pra sempre.
+const remoteProfileCache = new Map<string, UserSession>();
 
-function useUserProfile(userId: string, ownSession: UserSession): UserSession | null | undefined {
+interface UserProfileState {
+  // undefined = carregando pela primeira vez; null = falhou e não há cópia guardada.
+  profile: UserSession | null | undefined;
+  retry: () => void;
+}
+
+function useUserProfile(userId: string, ownSession: UserSession): UserProfileState {
   const isOwn = userId === ownSession.id;
   const [, forceRender] = useState(0);
+  const [failedFor, setFailedFor] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
-    if (!userId || isOwn || remoteProfileCache.has(userId)) return;
+    if (!userId || isOwn) return;
     let active = true;
+    setFailedFor(null);
     void api
       .getUserProfile(userId)
       .then(({ user }) => {
@@ -27,35 +41,19 @@ function useUserProfile(userId: string, ownSession: UserSession): UserSession | 
         forceRender((value) => value + 1);
       })
       .catch(() => {
-        if (active) remoteProfileCache.set(userId, null);
-        if (active) forceRender((value) => value + 1);
+        if (active) setFailedFor(userId);
       });
     return () => {
       active = false;
     };
-  }, [isOwn, userId]);
+  }, [isOwn, userId, attempt]);
 
-  if (isOwn) return ownSession;
-  return remoteProfileCache.get(userId);
-}
+  const retry = useCallback(() => setAttempt((value) => value + 1), []);
 
-const POPOVER_WIDTH = 300;
-const POPOVER_MARGIN = 12;
-
-function clampPosition(rect: DOMRect): { top: number; left: number } {
-  const viewportWidth = window.innerWidth;
-  const viewportHeight = window.innerHeight;
-  let left = rect.left;
-  if (left + POPOVER_WIDTH + POPOVER_MARGIN > viewportWidth) {
-    left = Math.max(POPOVER_MARGIN, viewportWidth - POPOVER_WIDTH - POPOVER_MARGIN);
-  }
-  // Tenta abrir abaixo do elemento clicado; se não couber, abre acima dele.
-  const estimatedHeight = 260;
-  let top = rect.bottom + 8;
-  if (top + estimatedHeight > viewportHeight) {
-    top = Math.max(POPOVER_MARGIN, rect.top - estimatedHeight - 8);
-  }
-  return { top, left };
+  if (isOwn) return { profile: ownSession, retry };
+  const cached = remoteProfileCache.get(userId);
+  if (cached) return { profile: cached, retry };
+  return { profile: failedFor === userId ? null : undefined, retry };
 }
 
 export function ProfilePopover({
@@ -78,8 +76,7 @@ export function ProfilePopover({
   // você) — ver Workspace.tsx, onde isso vem de typedParticipants ao vivo.
   activity?: Activity | null;
   // Computado em Workspace.tsx a partir das listas já mantidas em tempo real
-  // (nunca guardado no remoteProfileCache abaixo, que nunca invalida — ver
-  // comentário na função useUserProfile).
+  // (nunca guardado no remoteProfileCache acima, que só guarda o perfil público).
   relationship: FriendshipStatus;
   isBlockedByMe: boolean;
   onClose: () => void;
@@ -91,8 +88,27 @@ export function ProfilePopover({
 }) {
   const popoverRef = useRef<HTMLDivElement>(null);
   const userId = target?.userId ?? '';
-  const profile = useUserProfile(userId, ownSession);
+  const { profile, retry } = useUserProfile(userId, ownSession);
   const isOwnProfile = userId === ownSession.id;
+  const [height, setHeight] = useState(0);
+  const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+
+  // A altura depende do conteúdo (banner, bio, atividade, quantos botões de
+  // ação), então mede depois de cada render, antes de pintar, e só reposiciona
+  // se mudou — sem laço, já que setHeight ignora o mesmo valor.
+  useLayoutEffect(() => {
+    const element = popoverRef.current;
+    if (!element) return;
+    const measured = element.offsetHeight;
+    setHeight((current) => (current === measured ? current : measured));
+  });
+
+  useEffect(() => {
+    if (!target) return;
+    const handleResize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, [target]);
 
   useEffect(() => {
     if (!target) return;
@@ -112,7 +128,7 @@ export function ProfilePopover({
 
   if (!target) return null;
 
-  const { top, left } = clampPosition(target.rect);
+  const { top, left } = computePopoverPosition(target.rect, { width: POPOVER_WIDTH, height }, viewport);
 
   return (
     <div className="profile-popover" ref={popoverRef} role="dialog" aria-label="Perfil do usuário" style={{ top: `${top}px`, left: `${left}px` }}>
@@ -120,9 +136,12 @@ export function ProfilePopover({
         <CloseIcon size={13} />
       </button>
       {profile === undefined ? (
-        <div className="profile-popover-loading">Carregando perfil…</div>
+        <div className="profile-popover-loading" role="status">Carregando perfil…</div>
       ) : profile === null ? (
-        <div className="profile-popover-loading">Não foi possível carregar esse perfil.</div>
+        <div className="profile-popover-loading" role="alert">
+          Não foi possível carregar esse perfil.
+          <button type="button" className="secondary-pill" onClick={retry}>Tentar de novo</button>
+        </div>
       ) : (
         <div className="profile-preview">
           {profile.bannerUrl ? (
