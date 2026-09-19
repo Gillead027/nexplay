@@ -81,7 +81,7 @@ APP
 │   │   ├── Aba Adicionar amigo
 │   │   │   ├── Busca só entre quem divide servidor com você                 CORE (sem busca global)
 │   │   │   └── Adicionar → "Pedido enviado" / "Agora vocês são amigos!"     CORE
-│   │   └── Aba Online                                                       MISSING (sem presença)
+│   │   └── Aba Online                                                       MISSING (a presença existe; falta a aba)
 │   ├── Mensagens diretas (sidebar, ordenadas pela última mensagem)          CORE
 │   │   ├── Conversa 1:1                                                     CORE
 │   │   │   ├── Enviar com markdown, editar, apagar, copiar, encaminhar      CORE
@@ -229,8 +229,9 @@ APP
 │   │   └── Botão desconectar ao lado de outro participante (com confirm())  CORE
 │   │
 │   ├── Tela da call (área principal, sem canal de texto)                    [Roteiro 13]
-│   │   ├── Painel MEMBROS (só com call ativa; só quem está na call)         CORE
-│   │   │   └── Lista de membros do servidor / por cargo / por presença       MISSING
+│   │   ├── Painel MEMBROS (membros do servidor; com ou sem call)             DONE
+│   │   │   └── Online em cima e Offline embaixo, ao vivo                        DONE
+│   │   │   ├── Por cargo, cor de cargo, e no canal de texto                    MISSING
 │   │   ├── Cabeçalho: botão Mostrar membros                                 REMOVIDO (não tinha função)
 │   │   └── Cabeçalho: botão Mensagens fixadas (glifo ⌖)                     REMOVIDO (não tinha função)
 │   │
@@ -273,7 +274,7 @@ APP
 │   │   └── Foco automático em quem fala                                     MISSING
 │   │
 │   ├── Lista de participantes (painel expandido)
-│   │   └── Volume individual por pessoa (0–100, não persiste)               CORE
+│   │   └── Volume individual por pessoa: botão direito na lista de canais de voz (0–100, persiste)   DONE
 │   └── Áudio da call continua ao navegar para qualquer outra tela           CORE
 │
 ├── CONFIGURAÇÕES DO APP (engrenagem do rodapé)                         [Roteiros 7, 10, 12]
@@ -341,7 +342,7 @@ APP
 │   ├── Reconexão com backoff (1 s → 15 s)                                   CORE
 │   │   └── Sessão expirada: para o loop e volta à tela de entrada com aviso   DONE
 │   ├── Indicador visual de "reconectando" do WebSocket                      MISSING
-│   ├── Presença (online, ausente, ocupado, invisível)                       MISSING
+│   ├── Presença (online e offline no painel de membros)                  PARTIAL (faltam ausente, ocupado, invisível)
 │   └── "Fulano está digitando…"                                             MISSING
 │
 └── BOT DE MÚSICA (NexMusic)                                            [Roteiro 4, DISCORD_PARITY_PLAN.md]

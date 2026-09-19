@@ -150,10 +150,10 @@ A web nunca teve escolha de qualidade nem de áudio no momento de compartilhar. 
 
 | # | O que a pessoa faz | O que o app faz (verificado) | Ficha | Status |
 |---|---|---|---|---|
-| 1 | Vê que alguém começou | O selo "AO VIVO" aparece na lista de canais de voz. Na galeria da call surge um card da transmissão não assistida. **A transmissão não abre sozinha.** | VOICE_SCREEN_SHARE_START (6.7), SCREEN_SHARE_WATCH (8.2) | DONE |
+| 1 | Vê que alguém começou | O selo "AO VIVO" aparece na lista de canais de voz. Na galeria da call surge um card da transmissão não assistida. **A transmissão não abre sozinha, e o áudio dela também não toca sozinho**: antes da correção commit `31597f1`, o áudio vazava para todos sem o clique. | VOICE_SCREEN_SHARE_START (6.7), SCREEN_SHARE_WATCH (8.2) | DONE |
 | 2 | Clica no card | A transmissão sai da galeria e vira um `HeroTile` grande na `.hero-row`, acima dela. Não há som e o transmissor não é notificado. | SCREEN_SHARE_WATCH (8.2) | DONE |
 | 3 | Abre mais de uma transmissão | Cada uma vira seu próprio `HeroTile`, lado a lado. Não há limite de uma por vez. | SCREEN_SHARE_MULTI_HERO (8.4) | DONE |
-| 4 | Ajusta o volume da transmissão | O slider é independente do volume de voz da mesma pessoa. O valor **reseta para 100 %** ao reconectar. | SCREEN_SHARE_VOLUME (8.5) | PARTIAL |
+| 4 | Ajusta o volume da transmissão | O slider é independente do volume de voz da mesma pessoa. O valor agora **persiste** por conta e dispositivo (commit `1fa99f4`). | SCREEN_SHARE_VOLUME (8.5) | DONE |
 | 5 | Entra em tela cheia | No desktop usa a tela cheia da janela inteira (o mesmo estado do F11). Na web usa a Fullscreen API só no `.screen-stage`. Se falhar aparece "Não foi possível ativar a tela cheia. Tente novamente." | SCREEN_SHARE_FULLSCREEN_TOGGLE (8.6) | DONE |
 | 6 | Sai da tela cheia com Esc | No desktop o processo principal intercepta Esc antes do React. Na web o navegador cuida sozinho. | SCREEN_SHARE_FULLSCREEN_EXIT_ESC (8.7), APP_FULLSCREEN_EXIT_ESC (0.15) | DONE |
 | 7 | Passa o mouse no tile e clica em "Sair da transmissão" | O tile volta a ser um card pequeno na galeria, com "Ver transmissão" disponível de novo. | SCREEN_SHARE_STOP_WATCHING (8.3) | DONE |
@@ -233,7 +233,7 @@ Jornada extra. Mostra o que sobrevive quando a conexão é interrompida.
 | 2 | Estava em call | **A call cai.** O `Room` foi criado com `disconnectOnPageLeave: true`. Os outros veem a pessoa sair, como numa queda de conexão. | VOICE_CHANNEL_JOIN (6.1), APP_RELOAD (0.16) | PARTIAL |
 | 3 | Espera voltar | A sessão é restaurada e a pessoa precisa clicar no canal de voz de novo. Entrar automaticamente onde estava não acontece. Se o app volta ao mesmo servidor e canal, o Atlas marca como "a confirmar". | SESSION_RESTORE_ON_BOOT (1.1), APP_RELOAD (0.16) | PARTIAL |
 | 4 | O modo de entrada e o perfil de microfone | Sobrevivem, porque estão em `localStorage`. | VOICE_INPUT_MODE_SELECT (7.9), VOICE_MIC_PROFILE_SELECT (7.11) | DONE |
-| 5 | Ensurdecer, volumes individuais e transmissões assistidas | Resetam (`deafened` volta a `false` em cada `connect()`). | VOICE_SELF_DEAFEN (6.4), VOICE_PARTICIPANT_VOLUME_CONTROL (7.4), SCREEN_SHARE_WATCH (8.2) | PARTIAL |
+| 5 | Ensurdecer e transmissões assistidas | Resetam (`deafened` volta a `false` em cada `connect()`; a lista de transmissões assistidas zera). Os **volumes individuais deixaram de resetar** (commit `1fa99f4`). | VOICE_SELF_DEAFEN (6.4), VOICE_PARTICIPANT_VOLUME_CONTROL (7.4), SCREEN_SHARE_WATCH (8.2) | PARTIAL |
 | 6 | A rede cai sem F5 | O LiveKit tenta se recuperar sozinho. O rodapé mostra "Reconectando", depois "Conectado" de novo, **sem a pessoa fazer nada**. | VOICE_NETWORK_RECONNECT (6.9) | DONE |
 | 7 | A rede não volta | O Atlas marca o comportamento como **não confirmado**: precisaria simular perda real de rede para saber se cai para "Desconectado" ou se mostra erro. | VOICE_NETWORK_RECONNECT (6.9) | PARTIAL |
 | 8 | O WebSocket de dados cai | Reconecta com backoff exponencial de 1 s a 15 s. | REALTIME_RECONNECT (1.17) | DONE |
@@ -290,7 +290,7 @@ Cada lacuna abaixo aparece em mais de uma jornada ou bloqueia uma inteira. Estã
 | 6 | Sem som e sem indicador remoto de ensurdecer | J2 | O LiveKit só propaga o estado do microfone | MISSING |
 | 7 | Trocar a qualidade da transmissão em andamento | J3, J4 | A qualidade só entra na captura inicial | MISSING |
 | 8 | Quem transmite não vê quem assiste | J3 | Assistir é estado local (`watchingIds`), sem evento de rede | MISSING |
-| 9 | Volumes e transmissões assistidas resetam a cada reconexão | J4, J7 | São estado React local, sem `localStorage` | PARTIAL |
+| 9 | Transmissões assistidas resetam a cada reconexão | J4, J7 | São estado React local. Os volumes por pessoa e da transmissão já persistem (commit `1fa99f4`) | PARTIAL |
 | 10 | Sem tela de retry quando o servidor está fora do ar | J1 | `did-fail-load` só mostra um diálogo | PARTIAL |
 
 As lacunas 1 e 2 são as de maior impacto: uma bloqueia duas jornadas inteiras e a outra deixa a pessoa presa sem explicação.

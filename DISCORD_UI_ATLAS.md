@@ -2002,6 +2002,7 @@ Cobre os roteiros 18 (Member List), 19 (Mini Profile) e 20 (Painel do próprio u
 
 **ID**: `MEMBER_LIST_VOICE_ROSTER`
 **NOME**: Painel lateral "MEMBROS" da tela da call
+**STATUS ATUAL — SUBSTITUÍDO (commits `e1027d3` e `8460085`, em produção)**: a pedido do usuário, o painel **deixou de listar quem está na call** (isso já aparece na lista de canais de voz à esquerda) e **os sliders de volume saíram dele**. Ele agora lista os **membros do servidor**, ver `MEMBER_LIST_SERVER_WIDE`. O texto abaixo descreve o painel antigo.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Servidor > clicar num canal de voz (conecta) > tela da call (sem canal de texto selecionado) > coluna direita "MEMBROS"`
 **POSIÇÃO NA INTERFACE**: `<aside className="member-list" aria-label="Membros do canal">`, coluna à direita da tela de voz, com borda esquerda. Fica dentro do ramo `!activeTextChannel` de `Workspace.tsx`.
@@ -2046,6 +2047,7 @@ Cobre os roteiros 18 (Member List), 19 (Mini Profile) e 20 (Painel do próprio u
 
 **ID**: `MEMBER_LIST_SERVER_WIDE`
 **NOME**: Lista de membros do servidor ao lado de um canal de texto
+**STATUS ATUAL — ENTREGUE NA TELA DE VOZ (commits `e1027d3` e `8460085`, em produção)**: o painel da direita da tela de voz lista os membros do servidor, **Online em cima e uma categoria Offline embaixo**, ordem alfabética, com avatar, bolinha de status (verde ou cinza), texto de status e "(você)". Quem abre ou fecha o app muda de categoria ao vivo, sem recarregar; entrada, saída e banimento de membros também atualizam a lista. Aparece **com ou sem call**. Clicar num membro abre o mini-perfil. **Continua faltando**: mostrar o mesmo painel ao ler um **canal de texto**, agrupar por cargo e cor de cargo. O texto abaixo descreve o estado anterior (inexistente).
 **STATUS**: **`MISSING` por completo.** A ficha documenta o comportamento *esperado*.
 **Esperado (Discord)**: coluna direita no canal de texto, com todos os membros do servidor agrupados por cargo "exibido separadamente" e, dentro de cada grupo, por presença; botão no cabeçalho para mostrar e esconder.
 **Real**: ao abrir um canal de texto **não existe nenhum painel de membros** (medido: `.member-list` = 0). O único painel com esse nome é `MEMBER_LIST_VOICE_ROSTER`.
@@ -4643,6 +4645,7 @@ Arquitetura real (verificada em `apps/api/src/realtime.ts` e `apps/web/src/realt
 
 **ID**: `PRESENCE_STATUS`
 **NOME**: Status de presença geral (online/ausente/não perturbe/invisível/offline)
+**STATUS ATUAL — PARCIALMENTE ENTREGUE (commits `e1027d3` e `8460085`, em produção)**: existe agora **online e offline**, calculado pelas conexões de tempo real abertas (duas abas contam como uma pessoa), avisado por `PRESENCE_UPDATE` só a quem divide servidor, com `GET /api/servers/:id/presence` (só membros). Ficar offline tem **carência de 5 s**, para F5 ou queda rápida não fazerem a pessoa piscar. **Falta**: ausente, não perturbe e invisível, e mostrar presença fora do painel de membros (lista de amigos, DMs, mini-perfil, painel do usuário). O texto abaixo descreve o estado anterior.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **STATUS**: **`MISSING` por completo, confirmado no nível do protocolo** — mesma ausência total no union `RealtimeEvent` que `TYPING_INDICATOR`. Já registrado em `DISCORD_PARITY_PLAN.md` §8: "Presença (online/ausente/dnd/invisível/offline) | MISSING — hoje só existe 'conectado à voz' ou não; não há status de presença geral (só atividade de jogo/música)". **Confirmado nesta passagem que a única forma de saber se alguém está "ativo" hoje é indireta**: (a) estar conectado a um canal de voz (visível na lista de participantes daquele canal específico, Roteiro 3); (b) ter uma atividade detectada (jogo/Spotify, via o mecanismo de `ACTIVITY_DETECT` do Roteiro 0, só disponível no cliente desktop). **Não existe nenhum indicador de "esta pessoa está com o app aberto agora", nem em servidores nem na lista de amigos** — mesmo a infraestrutura de `clients`/`ws.userId` já existindo no servidor (que tecnicamente já sabe quem está conectado, `Set<TrackedSocket>` com `userId` em cada um), **essa informação nunca é exposta pra nenhum cliente** — nenhuma rota, nenhum evento a expõe.
 **CAMINHO EXATO ESPERADO** (não implementado): Bolinha de status no avatar (verde/amarelo/vermelho/cinza) em toda a UI — rail de servidores (via mini-perfil), lista de membros, lista de amigos, mini-perfil.
@@ -5131,6 +5134,7 @@ Continuação direta do Roteiro 6. Arquitetura real (verificada em `Workspace.ts
 
 **ID**: `VOICE_PARTICIPANT_VOLUME_CONTROL`
 **NOME**: Ajustar o volume individual de um participante
+**STATUS ATUAL — MUDOU (commit `1fa99f4`, em produção)**: (1) o volume agora **persiste**: fica em `localStorage` por conta (`np:voice-volumes:<usuário>`), volta igual depois de fechar e abrir o app e já vale desde o primeiro áudio; (2) o controle deslizante **saiu do painel da direita** e passou para o **botão direito na pessoa, na lista de canais de voz à esquerda** (também no bot de música; sem controle para si mesmo), com "Redefinir volume (100%)". O texto abaixo descreve o controle antigo do roster, que foi removido.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Painel de voz expandido (central, não a sidebar) > linha do participante > controle de volume` (componente `ParticipantRow`, distinto da lista compacta da sidebar já documentada em `VOICE_PARTICIPANT_SIDEBAR_LIST`)
 **POSIÇÃO NA INTERFACE**: `.volume-control`, à direita de cada linha de participante remoto (**não aparece na própria linha do usuário local** — `{!local && (...)}`, já que não faz sentido ajustar o próprio volume de recepção).
@@ -5501,6 +5505,7 @@ Continuação de Voz. Arquitetura real (verificada em `apps/web/src/components/S
 
 **ID**: `SCREEN_SHARE_WATCH`
 **NOME**: Começar a assistir uma transmissão de tela (promover a tile grande)
+**STATUS ATUAL — CORREÇÃO (commit `31597f1`, em produção)**: esta ficha e `VOICE_SCREEN_SHARE_START` só olhavam o vídeo e **não pegaram um defeito de áudio**: a faixa `ScreenShareAudio` de quem transmite chegava a todos na call (a sala usa `autoSubscribe`) e o `RemoteAudioSink` a ligava na hora, então **todo mundo ouvia a transmissão de tela sem clicar em "Ver transmissão"**. Corrigido: o áudio da transmissão só é ligado enquanto a pessoa está assistindo aquela transmissão, e desliga em "Sair da transmissão". Voz e soundboard não mudaram. Verificado num servidor LiveKit real com um transmissor de teste: antes, um `<audio>` tocando existia logo depois de a transmissão começar; depois, nenhum até o clique.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Canal de voz conectado > galeria > card de transmissão não assistida > clique`
 **POSIÇÃO NA INTERFACE**: `ShareGalleryTile`, no mesmo `.gallery-row` das câmeras.
@@ -5596,6 +5601,7 @@ Continuação de Voz. Arquitetura real (verificada em `apps/web/src/components/S
 
 **ID**: `SCREEN_SHARE_VOLUME`
 **NOME**: Ajustar o volume do áudio de uma transmissão específica
+**STATUS ATUAL (commit `1fa99f4`, em produção)**: o volume da transmissão também **persiste** agora (`np:stream-volumes:<usuário>`, por conta e por dispositivo). O texto abaixo que diz que reseta a 100 % ao reconectar é o estado anterior.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Tile grande (HeroTile) de uma transmissão remota > canto do vídeo > controle de volume`
 **POSIÇÃO NA INTERFACE**: `.screen-volume`, sobreposto ao vídeo — **só aparece se `isRemote`** (não existe controle de volume pra sua própria transmissão, obviamente).
