@@ -2448,12 +2448,15 @@ Cobre os roteiros 32 (Receber call), 34 (Inbox), 35 (Notificações), 36 (Badges
 5. **O título da janela é fixo em "NexPlay"** e o único badge do app é o de pedidos de amizade pendentes (`FRIEND_REQUEST_BADGE`, já auditado).
 6. **A única notificação sonora de mensagem é a do chat da call.** Mensagem de canal de texto e de DM chega em silêncio.
 
+**Atualização (commit `6aea3a4`, em produção)**: os três itens do menu de contexto da categoria que não tinham efeito ("Marcar como lida", "Silenciar categoria" e "Config. de notificação") foram **escondidos**. O modo de notificação continua gravado em `category_prefs` e a API não mudou, então os itens voltam junto com o rastreio de leitura e as notificações. Verificado no navegador: o menu ficou com Recolher categoria, Recolher todas, Editar, Excluir e Copiar ID, e "Recolher categoria" continua gravando a preferência.
+
 ---
 
 ## 14.1 — CATEGORY_NOTIFICATION_MODE *(PARTIAL — salva, sincroniza, sem efeito e sem feedback)*
 
 **ID**: `CATEGORY_NOTIFICATION_MODE`
 **NOME**: "Config. de notificação" no menu de contexto de uma categoria
+**STATUS ATUAL**: **item escondido do menu** (commit `6aea3a4`, em produção). A ficha abaixo descreve o comportamento que a auditoria mediu antes disso; o modo segue gravado no banco.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Servidor > botão direito no cabeçalho de uma categoria > "Config. de notificação"`
 **POSIÇÃO NA INTERFACE**: `openCategoryMenu` em `Workspace.tsx`, terceira seção do `ContextMenu` (junto de "Silenciar categoria").
@@ -2490,6 +2493,7 @@ Cobre os roteiros 32 (Receber call), 34 (Inbox), 35 (Notificações), 36 (Badges
 
 **ID**: `CATEGORY_MUTE_TOGGLE`
 **NOME**: "Silenciar categoria"
+**STATUS ATUAL**: **item escondido do menu** (commit `6aea3a4`, em produção). A ficha abaixo descreve o comportamento medido antes disso.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Servidor > botão direito no cabeçalho de uma categoria > "Silenciar categoria"`
 **POSIÇÃO NA INTERFACE**: Mesma seção de `CATEGORY_NOTIFICATION_MODE`, um item acima.
@@ -2564,6 +2568,7 @@ Cobre os roteiros 32 (Receber call), 34 (Inbox), 35 (Notificações), 36 (Badges
 
 **ID**: `MARK_AS_READ`
 **NOME**: "Marcar como lida" no menu de contexto da categoria
+**STATUS ATUAL**: **item removido do menu** (commit `6aea3a4`, em produção). Volta quando existir `UNREAD_TRACKING_AND_BADGES`.
 **STATUS**: **`BROKEN`.** Já registrado em `CATEGORY_CONTEXT_MENU` (Roteiro 3); mantido aqui porque é a peça que depende do rastreio de leitura.
 **Real**: `{ key: 'mark-read', label: 'Marcar como lida', onSelect: () => {} }`, uma função vazia. Aparece como a primeira ação do menu e, ao clicar, o menu apenas fecha. Medido: o item está na lista (`ITENS_DO_MENU`).
 **Correção proposta, sem executar**: remover o item até existir `UNREAD_TRACKING_AND_BADGES`.
@@ -2851,6 +2856,7 @@ Arquitetura real (verificada em `AddServerModal`/`Servers.tsx`, `CreateCategoryD
 
 **ID**: `CATEGORY_CONTEXT_MENU`
 **NOME**: Menu de contexto da categoria (botão direito)
+**STATUS ATUAL**: o menu tem hoje **três seções** (recolher; editar e excluir; copiar ID). "Marcar como lida", "Silenciar categoria" e "Config. de notificação" foram escondidos (commit `6aea3a4`, em produção, ver Roteiro 14); as descrições desses itens abaixo são o registro do estado anterior.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Sidebar de canais > cabeçalho de qualquer categoria > botão direito`
 **POSIÇÃO NA INTERFACE**: Menu flutuante posicionado nas coordenadas do clique (`categoryMenu.open(event, ...)`, componente genérico `ContextMenu.tsx` reaproveitado em todo o app).

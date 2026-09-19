@@ -115,9 +115,9 @@ APP
 │   │   │   ├── Recolher / expandir (preferência pessoal, persiste)          CORE
 │   │   │   ├── "+" da categoria → Criar canal (tipo Texto ou Voz)    ADMIN  CORE
 │   │   │   ├── Botão direito na categoria
-│   │   │   │   ├── Marcar como lida (item vazio, sem função)                BROKEN (Roteiro 14)
+│   │   │   │   ├── Marcar como lida (removido; não tinha função)              DONE (Roteiro 14)
 │   │   │   │   ├── Recolher categoria / recolher todas                      CORE
-│   │   │   │   ├── Silenciar categoria / config. de notificação (grava; nada lê)   PARTIAL (Roteiro 14)
+│   │   │   │   ├── Silenciar / config. de notificação (escondidos até haver notificação)   DONE (Roteiro 14)
 │   │   │   │   ├── Editar categoria (nome, staff)                           CORE
 │   │   │   │   ├── Excluir categoria (confirm() nativo)              ADMIN  CORE
 │   │   │   │   ├── Copiar ID da categoria (sem aviso "Copiado")             PARTIAL
@@ -308,8 +308,8 @@ APP
 │   └── Sobre (versão, licenças, verificar atualização)                      MISSING (nunca existiu)
 │
 ├── NOTIFICAÇÕES E NÃO LIDAS                                            [Roteiro 14]
-│   ├── Modo de notificação da categoria (grava por usuário; nada lê)        PARTIAL
-│   │   └── "Config. de notificação" muda o modo sem nenhum feedback        PARTIAL
+│   ├── Modo de notificação da categoria (grava por usuário; sem menu)     PARTIAL
+│   │   └── Itens do menu escondidos até existir notificação                 DONE
 │   ├── Silenciar servidor, canal ou DM; seção nas Configurações             MISSING
 │   ├── Menções (@pessoa, @cargo, @everyone, #canal)                         MISSING
 │   ├── Não lida (rail, canal, DM), contador de menção, faixa "Novas"        MISSING
@@ -358,7 +358,7 @@ APP
 ## O que a árvore mostra
 
 1. **Os ramos ausentes formam poucos grupos com uma causa só**, o que ajuda a priorizar: tudo que depende de rastreio de leitura (não lida na rail, no canal, na DM, "Marcar como lida"), tudo que depende de presença (aba Online, bolinha de status), e tudo que depende de uma bandeja no Electron (fechar-para-bandeja, iniciar minimizado, controles de voz na bandeja).
-2. **Há dois lugares decorativos ainda vivos**: a busca de cargos (somente leitura) e o item "Marcar como lida" da categoria (função vazia); os botões "Mostrar membros" e "Mensagens fixadas" do cabeçalho da tela de voz, achados no Roteiro 13, foram removidos. Ambos os que restam contrariam o pedido de nada sem função. Há ainda duas **configurações** sem efeito visível: a cor do cargo e "exibir separadamente".
+2. **Há um lugar decorativo ainda vivo**: a busca de cargos (somente leitura). O item "Marcar como lida" da categoria (função vazia) foi removido; os botões "Mostrar membros" e "Mensagens fixadas" do cabeçalho da tela de voz, achados no Roteiro 13, foram removidos. O que resta contraria o pedido de nada sem função. Há ainda duas **configurações** sem efeito visível: a cor do cargo e "exibir separadamente".
 3. **A profundidade máxima real** está no fluxo de compartilhar tela (mais de 8 níveis até parar a transmissão) e em Configurações do Servidor > Cargos (mais de 6 níveis até alterar uma permissão de um cargo específico).
 4. **Fricção inconsistente em ações destrutivas**: excluir servidor exige digitar o nome, excluir categoria e cargo usam `confirm()` nativo, apagar mensagem e sair da conta não pedem nada.
 
