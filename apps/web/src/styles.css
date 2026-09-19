@@ -315,8 +315,8 @@ button:disabled { cursor: default; opacity: .45; }
 .channel-button small { color: var(--text-muted); font-size: 10px; text-align: right; }
 .channel-user-row { position: relative; width: calc(100% - 22px); margin-left: 22px; display: flex; align-items: center; border-radius: var(--radius-sm); }
 .channel-user { min-width: 0; width: 100%; height: 30px; display: flex; align-items: center; gap: 7px; margin-left: 0; padding: 0 30px 0 7px; border: 0; border-radius: var(--radius-sm); color: #969da3; background: none; font: inherit; text-align: left; cursor: pointer; }
-.channel-user:not(:disabled):hover, .channel-user-row:hover .channel-user { background: rgba(255, 255, 255, .04); color: #dfe2e5; }
-.channel-user:disabled { cursor: default; }
+.channel-user:not(:disabled):not([aria-disabled="true"]):hover, .channel-user-row:hover .channel-user { background: rgba(255, 255, 255, .04); color: #dfe2e5; }
+.channel-user:disabled, .channel-user[aria-disabled="true"] { cursor: default; }
 .channel-user-disconnect { position: absolute; z-index: 2; right: 4px; top: 50%; width: 23px; height: 23px; display: grid; place-items: center; transform: translateY(-50%); border: 0; border-radius: 5px; color: #9aa1aa; background: transparent; cursor: pointer; opacity: 0; transition: opacity 100ms, color 100ms, background-color 100ms; }
 .channel-user-row:hover .channel-user-disconnect, .channel-user-disconnect:focus-visible { opacity: 1; }
 .channel-user-disconnect:hover { color: #ff7b87; background: rgba(237, 66, 69, .14); }
@@ -1572,6 +1572,10 @@ body { letter-spacing: -.01em; }
 .context-menu-item.danger { color: #e5606d; }
 .context-menu-item.danger:hover { background: rgba(229, 96, 109, .12); }
 .context-menu-check { font-size: 11px; }
+.context-menu-slider { display: grid; gap: 8px; padding: 8px 10px 6px; }
+.context-menu-slider label { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; color: var(--text-secondary); font-size: 12px; }
+.context-menu-slider output { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.context-menu-slider input[type="range"] { width: 100%; height: 4px; accent-color: var(--accent); cursor: pointer; }
 
 /* Modais de configuração de canal/categoria */
 .channel-settings-dialog { width: min(720px, 100%); padding: 0; overflow: hidden; }

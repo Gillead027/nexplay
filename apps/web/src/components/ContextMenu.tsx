@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 export interface ContextMenuItem {
   key: string;
@@ -9,8 +9,21 @@ export interface ContextMenuItem {
   disabled?: boolean;
 }
 
+// Item com controle deslizante (por exemplo, o volume de uma pessoa). Não é um
+// botão: mexer nele não fecha o menu, e o valor mostrado acompanha o arrasto.
+export interface ContextMenuSliderItem {
+  key: string;
+  label: string;
+  slider: {
+    value: number;
+    min: number;
+    max: number;
+    onChange: (value: number) => void;
+  };
+}
+
 export interface ContextMenuSection {
-  items: ContextMenuItem[];
+  items: Array<ContextMenuItem | ContextMenuSliderItem>;
 }
 
 interface ContextMenuState {
@@ -36,6 +49,32 @@ export function useContextMenu() {
   }
 
   return { state, open, close };
+}
+
+function ContextMenuSlider({ item }: { item: ContextMenuSliderItem }) {
+  const [value, setValue] = useState(item.slider.value);
+  const inputId = useId();
+  return (
+    <div className="context-menu-slider" role="group" aria-label={item.label}>
+      <label htmlFor={inputId}>
+        <span>{item.label}</span>
+        <output htmlFor={inputId}>{value}%</output>
+      </label>
+      <input
+        id={inputId}
+        type="range"
+        min={item.slider.min}
+        max={item.slider.max}
+        value={value}
+        aria-valuetext={`${value}%`}
+        onChange={(event) => {
+          const next = Number(event.target.value);
+          setValue(next);
+          item.slider.onChange(next);
+        }}
+      />
+    </div>
+  );
 }
 
 export function ContextMenu({ state, onClose }: { state: ContextMenuState | null; onClose: () => void }) {
@@ -86,7 +125,9 @@ export function ContextMenu({ state, onClose }: { state: ContextMenuState | null
       {state.sections.map((section, index) => (
         <div className="context-menu-section" key={index}>
           {index > 0 && <div className="context-menu-divider" />}
-          {section.items.map((item) => (
+          {section.items.map((item) => 'slider' in item ? (
+            <ContextMenuSlider key={item.key} item={item} />
+          ) : (
             <button
               key={item.key}
               type="button"

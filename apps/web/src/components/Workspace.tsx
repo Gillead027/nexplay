@@ -84,6 +84,7 @@ import { ActivityLine } from './ActivityDisplay';
 import { connectRealtime, onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { copyText } from '../clipboard';
 import { watchedStreamIdentities } from '../streamAudio';
+import { DEFAULT_PERSON_VOLUME, loadVolumes, saveVolumes, volumeStorageKey } from '../volumePrefs';
 import { DmChannelView } from './DmChannelView';
 import { FriendsHome, FriendsSidebar, isBlockedByMe as computeIsBlockedByMe, relationshipStatus, useFriendsState } from './Friends';
 import { ProfilePopover, type ProfilePopoverTarget } from './ProfilePopover';
@@ -399,6 +400,7 @@ function ChannelButton({
   disconnectingIdentity,
   settings,
   onContextMenu,
+  onParticipantContextMenu,
   draggable,
   onDragStart,
 }: {
@@ -425,6 +427,7 @@ function ChannelButton({
     onDeleted: () => void;
   } | undefined;
   onContextMenu?: (event: ReactMouseEvent<HTMLElement>) => void;
+  onParticipantContextMenu?: (event: ReactMouseEvent<HTMLElement>, participant: { identity: string; name: string }) => void;
   draggable?: boolean;
   onDragStart?: (event: ReactDragEvent<HTMLElement>) => void;
 }) {
@@ -472,11 +475,21 @@ function ChannelButton({
         const isBot = participant.participantType === 'BOT';
         const canDisconnect = active && participant.identity !== ownIdentity;
         return (
-          <div className="channel-user-row" key={participant.identity}>
+          <div
+            className="channel-user-row"
+            key={participant.identity}
+            onContextMenu={
+              participant.identity === ownIdentity
+                ? undefined
+                : (event) => onParticipantContextMenu?.(event, { identity: participant.identity, name: participant.name })
+            }
+          >
+            {/* aria-disabled em vez de disabled: botão desabilitado não dispara o clique direito, e o
+                volume do bot de música também precisa ser ajustável por ele. */}
             <button
               type="button"
               className="channel-user"
-              disabled={isBot}
+              aria-disabled={isBot || undefined}
               onClick={(event) => {
                 event.stopPropagation();
                 if (!isBot) onOpenProfile(participant.identity, event);
@@ -1728,8 +1741,14 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   }, [joiningId, voice.connected]);
   const [disconnectingIdentity, setDisconnectingIdentity] = useState<string | null>(null);
   const [quality, setQuality] = useState<ShareQuality>('1080p60');
-  const [volumes, setVolumes] = useState<Record<string, number>>({});
-  const [streamVolumes, setStreamVolumes] = useState<Record<string, number>>({});
+  // Volume que este usuário deu a cada pessoa (voz e áudio de transmissão) fica
+  // guardado neste dispositivo e volta igual depois de fechar e abrir o app.
+  const voiceVolumesKey = volumeStorageKey('voice', session.id);
+  const streamVolumesKey = volumeStorageKey('stream', session.id);
+  const [volumes, setVolumes] = useState<Record<string, number>>(() => loadVolumes(voiceVolumesKey));
+  const [streamVolumes, setStreamVolumes] = useState<Record<string, number>>(() => loadVolumes(streamVolumesKey));
+  useEffect(() => saveVolumes(voiceVolumesKey, volumes), [voiceVolumesKey, volumes]);
+  useEffect(() => saveVolumes(streamVolumesKey, streamVolumes), [streamVolumesKey, streamVolumes]);
   const [watchingScreenIds, setWatchingScreenIds] = useState<Set<string>>(new Set());
   // restrictOwnAudio (na captura de áudio da transmissão, useVoiceRoom.ts) já
   // pede pro Chromium excluir o áudio do nosso próprio app do que é capturado
@@ -1776,6 +1795,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryPrefs, setCategoryPrefs] = useState<Record<string, CategoryPrefs>>({});
   const categoryMenu = useContextMenu();
+  const participantMenu = useContextMenu();
   const categoryEditRefs = useRef<Record<string, CategorySettingsModalHandle | null>>({});
   const [moveConfirm, setMoveConfirm] = useState<{
     kind: 'text' | 'voice';
@@ -1949,6 +1969,46 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     } catch {
       // Falha silenciosa: WS/refresh seguinte reconcilia o estado real.
     }
+  }
+
+  // Botão direito numa pessoa da lista de canais de voz: controle de volume dela.
+  // O volume vale pra quem está (ou vier a estar) na call com você e é guardado
+  // por pessoa, então dá pra ajustar mesmo quem está em outro canal.
+  function openParticipantVolumeMenu(
+    event: ReactMouseEvent<HTMLElement>,
+    participant: { identity: string; name: string },
+  ) {
+    const current = volumes[participant.identity] ?? DEFAULT_PERSON_VOLUME;
+    participantMenu.open(event, [
+      {
+        items: [
+          {
+            key: 'volume',
+            label: `Volume de ${participant.name}`,
+            slider: {
+              value: current,
+              min: 0,
+              max: 100,
+              onChange: (value) => setVolumes((previous) => ({ ...previous, [participant.identity]: value })),
+            },
+          },
+        ],
+      },
+      {
+        items: [
+          {
+            key: 'reset',
+            label: 'Redefinir volume (100%)',
+            onSelect: () =>
+              setVolumes((previous) => {
+                const next = { ...previous };
+                delete next[participant.identity];
+                return next;
+              }),
+          },
+        ],
+      },
+    ]);
   }
 
   // Sem "Marcar como lida", "Silenciar categoria" e "Config. de notificação" de
@@ -2690,6 +2750,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                     speakingIds={voice.speakers}
                     onDisconnectParticipant={(identity, name) => void disconnectParticipantFromVoice(identity, name)}
                     disconnectingIdentity={disconnectingIdentity}
+                    onParticipantContextMenu={openParticipantVolumeMenu}
                   />
                 ));
 
@@ -2786,6 +2847,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                     </button>
                   )}
                   <ContextMenu state={categoryMenu.state} onClose={categoryMenu.close} />
+                  <ContextMenu state={participantMenu.state} onClose={participantMenu.close} />
                 </>;
               })()}
             </nav>
