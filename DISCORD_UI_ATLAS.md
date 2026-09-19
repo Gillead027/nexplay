@@ -4727,6 +4727,8 @@ Prioridade especial do pedido original (Roteiros 10-17). Arquitetura real (verif
 
 ## 6.3 — VOICE_SELF_MUTE
 
+**STATUS ATUAL — CORRIGIDO (commit `8ae4eb2`, em produção)**: o ícone de mutado agora só aparece quando a pessoa realmente mutou (ou ensurdeceu) dentro de uma call. Ao abrir o app e ao entrar na call o microfone aparece normal; mutar e desmutar aparecem na hora no painel, na barra da call e na linha da pessoa na lista de canais, inclusive para os outros na mesma call (atributo `selfMuted` do participante no LiveKit). Push-to-talk e sensibilidade de entrada ligam e desligam o track o tempo todo e já não contam como mutado. O servidor também recalcula a sala quando o microfone é publicado, para não ficar com o ícone preso em quem só olha a lista. O texto abaixo é o estado anterior.
+
 **ID**: `VOICE_SELF_MUTE`
 **NOME**: Silenciar/ativar o próprio microfone
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
