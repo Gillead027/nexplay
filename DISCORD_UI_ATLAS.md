@@ -2134,6 +2134,8 @@ Cobre os roteiros 18 (Member List), 19 (Mini Profile) e 20 (Painel do próprio u
 
 ## 13.6 — ROLE_HOIST_MEMBER_GROUPING *(MISSING — a configuração não tem efeito visível)*
 
+**STATUS ATUAL — ENTREGUE (commit `4c50cd5`, em produção)**: o switch "Exibir membros do cargo separadamente" agora **tem efeito**: o painel de membros da tela de voz cria uma categoria por cargo separado (do mais alto ao mais baixo; só quem está online; cada pessoa só no cargo separado mais alto), seguida de "Online" e "Offline". Liga, desliga, atribuição e exclusão de cargo atualizam o painel ao vivo. Continua faltando a cor do cargo nos nomes (`ROLE_COLOR_ON_NAMES`) e o painel em canal de texto. O texto abaixo é o estado anterior.
+
 **ID**: `ROLE_HOIST_MEMBER_GROUPING`
 **NOME**: "Exibir membros do cargo separadamente"
 **STATUS**: **`MISSING` o efeito.** O campo `hoist` é salvo (`api.createRole`/`updateRole`) e há um switch no editor (`ServerSettings.tsx`, `static-switch`), mas o texto `hoist` não aparece em nenhum outro arquivo do cliente além de `api.ts`, que só o repassa ao servidor.
