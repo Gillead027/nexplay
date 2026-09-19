@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). **Roteiro 10 completo** (7 fichas, configurações — aparência). **Roteiro 11 completo** (13 fichas, amigos e DMs). **Roteiro 12 completo** (8 fichas, configurações — meu perfil/conta e segurança/privacidade). **Roteiro 13 completo** (17 fichas, lista de membros, mini-perfil e painel do próprio usuário; numeração do Atlas, equivale aos roteiros 18 a 20 do pedido original). **Roteiro 14 completo** (14 fichas, notificações, não lidas, badges e avisos do desktop; equivale aos roteiros 32, 34 a 36, 52 e 53 do pedido original). Próximos (numeração do Atlas): 15 atalhos/Esc/hover/scroll, 16 estados vazios/carregando/offline/permissões de dispositivo, 17 Premium/Loja/Sobre.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). **Roteiro 10 completo** (7 fichas, configurações — aparência). **Roteiro 11 completo** (13 fichas, amigos e DMs). **Roteiro 12 completo** (8 fichas, configurações — meu perfil/conta e segurança/privacidade). **Roteiro 13 completo** (17 fichas, lista de membros, mini-perfil e painel do próprio usuário; numeração do Atlas, equivale aos roteiros 18 a 20 do pedido original). **Roteiro 14 completo** (14 fichas, notificações, não lidas, badges e avisos do desktop; equivale aos roteiros 32, 34 a 36, 52 e 53 do pedido original). **Roteiro 15 completo** (13 fichas, teclado, Esc, duplo clique, histórico, scroll, copiar, links e modo desenvolvedor; equivale aos roteiros 38 a 40, 54 a 60 do pedido original). Próximos (numeração do Atlas): 16 estados vazios/carregando/offline/permissões de dispositivo, 17 Premium/Loja/Sobre.
 
 ---
 
@@ -2671,6 +2671,226 @@ Cobre os roteiros 32 (Receber call), 34 (Inbox), 35 (Notificações), 36 (Badges
 6. **Não há sistema de menções** (`MENTION_SYSTEM`), então o modo `mentions` nunca teve significado.
 
 **Ordem de dependência sugerida, sem executar**: (a) rastreio de leitura no servidor, que destrava não lida, badge, título, "Marcar como lida" e faixa "Novas mensagens"; (b) menções, que destravam contador vermelho, inbox e o modo `mentions`; (c) a ponte do desktop (liberar `notifications`, `flashFrame`, `setOverlayIcon`), que precisa de (a) e (b) para ter o que notificar. Antes de (a), a correção mínima e honesta é esconder os dois itens de notificação da categoria e o "Marcar como lida".
+---
+
+# ROTEIRO 15 — TECLADO, ESC, DUPLO CLIQUE, HISTÓRICO, SCROLL, COPIAR, LINKS E MODO DESENVOLVEDOR
+
+Cobre os roteiros 38 (Keyboard navigation), 39 (Esc), 40 (Hover, só o que é tecla e foco), 54 (Links), 55 (Copy), 56 (Developer mode), 57 (Double click), 58 (Back / Forward), 59 (Scroll) e 60 (Links de mensagem) do pedido original. Método: busca no código de cliente e desktop por `keydown`, `Escape`, `onDoubleClick`, `dblclick`, `pushState`, `popstate`, `clipboard`, `setWindowOpenHandler`, `openExternal` e `setAsDefaultProtocolClient`, mais **medição num Chromium real e num Electron real** (o `dist/main.js` do desktop, lançado com `--user-data-dir` isolado e `NEXPLAY_APP_URL` apontando para o servidor local, sem tocar em produção nem no NexPlay aberto do usuário).
+
+**Resumo dos achados deste roteiro**:
+
+1. **Copiar não funciona no app desktop.** Medido no Electron real com a janela focada (`document.hasFocus() = true`): a permissão `clipboard-write` está `denied` e `navigator.clipboard.writeText` falha com `NotAllowedError: Write permission denied`. O clique em "Copiar texto" deixou a área de transferência intacta. A causa é a lista de permissões do processo principal, que só concede cinco (mídia, tela cheia, tela cheia automática, captura de tela e alto-falante). Os botões engolem o erro (`void ...writeText`), então não há nenhum aviso (`CLIPBOARD_COPY_DESKTOP`).
+2. **Clicar num link de mensagem não faz nada no app desktop.** Medido: nenhuma janela nova, nenhuma chamada a `shell.openExternal`, URL da janela igual. No navegador comum o mesmo link abre uma nova aba (`MESSAGE_LINK_OPEN`).
+3. **Apertar Esc para cancelar a captura da tecla do "apertar para falar" grava `Escape` como a tecla e ainda fecha as configurações.** Medido na web e no desktop (`PTT_KEY_CAPTURE_ESCAPE`).
+4. **Um Esc fecha várias camadas de uma vez.** Há **dez** ouvintes de Esc independentes no `window`, sem pilha de prioridade. Medido: com o diálogo de excluir servidor aberto por cima das configurações do servidor, um Esc fecha o diálogo **e** as configurações inteiras (`ESCAPE_LAYER_PRIORITY`).
+5. **Não existe histórico de navegação.** A URL fica sempre `/`, o botão Voltar do navegador sai do app, e **F5 perde o canal**: medido, estando em `#segundo`, o app volta a `#geral` (`BACK_FORWARD_HISTORY`, `STATE_RESTORE_ON_RELOAD`).
+6. **Não existe nenhum atalho global além do PTT**, nenhum duplo clique em lugar nenhum, nenhum link de mensagem copiável, nenhum link do tipo `nexplay://` e nenhum modo desenvolvedor.
+
+---
+
+## 15.1 — CLIPBOARD_COPY_DESKTOP *(BROKEN — copiar não funciona no desktop)*
+
+**ID**: `CLIPBOARD_COPY_DESKTOP`
+**NOME**: Copiar para a área de transferência (texto da mensagem, ID da categoria, código de convite)
+**PLATAFORMA**: `DESKTOP_WINDOWS` (quebrado), `WEB` (não medido nesta rodada)
+**CAMINHO EXATO**: `Mensagem > barra de ações no hover > "Copiar texto"` (canal e DM), `Categoria > botão direito > "Copiar ID da Categoria"`, `Configurações do servidor > Convites > "Copiar"`.
+**POSIÇÃO NA INTERFACE**: `TextChannels.tsx` (mensagem de canal), `DmChannelView.tsx` (mensagem de DM), `Workspace.tsx` (menu da categoria), `ServerSettings.tsx` (convite).
+**APARÊNCIA**: Ícone de cópia nas mensagens; item de texto no menu da categoria; botão "Copiar" no convite.
+**ESTADO NORMAL / HOVER / ACTIVE / SELECTED / DISABLED / LOADING**: Botão comum, nunca desabilitado.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Nenhuma no código. **No Electron**, o Chromium exige a permissão de escrita na área de transferência para `navigator.clipboard.writeText`.
+**RESULTADO IMEDIATO**: Todos os quatro pontos chamam `navigator.clipboard.writeText(...)`. **Medido no Electron real**: a janela estava focada, `navigator.permissions.query({ name: 'clipboard-write' })` devolveu **`denied`**, `writeText` rejeitou com `NotAllowedError: Failed to execute 'writeText' on 'Clipboard': Write permission denied.`, e depois de clicar em "Copiar texto" a área de transferência do sistema **continuou com o valor anterior**.
+**Causa**: `setPermissionCheckHandler` e `setPermissionRequestHandler` em `apps/desktop/src/main.ts` só concedem `media`, `fullscreen`, `automatic-fullscreen`, `display-capture` e `speaker-selection`. Qualquer outra permissão, inclusive a de escrita na área de transferência, é negada.
+**RESULTADO VISUAL**: **Nenhum.** Três dos quatro pontos chamam `void navigator.clipboard.writeText(...)`, sem `.then` nem `.catch`. O convite usa `.then(() => setCopied(true))`, então **também não mostra "Copiado!"** quando a escrita falha, e a rejeição fica sem tratamento.
+**RESULTADO SONORO / ANIMAÇÃO / POPOVER / MENU / MODAL / SEGUNDA ETAPA**: Nenhum / não aplicável.
+**RESULTADO FINAL**: No desktop, copiar simplesmente não copia, e a pessoa não é avisada.
+**EFEITO LOCAL**: Nenhum. **EFEITO REMOTO**: Nenhum.
+**REALTIME / BACKEND / BANCO**: Não aplicável.
+**REFRESH / RECONEXÃO**: Não aplicável.
+**ERRO**: A rejeição da API é descartada em silêncio.
+**CANCELAMENTO / REVERSÃO**: Não aplicável.
+**ATALHO**: Nenhum. Selecionar o texto e usar Ctrl+C do sistema continua funcionando, pois não passa pela API assíncrona (não medido).
+**MENU DE CONTEXTO**: Não existe botão direito em mensagem (`MESSAGE_CONTEXT_MENU`, `MISSING`).
+**ACESSIBILIDADE**: Botões com `title` e `aria-label`, mas sem nenhum retorno de sucesso ou falha.
+**Registro de estado anterior**: o Atlas já apontava "sem feedback" em `MESSAGE_COPY_TEXT` (4.8), mas partia do princípio de que a cópia funcionava. **Isso estava errado no desktop.**
+**Correção proposta, sem executar**: (a) função `copyText` com **plano B via `document.execCommand('copy')`**, que não depende dessa permissão e por isso pode ser publicada só com um deploy do `web` (o desktop carrega o site); (b) de quebra, mostrar "Copiado!" em todos os pontos e tratar a falha. Alternativa no processo principal: conceder `clipboard-sanitized-write`, o que exige uma nova versão do desktop.
+
+---
+
+## 15.2 — MESSAGE_LINK_OPEN *(BROKEN no desktop; CORE na web)*
+
+**ID**: `MESSAGE_LINK_OPEN`
+**NOME**: Clicar num link `http(s)` dentro de uma mensagem
+**PLATAFORMA**: `DESKTOP_WINDOWS` (quebrado), `WEB` (funciona)
+**CAMINHO EXATO**: `Mensagem com URL > clicar no link`
+**POSIÇÃO NA INTERFACE**: `<a target="_blank" rel="noopener noreferrer">` gerado por `Markdown.tsx` (`URL_PATTERN` só reconhece `http://` e `https://`).
+**APARÊNCIA / ESTADO NORMAL / HOVER / ACTIVE / SELECTED / DISABLED / LOADING**: Link sublinhado padrão do renderizador.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: URL válida reconhecida pelo padrão.
+**RESULTADO IMEDIATO — WEB**: **Medido**: abre uma nova aba com a URL.
+**RESULTADO IMEDIATO — DESKTOP**: **Medido no Electron real**: janelas antes 1, depois 1; a URL da janela principal não mudou; `shell.openExternal` (substituído por um gravador antes do clique) **não foi chamado**. O clique é engolido.
+**Causa**: `window.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))` nega o `target="_blank"`, e `will-navigate` cancela qualquer navegação para fora da origem do app. **Nenhum código chama `shell.openExternal` para links** (a única chamada é a de `ms-settings:` para permissão de câmera e microfone) e o `preload` expõe `window.desktop.*` sem nenhuma função de abrir link externo.
+**RESULTADO VISUAL / SONORO / ANIMAÇÃO**: Nenhum no desktop.
+**POPOVER / MENU / MODAL / SEGUNDA ETAPA**: Não aplicável. (O Discord pergunta antes de abrir domínio desconhecido; aqui não há nem a abertura.)
+**RESULTADO FINAL**: Link morto no desktop, comportamento correto no navegador.
+**EFEITO LOCAL / REMOTO / REALTIME / BACKEND / BANCO**: Não aplicável.
+**REFRESH / RECONEXÃO**: Não aplicável.
+**ERRO**: Silêncio total.
+**CANCELAMENTO / REVERSÃO**: Não aplicável.
+**ATALHO**: Nenhum. Não há "Copiar endereço do link" nem menu de botão direito no link.
+**MENU DE CONTEXTO**: Não existe.
+**ACESSIBILIDADE**: Link real (`<a href>`), alcançável por Tab.
+**Nota de segurança que já funciona**: o link usa `rel="noopener noreferrer"` e o autolink **não** reconhece `javascript:` (testado, ver `MARKDOWN_RENDERING`). Abrir externamente exigiria filtrar para `http` e `https` e nunca repassar outro esquema a `openExternal`.
+**Correção proposta, sem executar**: no processo principal, trocar o `deny` por uma função que abra `http(s)` no navegador do sistema (`shell.openExternal`) e negue a janela. **Isso muda o processo principal, então precisa de uma nova versão do desktop** publicada para o auto-update.
+
+---
+
+## 15.3 — PTT_KEY_CAPTURE_ESCAPE *(BROKEN — não há como cancelar a captura)*
+
+**ID**: `PTT_KEY_CAPTURE_ESCAPE`
+**NOME**: Apertar Esc durante a captura da tecla de "apertar para falar"
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Configurações > Voz e vídeo > modo "Push to talk" > botão da tecla (`.ptt-key-button`) > "Pressione uma tecla…" > Esc`
+**POSIÇÃO NA INTERFACE**: Efeito em `Workspace.tsx` (`listeningForKey`), que registra um `keydown` no `window`.
+**APARÊNCIA**: O botão passa a mostrar "Pressione uma tecla…".
+**ESTADO NORMAL**: Mostra a tecla atual (padrão `ControlRight`; medido: `np:ptt-key` ausente no início).
+**HOVER / ACTIVE / SELECTED / DISABLED / LOADING**: Padrão.
+**TRIGGER**: Qualquer tecla, inclusive Esc.
+**PRÉ-CONDIÇÕES**: Modo "Push to talk" escolhido e captura ativa.
+**RESULTADO IMEDIATO**: O tratador faz `event.preventDefault(); setPttKeyBinding(event.code); setListeningForKey(false)` para **qualquer** tecla, sem exceção para Esc.
+**RESULTADO VISUAL**: O botão volta a mostrar o nome da tecla. **Medido**: depois de Esc, `localStorage['np:ptt-key']` = **`"Escape"`**, e as configurações **fecharam**, porque o tratador de Esc do próprio modal (também no `window`) reage ao mesmo toque. `preventDefault` não impede o outro ouvinte. **Medido igual no Electron.**
+**RESULTADO SONORO / ANIMAÇÃO / POPOVER / MENU / MODAL / SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: **A tecla de falar passa a ser o Esc.** Daí em diante, segurar Esc (o que se faz o tempo todo para fechar popovers e diálogos) abre o microfone na call. Para se recuperar é preciso reabrir as configurações e escolher outra tecla.
+**EFEITO LOCAL**: Preferência salva; a reação do PTT em `useVoiceRoom` (`keydown`/`keyup` por `event.code`) passa a valer para o Esc. **EFEITO REMOTO**: Outros passam a ouvir a pessoa quando ela aperta Esc.
+**REALTIME / BACKEND / BANCO**: Não aplicável (`localStorage`, por dispositivo).
+**REFRESH**: Persiste. **RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: **Não existe.** Não há como sair da captura sem gravar uma tecla, e Esc, o gesto universal de cancelar, grava.
+**REVERSÃO**: Capturar outra tecla.
+**ATALHO**: Ver `KEYBOARD_SHORTCUTS_GLOBAL`. **MENU DE CONTEXTO**: Não existe.
+**ACESSIBILIDADE**: Não anuncia que a captura começou nem qual tecla foi gravada.
+**Correção proposta, sem executar**: durante a captura, Esc cancela sem gravar e sem fechar o modal (o tratador de captura precisa rodar antes, em fase de captura, e parar a propagação).
+
+---
+
+## 15.4 — ESCAPE_LAYER_PRIORITY *(PARTIAL — sem pilha de camadas)*
+
+**ID**: `ESCAPE_LAYER_PRIORITY`
+**NOME**: O que o Esc fecha quando há mais de uma camada aberta
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: qualquer tela com diálogo, menu ou painel aberto, tecla `Escape`.
+**Situação real**: cada camada registra o **seu próprio** ouvinte de Esc no `window`, sem coordenação. Ouvintes globais confirmados no código: menu de contexto (`ContextMenu.tsx`), encaminhar mensagem (`ForwardMessage.tsx`), mini-perfil (`ProfilePopover.tsx`), tela cheia da transmissão no desktop (`ScreenStage.tsx`), adicionar servidor (`Servers.tsx`), configurações do servidor (`ServerSettings.tsx`), soundboard (`Soundboard.tsx`), criar canal (`TextChannels.tsx`), criar categoria e configurações do app (`Workspace.tsx`). **Dez ao todo.** Fora esses, os campos de mensagem tratam Esc no próprio `textarea` (cancelar resposta ou edição, `TextChannels.tsx` e `DmChannelView.tsx`). Nenhum chama `stopPropagation`, nenhum consulta se existe outra camada por cima.
+**Medido — diálogo dentro das configurações do servidor**: com "Excluir servidor" aberto por cima de `Configurações do servidor` (o diálogo tem campo para digitar o nome), **um único Esc fechou o diálogo e as configurações inteiras**, e a pessoa caiu no canal de texto. O `DeleteServerDialog` não tem tratador de Esc próprio, então quem responde é o do `ServerSettings`, que fecha tudo. O Discord fecharia só a camada de cima.
+**Também**: no desktop, o Esc da tela cheia é tratado **duas vezes**, no processo principal (`before-input-event`) e no React (`ScreenStage.tsx`), como já notado em `SCREEN_SHARE_FULLSCREEN_EXIT_ESC`. E a captura da tecla do PTT engole o Esc (`PTT_KEY_CAPTURE_ESCAPE`).
+**Situações em que o problema não aparece na prática**: o mini-perfil e o menu de contexto fecham também por clique fora, o que os torna exclusivos na maioria dos usos.
+**HOVER / ACTIVE / SELECTED / DISABLED / LOADING**: Não aplicável.
+**TRIGGER**: Tecla Esc. **PRÉ-CONDIÇÕES**: Duas ou mais camadas abertas.
+**RESULTADO IMEDIATO / VISUAL**: Todas as camadas com ouvinte fecham no mesmo toque.
+**RESULTADO SONORO / ANIMAÇÃO / POPOVER / MENU / MODAL / SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Perda de contexto ao cancelar um diálogo aninhado.
+**EFEITO LOCAL / REMOTO / REALTIME / BACKEND / BANCO / REFRESH / RECONEXÃO / ERRO**: Não aplicável.
+**CANCELAMENTO / REVERSÃO**: Reabrir o que fechou.
+**ATALHO**: `Esc`. **MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Só o modal de Configurações do app prende o Tab e deixa o resto `inert`; o padrão não é aplicado de forma uniforme (ver `KEYBOARD_NAVIGATION_FOCUS`).
+**Correção proposta, sem executar**: uma pilha de camadas (um único ouvinte que fecha só a de cima), ou no mínimo o diálogo de excluir servidor tratar o próprio Esc e parar a propagação.
+
+---
+
+## 15.5 — KEYBOARD_SHORTCUTS_GLOBAL *(MISSING)*
+
+**ID**: `KEYBOARD_SHORTCUTS_GLOBAL`
+**NOME**: Atalhos de teclado do aplicativo
+**STATUS**: **`MISSING`, exceto o PTT.**
+**Esperado (Discord)**: Ctrl+K (troca rápida), Ctrl+/ (lista de atalhos), Alt+setas (canais e servidores), Ctrl+Shift+M e Ctrl+Shift+D (mutar e ensurdecer), Alt+Shift+setas (não lidas) e afins, com uma tela de atalhos configuráveis.
+**Real**: a busca por `keydown` no cliente só encontra: a tecla do PTT (`useVoiceRoom.ts`), Enter para enviar e Shift+Enter para nova linha nos campos de mensagem, Esc para cancelar resposta ou edição, Enter e Espaço no spoiler do markdown, Enter no campo de nome de cargo, e os Esc dos diálogos. No desktop, `before-input-event` trata só Ctrl/Cmd+R, F5, F11 e Esc em tela cheia. **Não existe** tela de atalhos, nem atalho para mutar, ensurdecer, trocar de canal ou de servidor (`VOICE_SELF_MUTE`, `QUICK_SWITCHER` e `KEYBOARD_SERVER_NAVIGATION` já são `MISSING`).
+
+---
+
+## 15.6 — KEYBOARD_NAVIGATION_FOCUS *(PARTIAL)*
+
+**ID**: `KEYBOARD_NAVIGATION_FOCUS`
+**NOME**: Navegação por Tab e gerenciamento de foco em camadas
+**STATUS**: `PARTIAL`.
+**O que existe**: o modal de **Configurações do app** prende o Tab (volta ao primeiro e ao último item), marca o resto da tela como `inert` e `aria-hidden`, e devolve o foco ao botão da engrenagem ao fechar. O diálogo de **criar canal** aplica o mesmo `inert` nos irmãos do overlay. O de **criar categoria** trata Esc, mas **não** aplica `inert` (a busca por `inert` só encontra `TextChannels.tsx` e `Workspace.tsx`, este último no modal de Configurações).
+**O que falta (medido ou lido)**: o **mini-perfil** não move o foco para dentro nem o devolve (medido, ver `MINI_PROFILE_CLOSE`); o menu de dispositivos fecha só com clique fora, sem Esc nem setas (ver `USER_PANEL_CONTROLS`); os menus de contexto não têm navegação por setas nos itens no código lido. Não auditei nesta passagem o foco de `ForwardMessage`, adicionar servidor, configurações do servidor e soundboard.
+**Consequência**: a experiência de teclado é consistente só dentro das Configurações do app.
+
+---
+
+## 15.7 — DOUBLE_CLICK *(MISSING — e uma linha antiga a confirmar)*
+
+**ID**: `DOUBLE_CLICK`
+**NOME**: Duplo clique em qualquer elemento
+**STATUS**: **`MISSING` por completo.** A busca por `onDoubleClick` e `dblclick` em `apps/web/src` e `apps/desktop/src` não encontra nada. **Medido**: duplo clique numa mensagem não abre edição nem resposta.
+**Esperado (Discord)**: duplo clique na mensagem para responder ou editar; no ícone do servidor para configurações; e na barra de título para maximizar ou restaurar.
+**A confirmar — barra de título**: o Atlas (`WINDOW_MAXIMIZE`, 0.4) e o plano registravam "duplo clique na barra de título: `MISSING`" porque `.app-chrome-drag` **não tem listener**. Mas essa região usa `-webkit-app-region: drag`, e numa janela sem moldura do Windows a área arrastável costuma ser tratada como barra de título nativa, que **maximiza no duplo clique sem código nenhum**. Eventos sintéticos do Playwright não passam por esse caminho nativo, e eu não movi o mouse do usuário com cliques reais do sistema, então **não consegui confirmar nem negar**. Fica como "a confirmar com um clique real".
+
+---
+
+## 15.8 — BACK_FORWARD_HISTORY *(MISSING)*
+
+**ID**: `BACK_FORWARD_HISTORY`
+**NOME**: Voltar e avançar (botões do mouse, Alt+setas, botão do navegador)
+**STATUS**: **`MISSING` por completo.**
+**Real**: nenhuma ocorrência de `pushState`, `replaceState`, `popstate`, `location.hash` ou `hashchange` no cliente, e nenhum tratamento de `app-command` ou `goBack` no desktop. **Medido**: a URL permanece `http://localhost:5173/` e `history.length` não muda ao trocar de canal. No navegador, **Voltar sai do app** (vai para a página anterior à do NexPlay). No desktop não há histórico para voltar.
+**Esperado**: cada canal, servidor ou DM aberto vira uma entrada de histórico; Alt+←/→ e os botões laterais do mouse navegam entre elas.
+
+---
+
+## 15.9 — STATE_RESTORE_ON_RELOAD *(MISSING)*
+
+**ID**: `STATE_RESTORE_ON_RELOAD`
+**NOME**: Voltar ao canal e ao servidor em que a pessoa estava depois de recarregar
+**STATUS**: **`MISSING`.** Fecha uma pendência do Atlas: `APP_RELOAD` (0.16) dizia que o app "volta ao mesmo servidor e canal, assumindo que isso é persistido em `localStorage` — a confirmar". **Não é.**
+**Medido**: estando no canal `#segundo`, um F5 devolveu o app ao canal **`#geral`**. A seleção fica só em estado do React. O servidor ativo não foi medido nesta rodada.
+**Consequência**: junto com F5 derrubando a call (`VOICE_CHANNEL_JOIN`), recarregar zera onde a pessoa estava. Sem URL por canal (`BACK_FORWARD_HISTORY`) também não há como reabrir uma conversa por endereço.
+
+---
+
+## 15.10 — DEEP_LINKS_PROTOCOL *(MISSING)*
+
+**ID**: `DEEP_LINKS_PROTOCOL`
+**NOME**: Links que abrem o app (`nexplay://`) e convites clicáveis
+**STATUS**: **`MISSING` por completo.** Não há `setAsDefaultProtocolClient`, tratamento de `open-url` nem leitura de argumentos de protocolo na segunda instância (o `second-instance` só restaura e foca a janela, ver `APP_SECOND_INSTANCE`). Convites são **códigos**, sem link clicável (`INVITE_CODE_VIEW_COPY_REGENERATE`, Roteiro 9).
+**Esperado**: `nexplay://invite/CODIGO` abre o app e entra no servidor; links de canal e de mensagem levam ao lugar certo.
+
+---
+
+## 15.11 — MESSAGE_PERMALINK_COPY_LINK *(MISSING)*
+
+**ID**: `MESSAGE_PERMALINK_COPY_LINK`
+**NOME**: "Copiar link da mensagem"
+**STATUS**: **`MISSING` por completo.** A busca por `copiar link` e `permalink` não encontra nada. Só se chega a uma mensagem específica pelo resultado da busca do canal ou pelo clique numa resposta (`MESSAGE_SEARCH_RESULT_JUMP`, `MESSAGE_JUMP_TO_ORIGINAL`, Roteiro 4). Depende de `DEEP_LINKS_PROTOCOL` e `BACK_FORWARD_HISTORY` para ter um destino, e de `CLIPBOARD_COPY_DESKTOP` funcionar.
+
+---
+
+## 15.12 — DEVELOPER_MODE_COPY_ID *(MISSING)*
+
+**ID**: `DEVELOPER_MODE_COPY_ID`
+**NOME**: Modo desenvolvedor e "Copiar ID"
+**STATUS**: **`MISSING`.** Não há configuração de modo desenvolvedor. **"Copiar ID" só existe para categorias** (`Workspace.tsx`, "Copiar ID da Categoria"); não há para servidor, canal, cargo, usuário nem mensagem. E mesmo esse único item **não funciona no desktop** (`CLIPBOARD_COPY_DESKTOP`).
+**Esperado**: opção em Configurações > Avançado que liga "Copiar ID" em todos os menus de contexto.
+
+---
+
+## 15.13 — SCROLL_BEHAVIOR *(referência — já auditado em pedaços)*
+
+**ID**: `SCROLL_BEHAVIOR`
+**STATUS**: referência. O cliente do chat **não tem nenhum `onScroll`**: a rolagem é guiada só por `scrollIntoView` no fim da lista. Isso confirma e explica achados já registrados: rolagem forçada para o fim a cada mensagem nova mesmo lendo histórico antigo (`MESSAGE_SCROLL_AUTOSTICK`, 4.3), nenhuma faixa "Novas mensagens" nem botão "ir para o fim" (`UNREAD_TRACKING_AND_BADGES`, Roteiro 14) e nenhuma leitura de histórico por rolagem para cima (`TEXT_CHANNEL_HISTORY_LOAD`, 4.1). Rolagem suave com `behavior: 'smooth'` ao chegar mensagem e ao pular para uma mensagem.
+
+---
+
+**Achados mais importantes do Roteiro 15** (por ordem de impacto):
+
+1. **Copiar não funciona no desktop** (`CLIPBOARD_COPY_DESKTOP`), sem nenhum aviso. Correção só no `web`, com plano B por `execCommand`.
+2. **Links de mensagem não abrem no desktop** (`MESSAGE_LINK_OPEN`). Correção no processo principal, exige nova versão do desktop.
+3. **Esc na captura do PTT grava o Esc como tecla de falar e fecha as configurações** (`PTT_KEY_CAPTURE_ESCAPE`).
+4. **Esc fecha várias camadas de uma vez** (`ESCAPE_LAYER_PRIORITY`), medido com o diálogo de excluir servidor.
+5. **F5 perde o canal, a URL nunca muda e Voltar sai do app** (`STATE_RESTORE_ON_RELOAD`, `BACK_FORWARD_HISTORY`).
+6. **Sem atalhos, sem duplo clique, sem deep links, sem link de mensagem, sem modo desenvolvedor.**
+7. **A confirmar**: o duplo clique na barra de título pode já funcionar pelo Windows (`DOUBLE_CLICK`), o que corrigiria uma linha antiga do plano.
+
+**Ordem sugerida, sem executar**: (a) pacote só de `web`: função de copiar com plano B, Esc do PTT cancelando sem gravar, Esc do diálogo de excluir servidor fechando só o diálogo; (b) versão nova do desktop: abrir links `http(s)` no navegador do sistema e, de preferência junto, conceder a permissão de escrita na área de transferência; (c) só depois, histórico e restauração de estado (URL por canal).
 
 ---
 
@@ -6400,3 +6620,5 @@ Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropri
 **Atualização — Roteiro 13 (lista de membros, mini-perfil, painel do usuário)**: acrescentou **17 fichas**, levando o total a **192 fichas em 14 roteiros** (numeração do Atlas). Os quatro documentos de síntese (`DISCORD_INTERACTION_MATRIX.md`, `DISCORD_NAVIGATION_TREE.md`, `DISCORD_USER_JOURNEYS.md`, `DISCORD_PARITY_PLAN.md`) foram atualizados para incluí-lo. Diferente dos roteiros anteriores, este teve **medição num Chromium real** além da leitura do código, e a medição corrigiu uma hipótese (o ponto de presença, ficha `PRESENCE_DOT_CLIPPED`).
 
 **Atualização — Roteiro 14 (notificações, não lidas, badges, avisos do desktop)**: acrescentou **14 fichas**, levando o total a **206 fichas em 15 roteiros**. Achado central: quase tudo é `MISSING` por três causas (sem rastreio de leitura, sem menções, sem ponte de aviso no Electron), e há uma preferência salva e sincronizada (modo de notificação por categoria) que nada lê.
+
+**Atualização — Roteiro 15 (teclado, Esc, histórico, copiar, links)**: acrescentou **13 fichas**, levando o total a **219 fichas em 16 roteiros**. Achado central: **copiar não funciona no app desktop** (o Electron nega a permissão de escrita na área de transferência) e **links de mensagem não abrem no desktop**, ambos medidos num Electron real. Este roteiro também corrige duas afirmações anteriores: `MESSAGE_COPY_TEXT` (4.8) partia do princípio de que a cópia funcionava, e `APP_RELOAD` (0.16) deixava "a confirmar" se o canal era restaurado depois do F5 (não é).
