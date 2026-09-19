@@ -4,7 +4,8 @@ import { WebSocketServer, type WebSocket } from 'ws';
 import type { RealtimeEvent } from '@nexplay/shared';
 import { config } from './config.js';
 import { isBanned } from './moderation.js';
-import { listMemberUserIdsForServer } from './serverMembers.js';
+import { PresenceTracker } from './presence.js';
+import { listMemberUserIdsForServer, listServerIdsForMember } from './serverMembers.js';
 import { getSessionFromCookieHeader } from './session.js';
 import { getUserById } from './users.js';
 
@@ -62,6 +63,18 @@ export function sendToUser(userId: string, event: RealtimeEvent): void {
   sendToUsers([userId], event);
 }
 
+// Presença: quem tem o app aberto. O aviso de mudança vai só pra quem divide ao
+// menos um servidor com a pessoa (incluindo ela mesma, o que é inofensivo).
+function notifyPresence(userId: string, online: boolean): void {
+  const audience = new Set<string>();
+  for (const serverId of listServerIdsForMember(userId)) {
+    for (const memberId of listMemberUserIdsForServer(serverId)) audience.add(memberId);
+  }
+  sendToUsers([...audience], { type: 'PRESENCE_UPDATE', userId, online });
+}
+
+export const presence = new PresenceTracker(notifyPresence);
+
 // Usado quando um usuário é banido — sem isso, o cookie continuaria válido
 // até a próxima requisição HTTP dele; fechar a conexão de tempo real força o
 // cliente a notar imediatamente (o cliente web trata o close reconectando e
@@ -113,8 +126,18 @@ export function attachRealtime(server: HttpServer): void {
         ws.isAlive = true;
       });
       clients.add(ws);
-      ws.on('close', () => clients.delete(ws));
-      ws.on('error', () => clients.delete(ws));
+      presence.connect(user.id);
+      // 'error' e 'close' podem os dois disparar no mesmo socket; a conexão só pode
+      // ser descontada da presença uma vez.
+      let released = false;
+      const release = () => {
+        if (released) return;
+        released = true;
+        clients.delete(ws);
+        presence.disconnect(user.id);
+      };
+      ws.on('close', release);
+      ws.on('error', release);
     });
   });
 }

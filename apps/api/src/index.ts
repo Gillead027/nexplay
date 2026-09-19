@@ -112,7 +112,7 @@ import { addReaction, isValidReactionEmoji, removeReaction } from './reactions.j
 import { authorizeMusicCommand } from './musicCommands.js';
 import { fetchMusicThumbnail } from './musicThumbnails.js';
 import { authorizeVoiceDisconnect } from './voiceModeration.js';
-import { attachRealtime, broadcast, disconnectUser, sendToServerMembers, sendToUser, sendToUsers } from './realtime.js';
+import { attachRealtime, broadcast, disconnectUser, presence, sendToServerMembers, sendToUser, sendToUsers } from './realtime.js';
 import {
   createVoiceChannel,
   renameVoiceChannel,
@@ -154,6 +154,7 @@ import {
   addServerMember,
   getServerMember,
   isServerMember,
+  listMemberUserIdsForServer,
   listServerMembers,
   removeServerMember,
   setServerMemberTimeout,
@@ -2014,6 +2015,13 @@ app.delete(
 
 app.get('/api/servers/:serverId/members', requireSession, requireServerMembership, (_request, response) => {
   response.json({ members: listServerMembers(currentServerId(response)) });
+});
+
+// Quem, entre os membros deste servidor, está online agora. Só membros veem, e só
+// os membros do próprio servidor aparecem (nada de listar a instância inteira).
+app.get('/api/servers/:serverId/presence', requireSession, requireServerMembership, (_request, response) => {
+  const onlineUserIds = listMemberUserIdsForServer(currentServerId(response)).filter((userId) => presence.isOnline(userId));
+  response.json({ onlineUserIds });
 });
 
 app.get('/api/friends', requireSession, (_request, response) => {

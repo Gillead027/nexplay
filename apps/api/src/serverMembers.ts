@@ -33,6 +33,7 @@ const listMembersStatement = db.prepare(`
   ORDER BY users.username COLLATE NOCASE ASC
 `);
 const listMemberUserIdsStatement = db.prepare('SELECT user_id FROM server_members WHERE server_id = ?');
+const listServerIdsForMemberStatement = db.prepare('SELECT server_id FROM server_members WHERE user_id = ?');
 
 export function isServerMember(serverId: string, userId: string): boolean {
   return Boolean(selectMemberStatement.get(serverId, userId));
@@ -87,4 +88,10 @@ export function listServerMembers(serverId: string): MemberSummary[] {
 // já usado por sendToUsers).
 export function listMemberUserIdsForServer(serverId: string): string[] {
   return (listMemberUserIdsStatement.all(serverId) as { user_id: string }[]).map((row) => row.user_id);
+}
+
+// Em quais servidores a pessoa está — usado pela presença pra saber quem precisa
+// ser avisado de que ela ficou online ou offline.
+export function listServerIdsForMember(userId: string): string[] {
+  return (listServerIdsForMemberStatement.all(userId) as { server_id: string }[]).map((row) => row.server_id);
 }

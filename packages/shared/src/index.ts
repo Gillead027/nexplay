@@ -815,6 +815,9 @@ export type RealtimeEvent =
   | { type: 'MEMBER_LEAVE'; serverId: string; userId: string }
   | { type: 'MEMBER_BANNED'; userId: string }
   | { type: 'MEMBER_UNBANNED'; userId: string }
+  // Quem tem o app aberto (ao menos um WebSocket conectado). Vai só pra quem divide
+  // servidor com a pessoa; o estado inicial vem de GET /api/servers/:id/presence.
+  | { type: 'PRESENCE_UPDATE'; userId: string; online: boolean }
   | { type: 'SERVER_CREATE'; server: Server }
   | { type: 'SERVER_UPDATE'; server: Server }
   | { type: 'SERVER_DELETE'; serverId: string }
