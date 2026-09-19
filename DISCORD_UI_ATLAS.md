@@ -1993,6 +1993,8 @@ Cobre os roteiros 18 (Member List), 19 (Mini Profile) e 20 (Painel do próprio u
 5. **O painel do usuário diz "Desconectado" com o app aberto e funcionando**, porque mostra o estado da chamada de voz, não da pessoa (`USER_PANEL_IDENTITY`).
 6. **Hipótese descartada pela medição:** o `presence-dot` de todo avatar parecia um indicador falso de "online", mas o `overflow: hidden` do avatar o corta e sobra só uma lasca de poucos pixels (`PRESENCE_DOT_CLIPPED`). É código morto, não um falso positivo visível.
 
+**Atualização — correções publicadas (commit `73e40f8`, em produção)**: os dois botões sem função foram **removidos** (achado 2), o mini-perfil passou a usar a **altura real** e acompanha o redimensionamento (parte do achado 4), o cache de perfil **rebusca a cada abertura, não grava falha e tem "Tentar de novo"** (resto do achado 4) e o painel do usuário mostra **"Online"** fora de call (achado 5). **Continuam abertos**: não existe lista de membros do servidor (1), cor e agrupamento por cargo sem efeito (3), foco do popover, "Remover amigo" sem confirmação no popover, e o painel do usuário segue sem ser clicável.
+
 ---
 
 ## 13.1 — MEMBER_LIST_VOICE_ROSTER *(CORE, com escopo menor que o nome sugere)*
@@ -2056,6 +2058,7 @@ Cobre os roteiros 18 (Member List), 19 (Mini Profile) e 20 (Painel do próprio u
 
 **ID**: `MEMBER_LIST_TOGGLE_BUTTON`
 **NOME**: Botão "Mostrar membros" no cabeçalho da tela de voz
+**STATUS ATUAL**: **corrigido — botão removido** (commit `73e40f8`, em produção). O texto abaixo registra o que a auditoria encontrou antes.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Servidor > canal de voz (conectada ou não) > cabeçalho da sala > ícone de pessoa entre "Mensagens fixadas" e o indicador de conexão`
 **POSIÇÃO NA INTERFACE**: `Workspace.tsx`, dentro de `.room-header-actions`, que só renderiza quando `!activeTextChannel`.
@@ -2092,6 +2095,7 @@ Cobre os roteiros 18 (Member List), 19 (Mini Profile) e 20 (Painel do próprio u
 
 **ID**: `VOICE_HEADER_PINS_BUTTON`
 **NOME**: Botão "Mensagens fixadas" no cabeçalho da tela de voz
+**STATUS ATUAL**: **corrigido — botão removido** (commit `73e40f8`, em produção), junto com a regra de CSS `.header-glyph` que só ele usava. O painel de fixadas real do canal de texto não foi tocado (confirmado no navegador). O texto abaixo registra o que a auditoria encontrou antes.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Servidor > canal de voz > cabeçalho da sala > primeiro ícone da direita (glifo ⌖)`
 **POSIÇÃO NA INTERFACE**: Mesmo `.room-header-actions` de `MEMBER_LIST_TOGGLE_BUTTON`.
@@ -2206,6 +2210,7 @@ Cobre os roteiros 18 (Member List), 19 (Mini Profile) e 20 (Painel do próprio u
 
 **ID**: `MINI_PROFILE_POSITIONING`
 **NOME**: Onde o mini-perfil aparece na tela
+**STATUS ATUAL**: **corrigido** (commit `73e40f8`, em produção). A posição vem de `computePopoverPosition` (função pura, 7 testes) com a **altura medida** depois de montar, e reposiciona ao redimensionar a janela. Verificado no navegador: na faixa que vazava 30 px (janela de 492 px) o cartão agora termina em 480 px (margem de 12 px), e numa janela de 380 px o topo continua visível. O texto abaixo registra o defeito original.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: automático ao abrir qualquer mini-perfil.
 **POSIÇÃO NA INTERFACE**: `clampPosition(rect)` em `ProfilePopover.tsx`. Largura fixa de 300 px, margem de 12 px.
@@ -2262,6 +2267,7 @@ Cobre os roteiros 18 (Member List), 19 (Mini Profile) e 20 (Painel do próprio u
 
 **ID**: `MINI_PROFILE_LOADING_ERROR_CACHE`
 **NOME**: Carregamento, erro e cache do perfil de outra pessoa
+**STATUS ATUAL**: **os dois defeitos foram corrigidos** (commit `73e40f8`, em produção). Cada abertura rebusca o perfil e mostra na hora a cópia guardada, então avatar, status e bio novos aparecem sem F5. Falha de rede não é mais gravada, o estado de erro tem `role="alert"` e o botão "Tentar de novo". Verificado no navegador contra o código antigo: lá reabrir continuava mostrando o perfil velho e não havia estado de erro com nova tentativa. O texto abaixo registra o defeito original.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: abrir o mini-perfil de alguém que não seja você.
 **POSIÇÃO NA INTERFACE**: `useUserProfile` e `remoteProfileCache` (um `Map` de módulo) em `ProfilePopover.tsx`.
@@ -2365,6 +2371,7 @@ Cobre os roteiros 18 (Member List), 19 (Mini Profile) e 20 (Painel do próprio u
 
 **ID**: `USER_PANEL_IDENTITY`
 **NOME**: Avatar, nome e linha de estado do painel do próprio usuário
+**STATUS ATUAL**: **texto corrigido** (commit `73e40f8`, em produção): fora de uma call a linha mostra **"Online"**, e o estado da voz (Conectado, Conectando, Reconectando) só aparece enquanto há call. O cabeçalho da sala segue mostrando o estado puro da voz, onde "Desconectado" é correto. **Continua aberto**: o avatar e o nome não são clicáveis (sem menu de status nem atalho ao próprio perfil).
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Rodapé da sidebar esquerda (.sidebar-user) > avatar e duas linhas de texto`
 **POSIÇÃO NA INTERFACE**: `<footer className="sidebar-user">`, altura de 58 px (68 px na regra final do CSS, que vale), grade `34px | 1fr | auto`.

@@ -67,8 +67,8 @@ J1 a J6 são as jornadas pedidas. J7 a J9 foram adicionadas porque a auditoria m
 - Sem atalho de teclado para entrar em um canal de voz (VOICE_CHANNEL_JOIN, 6.1).
 - Sem Quick Switcher (QUICK_SWITCHER, 2.10) e sem navegação por teclado entre servidores (KEYBOARD_SERVER_NAVIGATION, 2.11), então o caminho é sempre mouse.
 - Sem indicador de não lida na rail (RAIL_UNREAD_MENTION_INDICATOR, 2.9).
-- O painel do usuário, primeiro texto que a pessoa lê ao entrar, mostra **"Desconectado"** embaixo do próprio nome com o app aberto e funcionando, porque exibe o estado da chamada de voz e não a presença (USER_PANEL_IDENTITY, 13.15). Nas mesmas condições o microfone e o fone ficam desabilitados, então não dá para mutar antes de entrar (USER_PANEL_CONTROLS, 13.16).
-- Ao entrar em uma call, o painel "MEMBROS" lista só quem está nela, e o botão "Mostrar membros" do cabeçalho não faz nada (MEMBER_LIST_VOICE_ROSTER e MEMBER_LIST_TOGGLE_BUTTON, 13.1 e 13.3).
+- O painel do usuário, primeiro texto que a pessoa lê ao entrar, mostrava "Desconectado" com o app aberto porque exibia o estado da chamada de voz e não a presença (USER_PANEL_IDENTITY, 13.15). **Corrigido** (commit `73e40f8`, em produção): fora de call mostra "Online". Continua valendo que o microfone e o fone ficam desabilitados fora da call, então não dá para mutar antes de entrar (USER_PANEL_CONTROLS, 13.16).
+- Ao entrar em uma call, o painel "MEMBROS" lista só quem está nela (MEMBER_LIST_VOICE_ROSTER, 13.1). O botão "Mostrar membros" do cabeçalho, que não fazia nada, foi removido (13.3, commit `73e40f8`, em produção).
 
 ---
 
