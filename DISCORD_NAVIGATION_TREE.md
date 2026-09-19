@@ -230,8 +230,8 @@ APP
 │   │
 │   ├── Tela da call (área principal, sem canal de texto)                    [Roteiro 13]
 │   │   ├── Painel MEMBROS (membros do servidor; com ou sem call)             DONE
-│   │   │   └── Online em cima e Offline embaixo, ao vivo                        DONE
-│   │   │   ├── Por cargo, cor de cargo, e no canal de texto                    MISSING
+│   │   │   ├── Online em cima e Offline embaixo, ao vivo                        DONE
+│   │   │   └── Por cargo, cor de cargo, e no canal de texto                    MISSING
 │   │   ├── Cabeçalho: botão Mostrar membros                                 REMOVIDO (não tinha função)
 │   │   └── Cabeçalho: botão Mensagens fixadas (glifo ⌖)                     REMOVIDO (não tinha função)
 │   │
