@@ -16,7 +16,7 @@ Aqui a pergunta é outra: **uma pessoa consegue fazer a tarefa inteira, do come�
 - Cada jornada termina com um veredito e com a lista do que a separa do Discord.
 - Nada foi reconstruído nesta etapa. Os passos DONE são funcionalidades reais que não devem ser refeitas.
 
-Escopo: roteiros 0 a 13 do Atlas. Jornadas que dependem de roteiros ainda não auditados (mini-perfil, notificações, Quick Switcher em profundidade) ficam de fora até a auditoria chegar lá.
+Escopo: roteiros 0 a 14 do Atlas. Jornadas que dependem de roteiros ainda não auditados (mini-perfil, notificações, Quick Switcher em profundidade) ficam de fora até a auditoria chegar lá.
 
 ---
 
@@ -198,6 +198,7 @@ No Discord: clicar no X manda o app para a bandeja, a call **continua**, e o íc
 1. Bandeja do sistema com menu (abrir, sair).
 2. Política de fechar configurável: X manda para a bandeja ou encerra.
 3. Só então "iniciar minimizado" e "abrir ao iniciar o Windows" passam a ter sentido.
+4. Mesmo com a bandeja, uma janela em segundo plano continua muda: o desktop não tem notificação nem flash da barra de tarefas, e o Electron nega a permissão `notifications` de propósito (DESKTOP_NOTIFICATION e TASKBAR_FLASH_BADGE, Roteiro 14). Sem isso, ninguém percebe uma mensagem ou uma menção enquanto o app fica minimizado ou na bandeja.
 
 ---
 

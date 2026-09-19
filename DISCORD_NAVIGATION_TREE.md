@@ -1,6 +1,6 @@
 # DISCORD_NAVIGATION_TREE.md
 
-Árvore de navegação do NexPlay até a última ação disponível, montada só a partir do que foi verificado no código durante a auditoria de `DISCORD_UI_ATLAS.md` (roteiros 0 a 13). Cada nó cita o roteiro/ficha onde o detalhe campo a campo está. Nada aqui foi copiado do Discord real sem checar o código antes: onde o Discord tem um ramo e o NexPlay não, o ramo aparece marcado como `MISSING`, para a árvore mostrar também o que falta.
+Árvore de navegação do NexPlay até a última ação disponível, montada só a partir do que foi verificado no código durante a auditoria de `DISCORD_UI_ATLAS.md` (roteiros 0 a 14). Cada nó cita o roteiro/ficha onde o detalhe campo a campo está. Nada aqui foi copiado do Discord real sem checar o código antes: onde o Discord tem um ramo e o NexPlay não, o ramo aparece marcado como `MISSING`, para a árvore mostrar também o que falta.
 
 **Legenda de status**
 - `CORE`: existe, funciona, é o caminho normal.
@@ -64,7 +64,7 @@ APP
 │   ├── Mostrar/ocultar senha                                                MISSING
 │   ├── Recuperar senha, MFA, passkeys                                       MISSING
 │   └── Aviso de sessão expirando / relogin automático                       MISSING
-│       └── Com o app aberto além de 12 h o WebSocket reconecta para sempre sem sucesso
+│       └── Ao expirar com o app aberto: volta à tela de entrada com aviso (corrigido)
 │
 ├── INÍCIO (view = friends)                                             [Roteiro 11]
 │   ├── Botão Início na rail (badge = pedidos de amizade pendentes)          CORE
@@ -115,9 +115,9 @@ APP
 │   │   │   ├── Recolher / expandir (preferência pessoal, persiste)          CORE
 │   │   │   ├── "+" da categoria → Criar canal (tipo Texto ou Voz)    ADMIN  CORE
 │   │   │   ├── Botão direito na categoria
-│   │   │   │   ├── Marcar como lida (item vazio, sem função)                PARTIAL
+│   │   │   │   ├── Marcar como lida (item vazio, sem função)                BROKEN (Roteiro 14)
 │   │   │   │   ├── Recolher categoria / recolher todas                      CORE
-│   │   │   │   ├── Silenciar categoria / config. de notificação (3 modos)   CORE
+│   │   │   │   ├── Silenciar categoria / config. de notificação (grava; nada lê)   PARTIAL (Roteiro 14)
 │   │   │   │   ├── Editar categoria (nome, staff)                           CORE
 │   │   │   │   ├── Excluir categoria (confirm() nativo)              ADMIN  CORE
 │   │   │   │   ├── Copiar ID da categoria (sem aviso "Copiado")             PARTIAL
@@ -307,11 +307,25 @@ APP
 │   ├── Notificações, atalhos, idioma, arquivos e mídia, avançado            MISSING (abas removidas por serem decorativas)
 │   └── Sobre (versão, licenças, verificar atualização)                      MISSING (nunca existiu)
 │
+├── NOTIFICAÇÕES E NÃO LIDAS                                            [Roteiro 14]
+│   ├── Modo de notificação da categoria (grava por usuário; nada lê)        PARTIAL
+│   │   └── "Config. de notificação" muda o modo sem nenhum feedback        PARTIAL
+│   ├── Silenciar servidor, canal ou DM; seção nas Configurações             MISSING
+│   ├── Menções (@pessoa, @cargo, @everyone, #canal)                         MISSING
+│   ├── Não lida (rail, canal, DM), contador de menção, faixa "Novas"        MISSING
+│   ├── Inbox                                                                MISSING
+│   ├── Notificação do desktop (o Electron nega a permissão)                 MISSING
+│   ├── Flash e contador na barra de tarefas; título com contador            MISSING
+│   ├── Som de mensagem no chat da call                                      CORE
+│   │   └── Canal de texto e DM chegam em silêncio                           MISSING
+│   ├── Receber chamada (toque, aceitar ou recusar)                          MISSING
+│   └── Badge de pedidos de amizade no botão Início                          CORE (único badge do app)
+│
 ├── TEMPO REAL (infraestrutura)                                         [Roteiro 5]
 │   ├── WebSocket autenticado pelo cookie, heartbeat de 30 s                 CORE
 │   ├── Escopo: broadcast / por servidor / por usuário (multi-aba livre)     CORE
 │   ├── Reconexão com backoff (1 s → 15 s)                                   CORE
-│   │   └── Sessão expirada: mesmo loop, nunca avisa                         PARTIAL
+│   │   └── Sessão expirada: para o loop e volta à tela de entrada com aviso   DONE
 │   ├── Indicador visual de "reconectando" do WebSocket                      MISSING
 │   ├── Presença (online, ausente, ocupado, invisível)                       MISSING
 │   └── "Fulano está digitando…"                                             MISSING
@@ -338,6 +352,7 @@ APP
 | Membros e perfil | lista de membros do servidor, cor e agrupamento por cargo, foco do mini-perfil, avatar e nome do painel do usuário sem clique (menu de status) |
 | Voz e vídeo | atalho de mute, som de deafen/câmera, preview/blur, trocar qualidade sem parar, foco em quem fala |
 | Configurações do app | alterar username, sessões ativas, seções removidas (notificações, atalhos, idioma) |
+| Notificações e não lidas | rastreio de leitura, menções, notificação e flash do desktop (o Electron nega `notifications`), título com contador, inbox, silenciar servidor/canal/DM, som fora do chat da call; o modo de notificação da categoria grava e nada o lê |
 | Tempo real | presença, "digitando", indicador de reconexão do WebSocket |
 
 ## O que a árvore mostra

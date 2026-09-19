@@ -1,6 +1,6 @@
 # DISCORD_INTERACTION_MATRIX.md
 
-Matriz mestra das interações do NexPlay: uma linha por ficha de `DISCORD_UI_ATLAS.md` (roteiros 0 a 13, 191 interações). O detalhe campo a campo de cada linha está na ficha de mesmo ID no Atlas; a hierarquia de telas está em `DISCORD_NAVIGATION_TREE.md`.
+Matriz mestra das interações do NexPlay: uma linha por ficha de `DISCORD_UI_ATLAS.md` (roteiros 0 a 14, 204 interações; uma ficha de referência que repete um ID já existente, como FRIEND_REQUEST_BADGE no Roteiro 14, não gera linha nova). O detalhe campo a campo de cada linha está na ficha de mesmo ID no Atlas; a hierarquia de telas está em `DISCORD_NAVIGATION_TREE.md`.
 
 **Como ler**
 - Colunas: ID, Tela, Caminho, Elemento, Trigger, Estado inicial, Ação, Feedback visual, Feedback sonoro, Resultado, Realtime, Persistência, Permissão, Shortcut, Erros.
@@ -287,10 +287,30 @@ Matriz mestra das interações do NexPlay: uma linha por ficha de `DISCORD_UI_AT
 
 ---
 
+## M. Notificações, não lidas, badges e avisos do desktop (Roteiro 14)
+
+| ID | Tela | Caminho | Elemento | Trigger | Estado inicial | Ação | Feedback visual | Feedback sonoro | Resultado | Realtime | Persistência | Permissão | Shortcut | Erros |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| CATEGORY_NOTIFICATION_MODE | Menu de contexto da categoria | Servidor > botão direito no cabeçalho da categoria | Item "Config. de notificação" | Clique | O modo atual não é exibido | Percorre all, mentions e none e envia PATCH em categories/:id/prefs | Nenhum: o menu fecha e só o modo none aparece, como ✓ em outro item | — | Preferência gravada, sem nada que a leia | Nenhum evento dedicado encontrado | Banco (category_prefs, por usuário) | Qualquer membro | Nenhum | PATCH sem catch: falha silenciosa e o estado local diverge do servidor até recarregar |
+| CATEGORY_MUTE_TOGGLE | Menu de contexto da categoria | Servidor > botão direito no cabeçalho da categoria | Item "Silenciar categoria" | Clique | Sem ✓ nos modos all e mentions | Alterna none e all e envia o mesmo PATCH | ✓ na próxima abertura do menu; a categoria em si não muda | — | Preferência none gravada; nada é silenciado | Nenhum evento dedicado encontrado | Banco (category_prefs, por usuário) | Qualquer membro | Nenhum | Sair de none volta para all e perde mentions; o ✓ é aria-hidden, então leitor de tela não anuncia |
+| NOTIFICATION_SETTINGS_SERVER_AND_CHANNEL | Menus de servidor, canal e DM | — | — | — | Não existe | Esperado: silenciar por tempo e escolher o nível por servidor, canal e DM | Nenhum | — | Nada | — | — | — | — | Só a categoria tem preferência de notificação |
+| NOTIFICATION_SETTINGS_SECTION | Configurações | — | — | — | Não existe | Esperado: seção Notificações com sons, desktop e flash | Nenhum | — | Nada | — | — | — | — | As configurações têm cinco seções e nenhuma é de notificações |
+| MENTION_SYSTEM | Composer e mensagens | — | — | — | Não existe | Esperado: @pessoa, @cargo, @everyone e #canal com autocomplete | Nenhum | — | Nada | — | — | — | — | Nenhum trecho reconhece @ em texto; o modo mentions não tem significado |
+| UNREAD_TRACKING_AND_BADGES | Rail, lista de canais e DMs | — | — | — | Não existe | Esperado: não lida por servidor, canal e DM, e contador de menção | Nenhum | — | Chegar mensagem em outro lugar não muda nada na tela | — | — | — | — | Não existe lastRead nem unread em cliente, API, desktop ou tipos compartilhados |
+| MARK_AS_READ | Menu de contexto da categoria | Servidor > botão direito no cabeçalho da categoria | Item "Marcar como lida" | Clique | Item visível como primeira ação | Função vazia | O menu apenas fecha | — | Nada | — | — | Qualquer membro | Nenhum | Item sem função; depende de UNREAD_TRACKING_AND_BADGES |
+| INBOX | Cabeçalho | — | — | — | Não existe | Esperado: caixa de entrada de menções, respostas e convites | Nenhum | — | Nada | — | — | — | — | Quem recebe uma resposta não é avisado de nenhuma forma |
+| DESKTOP_NOTIFICATION | Sistema operacional | — | — | — | Não existe | Esperado: notificação nativa para mensagem, menção, amizade e call | Nenhum | — | Nada | — | — | — | — | O Electron nega a permissão notifications e o cliente nunca chama Notification |
+| TASKBAR_FLASH_BADGE | Barra de tarefas do Windows | — | — | — | Não existe | Esperado: piscar o botão e mostrar contador no ícone | Nenhum | — | Nada | — | — | — | — | Nenhum uso de flashFrame, setBadgeCount ou setOverlayIcon; depende de WINDOW_FOCUS_BLUR |
+| DOCUMENT_TITLE_UNREAD | Título da janela e da aba | — | — | — | Não existe | Esperado: título com contador de não lidas | Nenhum | — | Nada | — | — | — | — | O título é fixo em NexPlay |
+| MESSAGE_RECEIVED_SOUND | Chat da call | Automático | — | Dados recebidos pelo LiveKit (RoomEvent.DataReceived) | Conectada à call | Toca um tom de 740 Hz por 90 ms | A mensagem aparece se o painel do chat estiver aberto | Um tom no volume de saída, mesmo com o painel fechado | Mensagem no histórico efêmero e um bipe | LiveKit RoomEvent.DataReceived | Nenhuma: o chat da call não persiste | — | Nenhum | Canal de texto e DM chegam em silêncio; não há como desligar só este som |
+| INCOMING_CALL_RING | Chamada direta | — | — | — | Não existe | Esperado: toque e tela de aceitar ou recusar | Nenhum | — | Nada | — | — | — | — | Depende de DM_VOICE_VIDEO_CALL e de DESKTOP_NOTIFICATION |
+
+---
+
 ## Totais e leitura rápida
 
-- **191 linhas**, uma por ficha do Atlas, em 12 tabelas (A a L).
-- **`MISSING` no Atlas** (linhas que descrevem o esperado, não o real): SYSTEM_TRAY, AUTO_LAUNCH_ON_BOOT, START_MINIMIZED, WINDOW_FOCUS_BLUR, SERVER_CONTEXT_MENU, RAIL_UNREAD_MENTION_INDICATOR, QUICK_SWITCHER, KEYBOARD_SERVER_NAVIGATION, SERVER_LEAVE, MESSAGE_CONTEXT_MENU, MESSAGE_ATTACH_DRAGDROP, MESSAGE_ATTACH_PASTE, TYPING_INDICATOR, PRESENCE_STATUS, SCREEN_SHARE_QUALITY_CHANGE, MEMBER_SERVER_KICK, DM_VOICE_VIDEO_CALL, DM_GROUP, MEMBER_LIST_SERVER_WIDE. Com **efeito visível ausente** (a configuração existe e salva): ROLE_COLOR_ON_NAMES e ROLE_HOIST_MEMBER_GROUPING.
-- **Controle decorativo vivo**: ROLE_LIST_SEARCH_FAKE. MEMBER_LIST_TOGGLE_BUTTON e VOICE_HEADER_PINS_BUTTON, achados no Roteiro 13, foram removidos (commit `73e40f8`, em produção). Item de menu sem função: "Marcar como lida" dentro de CATEGORY_CONTEXT_MENU.
+- **204 linhas**, uma por ID de interação, em 13 tabelas (A a M).
+- **`MISSING` no Atlas** (linhas que descrevem o esperado, não o real): SYSTEM_TRAY, AUTO_LAUNCH_ON_BOOT, START_MINIMIZED, WINDOW_FOCUS_BLUR, SERVER_CONTEXT_MENU, RAIL_UNREAD_MENTION_INDICATOR, QUICK_SWITCHER, KEYBOARD_SERVER_NAVIGATION, SERVER_LEAVE, MESSAGE_CONTEXT_MENU, MESSAGE_ATTACH_DRAGDROP, MESSAGE_ATTACH_PASTE, TYPING_INDICATOR, PRESENCE_STATUS, SCREEN_SHARE_QUALITY_CHANGE, MEMBER_SERVER_KICK, DM_VOICE_VIDEO_CALL, DM_GROUP, MEMBER_LIST_SERVER_WIDE, NOTIFICATION_SETTINGS_SERVER_AND_CHANNEL, NOTIFICATION_SETTINGS_SECTION, MENTION_SYSTEM, UNREAD_TRACKING_AND_BADGES, INBOX, DESKTOP_NOTIFICATION, TASKBAR_FLASH_BADGE, DOCUMENT_TITLE_UNREAD, INCOMING_CALL_RING. Com **efeito visível ausente** (a configuração existe e salva): ROLE_COLOR_ON_NAMES, ROLE_HOIST_MEMBER_GROUPING, CATEGORY_NOTIFICATION_MODE e CATEGORY_MUTE_TOGGLE (o modo de notificação da categoria é gravado por usuário e nada o lê).
+- **Controle decorativo vivo**: ROLE_LIST_SEARCH_FAKE. MEMBER_LIST_TOGGLE_BUTTON e VOICE_HEADER_PINS_BUTTON, achados no Roteiro 13, foram removidos (commit `73e40f8`, em produção). Item de menu sem função: "Marcar como lida" (MARK_AS_READ, dentro de CATEGORY_CONTEXT_MENU).
 - **Persistência por dispositivo (`localStorage`, não viaja entre contas)**: modo de entrada, tecla de PTT, perfil de microfone, tema, modo de desempenho, densidade, estilo de mensagem, os três sliders e a cor de destaque. **Não persistem**: volumes individuais e `watchingIds` (estado local, somem ao reconectar). **A confirmar**: se o microfone e a saída de áudio escolhidos persistem.
 - **Pontos "Não confirmado"** na coluna Realtime: propagação do perfil salvo, evento de MEMBER_JOIN via convite de servidor e evento ao regenerar convite.
