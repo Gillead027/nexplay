@@ -1,6 +1,6 @@
 # DISCORD_NAVIGATION_TREE.md
 
-Árvore de navegação do NexPlay até a última ação disponível, montada só a partir do que foi verificado no código durante a auditoria de `DISCORD_UI_ATLAS.md` (roteiros 0 a 12). Cada nó cita o roteiro/ficha onde o detalhe campo a campo está. Nada aqui foi copiado do Discord real sem checar o código antes: onde o Discord tem um ramo e o NexPlay não, o ramo aparece marcado como `MISSING`, para a árvore mostrar também o que falta.
+Árvore de navegação do NexPlay até a última ação disponível, montada só a partir do que foi verificado no código durante a auditoria de `DISCORD_UI_ATLAS.md` (roteiros 0 a 13). Cada nó cita o roteiro/ficha onde o detalhe campo a campo está. Nada aqui foi copiado do Discord real sem checar o código antes: onde o Discord tem um ramo e o NexPlay não, o ramo aparece marcado como `MISSING`, para a árvore mostrar também o que falta.
 
 **Legenda de status**
 - `CORE`: existe, funciona, é o caminho normal.
@@ -203,8 +203,15 @@ APP
 │   │   ├── Integrações (estado vazio honesto)                               CORE
 │   │   └── Excluir servidor (só o dono; digitar o nome; cascata)     OWNER  CORE
 │   │
-│   └── Mini-perfil (popover ao clicar em avatar/nome)                       CORE (ficha própria pendente)
-│       └── Ações: enviar pedido, remover, bloquear, abrir DM
+│   └── Mini-perfil (popover ao clicar em avatar/nome)                      [Roteiro 13]
+│       ├── Abrir: mensagens de canal/DM/chat da call, linhas de Amigos, participantes da call   CORE
+│       ├── Posição: usa altura estimada de 260 px, real 330 px (vaza da janela)                 PARTIAL
+│       ├── Conteúdo: banner, avatar, nome, pronomes, status, bio, atividade (só na mesma call)  PARTIAL
+│       │   └── Cargos, membro desde, servidores em comum, selos, nota                          MISSING
+│       ├── Carregando / erro (cache nunca invalida, falha de rede fica gravada)                PARTIAL
+│       ├── Ações: adicionar, cancelar, aceitar, recusar, enviar mensagem, remover, bloquear   CORE (sem confirmação)
+│       ├── Fechar: X, clique fora, Esc (foco não entra nem volta)                              CORE
+│       └── Próprio perfil: sem ações e sem atalho para Editar perfil                           PARTIAL
 │
 ├── VOZ                                                                 [Roteiros 6, 7, 8]
 │   ├── Canal de voz na sidebar
@@ -221,7 +228,16 @@ APP
 │   │   │   └── Histórico, editar, apagar, reações                           MISSING
 │   │   └── Botão desconectar ao lado de outro participante (com confirm())  CORE
 │   │
-│   ├── Rodapé da sidebar (painel do usuário, sempre visível)
+│   ├── Tela da call (área principal, sem canal de texto)                    [Roteiro 13]
+│   │   ├── Painel MEMBROS (só com call ativa; só quem está na call)         CORE
+│   │   │   └── Lista de membros do servidor / por cargo / por presença       MISSING
+│   │   ├── Cabeçalho: botão Mostrar membros                                 BROKEN (sem onClick)
+│   │   └── Cabeçalho: botão Mensagens fixadas (glifo ⌖)                     BROKEN (sem onClick)
+│   │
+│   ├── Rodapé da sidebar (painel do usuário, sempre visível)                [Roteiro 13]
+│   │   ├── Avatar, nome e linha de estado (não clicáveis)                   PARTIAL
+│   │   │   ├── Linha mostra o estado da call: "Desconectado" com o app aberto  BROKEN
+│   │   │   └── Menu de status / abrir o próprio perfil ao clicar             MISSING
 │   │   ├── Microfone (mute/unmute; desabilitado fora da call e ensurdecido) CORE
 │   │   │   └── Seta → escolher microfone                                    CORE (não persiste)
 │   │   ├── Fone (deafen; muta junto e restaura o estado anterior)           CORE
@@ -319,6 +335,7 @@ APP
 | Servidores e canais | menu do servidor, botão direito no servidor, sair do servidor, não lida, Quick Switcher |
 | Mensagens | scroll forçado, botão direito, arrastar/colar arquivo, autocomplete, "Novas mensagens" |
 | Configurações do servidor | busca de cargos decorativa, reordenar cargos, expulsar do servidor, limite/expiração de convite |
+| Membros e perfil | lista de membros do servidor, cor e agrupamento por cargo, botões mortos no cabeçalho de voz, mini-perfil cortado pela borda, cache de perfil, linha de estado do painel do usuário |
 | Voz e vídeo | atalho de mute, som de deafen/câmera, preview/blur, trocar qualidade sem parar, foco em quem fala |
 | Configurações do app | alterar username, sessões ativas, seções removidas (notificações, atalhos, idioma) |
 | Tempo real | presença, "digitando", indicador de reconexão do WebSocket |
@@ -326,10 +343,10 @@ APP
 ## O que a árvore mostra
 
 1. **Os ramos ausentes formam poucos grupos com uma causa só**, o que ajuda a priorizar: tudo que depende de rastreio de leitura (não lida na rail, no canal, na DM, "Marcar como lida"), tudo que depende de presença (aba Online, bolinha de status), e tudo que depende de uma bandeja no Electron (fechar-para-bandeja, iniciar minimizado, controles de voz na bandeja).
-2. **Há dois lugares decorativos ainda vivos**: a busca de cargos (somente leitura) e o item "Marcar como lida" da categoria (função vazia). Ambos contrariam o pedido de nada sem função.
+2. **Há quatro lugares decorativos ainda vivos**: a busca de cargos (somente leitura), o item "Marcar como lida" da categoria (função vazia) e, achados no Roteiro 13, os botões "Mostrar membros" e "Mensagens fixadas" do cabeçalho da tela de voz (sem `onClick`). Todos contrariam o pedido de nada sem função. Há ainda duas **configurações** sem efeito visível: a cor do cargo e "exibir separadamente".
 3. **A profundidade máxima real** está no fluxo de compartilhar tela (mais de 8 níveis até parar a transmissão) e em Configurações do Servidor > Cargos (mais de 6 níveis até alterar uma permissão de um cargo específico).
 4. **Fricção inconsistente em ações destrutivas**: excluir servidor exige digitar o nome, excluir categoria e cargo usam `confirm()` nativo, apagar mensagem e sair da conta não pedem nada.
 
 ## Próximos documentos
 
-`DISCORD_INTERACTION_MATRIX.md` (tabela mestra, uma linha por interação, com gatilho, feedback, realtime, persistência, permissão e erro) e `DISCORD_USER_JOURNEYS.md` (os quatro roteiros ponta a ponta do pedido original: entrar em voz e mutar, transmitir tela, fechar sem sair da call, encerrar de verdade) são construídos a partir desta árvore e dos roteiros 0 a 12.
+`DISCORD_INTERACTION_MATRIX.md` (tabela mestra, uma linha por interação, com gatilho, feedback, realtime, persistência, permissão e erro) e `DISCORD_USER_JOURNEYS.md` (os quatro roteiros ponta a ponta do pedido original: entrar em voz e mutar, transmitir tela, fechar sem sair da call, encerrar de verdade) já existem e foram construídos a partir desta árvore e dos roteiros 0 a 13.
