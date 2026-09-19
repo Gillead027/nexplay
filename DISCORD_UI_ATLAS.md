@@ -178,7 +178,7 @@ Arquitetura real (verificada lendo `apps/desktop/src/main.ts`, `preload.ts`, `up
 **ERRO**: Mesmo guard de `mainWindow` nulo que `WINDOW_MINIMIZE`.
 **CANCELAMENTO**: Não aplicável.
 **REVERSÃO**: Clicar no mesmo botão de novo (chama `unmaximize()`).
-**ATALHO**: Nenhum atalho de teclado dedicado no código. **Duplo clique na barra de título não está implementado** — a `.app-chrome-drag` (região arrastável, ver `WINDOW_DRAG`) não tem listener de `dblclick`, então o comportamento nativo esperado do Windows (duplo clique na titlebar maximiza) **não funciona** nesta janela `frame:false`. `MISSING`.
+**ATALHO**: Nenhum atalho de teclado dedicado no código. **Duplo clique na barra de título não tem listener no código (a confirmar se o Windows o trata sozinho, ver `DOUBLE_CLICK`, 15.7)** — a `.app-chrome-drag` (região arrastável, ver `WINDOW_DRAG`) não tem listener de `dblclick`, então o comportamento nativo esperado do Windows (duplo clique na titlebar maximiza) **não funciona** nesta janela `frame:false`. `MISSING`.
 **MENU DE CONTEXTO**: Não aplicável.
 **ACESSIBILIDADE**: `aria-label="Maximizar"` fixo — **não muda para "Restaurar" quando a janela já está maximizada** (`PARTIAL`: leitor de tela sempre anuncia "Maximizar" mesmo quando a ação real seria restaurar).
 
@@ -562,6 +562,7 @@ Arquitetura real (verificada lendo `apps/desktop/src/main.ts`, `preload.ts`, `up
 
 **ID**: `APP_RELOAD`
 **NOME**: Recarregar a página do aplicativo
+**STATUS ATUAL — CORREÇÃO (Roteiro 15 do Atlas)**: esta ficha deixava "a confirmar" se o app volta ao mesmo servidor e canal. **Não volta**: medido, estando em `#segundo`, o F5 devolveu `#geral`. Ver `STATE_RESTORE_ON_RELOAD` (15.9).
 **PLATAFORMA**: `DESKTOP_WINDOWS`
 **CAMINHO EXATO**: `Aplicativo > qualquer tela > Ctrl+R, Cmd+R, ou F5`
 **POSIÇÃO NA INTERFACE**: Não aplicável.
@@ -3926,6 +3927,7 @@ Arquitetura real (verificada em `apps/web/src/components/TextChannels.tsx`, ~126
 
 **ID**: `MESSAGE_COPY_TEXT`
 **NOME**: Copiar o texto de uma mensagem
+**STATUS ATUAL — CORREÇÃO (Roteiro 15 do Atlas)**: esta ficha partia do princípio de que a cópia funcionava e só apontava a falta de feedback. **No app desktop ela não funciona**: medido num Electron real, a permissão `clipboard-write` está negada e `writeText` falha com `NotAllowedError`. Ver `CLIPBOARD_COPY_DESKTOP` (15.1). O texto abaixo vale para o navegador comum, e mesmo lá continua sem feedback.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Mensagem > toolbar de hover > ícone Copiar`
 **POSIÇÃO NA INTERFACE**: Terceiro ícone da toolbar.
