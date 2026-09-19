@@ -4,7 +4,8 @@ import { api } from '../api';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { MarkdownText } from './Markdown';
 import { Avatar } from './Workspace';
-import { CopyIcon, EditIcon, ForwardIcon, TrashIcon } from './Icons';
+import { CheckIcon, CopyIcon, EditIcon, ForwardIcon, TrashIcon } from './Icons';
+import { copyLabel, useCopyFeedback } from '../useCopyFeedback';
 
 // Mesma ideia de applyIncomingMessage em TextChannels.tsx, só que essa cópia
 // pequena é deliberada (ver plano) — DM não precisa de reação/pin/anexo, e
@@ -90,6 +91,7 @@ export function DmChannelView({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const copyFeedback = useCopyFeedback();
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -227,8 +229,14 @@ export function DmChannelView({
                   )}
                 </div>
                 <div className="message-hover-actions" role="toolbar" aria-label="Ações da mensagem">
-                  <button type="button" title="Copiar texto" aria-label="Copiar texto" onClick={() => void navigator.clipboard.writeText(message.text)}>
-                    <CopyIcon size={14} />
+                  <button
+                    type="button"
+                    className={copyFeedback.statusFor(message.id) === 'idle' ? undefined : `copy-${copyFeedback.statusFor(message.id)}`}
+                    title={copyLabel(copyFeedback.statusFor(message.id))}
+                    aria-label={copyLabel(copyFeedback.statusFor(message.id))}
+                    onClick={() => void copyFeedback.copy(message.id, message.text)}
+                  >
+                    {copyFeedback.statusFor(message.id) === 'copied' ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
                   </button>
                   <button type="button" title="Encaminhar" aria-label="Encaminhar" onClick={() => onForward(message)}>
                     <ForwardIcon size={14} />

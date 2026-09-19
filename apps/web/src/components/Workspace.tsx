@@ -81,6 +81,7 @@ import {
 } from './Icons';
 import { ActivityLine } from './ActivityDisplay';
 import { connectRealtime, onRealtimeConnect, onRealtimeEvent } from '../realtime';
+import { copyText } from '../clipboard';
 import { DmChannelView } from './DmChannelView';
 import { FriendsHome, FriendsSidebar, isBlockedByMe as computeIsBlockedByMe, relationshipStatus, useFriendsState } from './Friends';
 import { ProfilePopover, type ProfilePopoverTarget } from './ProfilePopover';
@@ -977,13 +978,17 @@ function SettingsModal({
 
   useEffect(() => {
     if (!listeningForKey) return;
+    // Roda na fase de captura e consome o toque: o modal de Configurações também
+    // escuta Esc no window, e sem isso o mesmo Esc que cancela a captura fecharia
+    // o modal, ou (antes desta correção) virava a tecla de falar.
     const handleKeyDown = (event: KeyboardEvent) => {
       event.preventDefault();
-      setPttKeyBinding(event.code);
+      event.stopPropagation();
+      if (event.code !== 'Escape') setPttKeyBinding(event.code);
       setListeningForKey(false);
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
   }, [listeningForKey, setPttKeyBinding]);
 
   const [section, setSection] = useState<SettingsSection>('profile');
@@ -1955,7 +1960,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         { key: 'edit', label: 'Editar categoria', onSelect: () => categoryEditRefs.current[category.id]?.open() },
         ...(canManageChannels ? [{ key: 'delete', label: 'Excluir categoria', danger: true, onSelect: () => void removeCategory(category.id) }] : []),
       ] },
-      { items: [{ key: 'copy-id', label: 'Copiar ID da Categoria', onSelect: () => void navigator.clipboard.writeText(category.id) }] },
+      { items: [{ key: 'copy-id', label: 'Copiar ID da Categoria', onSelect: () => void copyText(category.id) }] },
     ]);
   }
   const [perfMode, setPerfModeState] = useState<PerfMode>(() => getPerfMode());

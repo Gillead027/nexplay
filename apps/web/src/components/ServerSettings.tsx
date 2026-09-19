@@ -17,6 +17,7 @@ import {
   type ServerMember,
 } from '@nexplay/shared';
 import { api } from '../api';
+import { copyText } from '../clipboard';
 import { fileToResizedDataUrl } from '../imageResize';
 import { onRealtimeEvent } from '../realtime';
 import { CloseIcon, CopyIcon, ImageIcon, PlusIcon, SearchIcon, SettingsIcon, TrashIcon, UserIcon } from './Icons';
@@ -160,6 +161,21 @@ function DeleteServerDialog({
       setDeleting(false);
     }
   }, [open]);
+
+  // O diálogo fica por cima das Configurações do servidor, que também escutam Esc
+  // no window. Este ouvinte roda antes (fase de captura) e consome o toque, pra
+  // um Esc fechar só o diálogo, não as duas camadas. Durante a exclusão o Esc é
+  // engolido sem fechar nada.
+  useEffect(() => {
+    if (!open) return;
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.stopPropagation();
+      if (!deleting) onClose();
+    };
+    window.addEventListener('keydown', handleEscape, true);
+    return () => window.removeEventListener('keydown', handleEscape, true);
+  }, [open, deleting, onClose]);
 
   if (!open) return null;
 
@@ -397,12 +413,15 @@ export function InvitesPane({ serverId, canManageServer }: { serverId: string; c
     }
   }
 
-  function copyCode() {
+  async function copyCode() {
     if (!invite) return;
-    void navigator.clipboard.writeText(invite.code).then(() => {
+    setError('');
+    if (await copyText(invite.code)) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2_000);
-    });
+    } else {
+      setError('Não foi possível copiar o código. Selecione e copie manualmente.');
+    }
   }
 
   if (!canManageServer) {

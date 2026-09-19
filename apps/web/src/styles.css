@@ -537,6 +537,8 @@ button:disabled { cursor: default; opacity: .45; }
 .message:hover .message-hover-actions, .message:focus-within .message-hover-actions { display: flex; }
 .message-hover-actions button { display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 4px; color: var(--text-secondary); background: none; cursor: pointer; }
 .message-hover-actions button:hover { color: var(--text-primary); background: var(--hover); }
+.message-hover-actions button.copy-copied { color: var(--accent-hover); }
+.message-hover-actions button.copy-failed { color: var(--danger); }
 
 .message-edit-form { margin-top: 3px; }
 .message-edit-form textarea {

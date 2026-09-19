@@ -22,9 +22,11 @@ import { routeTextChannelInput } from '../musicCommandRouting';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { MarkdownText } from './Markdown';
 import { MusicCard } from './MusicCard';
+import { copyLabel, useCopyFeedback } from '../useCopyFeedback';
 import {
   AttachmentIcon,
   CloseIcon,
+  CheckIcon,
   CopyIcon,
   EditIcon,
   FileIcon,
@@ -353,6 +355,8 @@ function HumanTextMessageRow({
   const initial = message.senderName.trim().charAt(0).toUpperCase() || '?';
   const isOwn = message.senderId === session.id;
   const [reactionPickerAnchor, setReactionPickerAnchor] = useState<DOMRect | null>(null);
+  const copyFeedback = useCopyFeedback();
+  const copyStatus = copyFeedback.statusFor(message.id);
   return (
     <article id={`message-${message.id}`} className={`message text-message ${continued ? 'continued' : ''} ${message.pinnedAt ? 'pinned' : ''}`}>
       <button
@@ -403,8 +407,14 @@ function HumanTextMessageRow({
           <button type="button" title="Encaminhar" aria-label="Encaminhar" onClick={onForward}>
             <ForwardIcon size={14} />
           </button>
-          <button type="button" title="Copiar texto" aria-label="Copiar texto" onClick={() => void navigator.clipboard.writeText(message.text)}>
-            <CopyIcon size={14} />
+          <button
+            type="button"
+            className={copyStatus === 'idle' ? undefined : `copy-${copyStatus}`}
+            title={copyLabel(copyStatus)}
+            aria-label={copyLabel(copyStatus)}
+            onClick={() => void copyFeedback.copy(message.id, message.text)}
+          >
+            {copyStatus === 'copied' ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
           </button>
           <div className="reaction-picker-anchor">
             <button
