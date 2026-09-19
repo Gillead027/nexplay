@@ -60,7 +60,7 @@ APP
 │   ├── Aba "Criar conta"
 │   │   ├── Usuário, senha (≥ 8), código de convite global, cor do perfil    CORE
 │   │   ├── Erro: convite inválido / usuário já existe                       CORE
-│   │   └── Entra automaticamente no servidor mais antigo da instância       CORE (sem evento MEMBER_JOIN)
+│   │   └── Não entra em servidor nenhum; entra por convite ou cria o seu    DONE
 │   ├── Mostrar/ocultar senha                                                MISSING
 │   ├── Recuperar senha, MFA, passkeys                                       MISSING
 │   └── Aviso de sessão expirando / relogin automático                       MISSING
