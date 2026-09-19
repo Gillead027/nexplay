@@ -22,6 +22,7 @@ import {
 import type { KrispNoiseFilterProcessor } from '@livekit/krisp-noise-filter';
 import {
   CHAT_MESSAGE_MAX_LENGTH,
+  MIC_MUTED_ATTRIBUTE,
   MUSIC_BOT_DISPLAY_NAME,
   MUSIC_BOT_IDENTITY,
   parseParticipantMetadata,
@@ -36,6 +37,7 @@ import {
 import { api } from '../api';
 import { getOutputVolume } from '../appearancePrefs';
 import { describeMediaError } from '../mediaAccess';
+import { isMicShownMuted } from '../micState';
 import { routeVoiceChatInput } from '../musicCommandRouting';
 import {
   playJoinSound,
@@ -308,7 +310,15 @@ export function useVoiceRoom() {
   const soundboardEventCounter = useRef(0);
   const [error, setError] = useState('');
   const [deafened, setDeafened] = useState(false);
-  const [micEnabled, setMicEnabled] = useState(false);
+  // Mute de verdade: só muda quando a pessoa clica no microfone (ou ensurdece).
+  // O track do microfone liga e desliga sozinho no push-to-talk e na
+  // sensibilidade de entrada, então ele não serve pra decidir o ícone de mutado.
+  const [userMuted, setUserMuted] = useState(false);
+  const userMutedRef = useRef(false);
+  const updateUserMuted = useCallback((muted: boolean) => {
+    userMutedRef.current = muted;
+    setUserMuted(muted);
+  }, []);
   const [screenEnabled, setScreenEnabled] = useState(false);
   // Captura de áudio do sistema (loopback) pega tudo que sai pelo alto-falante
   // de quem compartilha — incluindo a voz dos outros que o próprio app está
@@ -340,7 +350,6 @@ export function useVoiceRoom() {
   const [autoGainEnabled, setAutoGainEnabled] = useState(initialAutoGain.current);
   const [autoSensitivity, setAutoSensitivityState] = useState(() => loadAutoSensitivity());
   const [inputSensitivity, setInputSensitivityState] = useState(() => loadInputSensitivity());
-  const wasMicEnabled = useRef(true);
   const inputModeRef = useRef(inputMode);
   const pttKeyRef = useRef(pttKey);
   const micProfileRef = useRef(micProfile);
@@ -386,13 +395,21 @@ export function useVoiceRoom() {
     [],
   );
 
+  // Publica o mute de verdade pros outros verem na lista de canais deles (ensurdecer
+  // também conta como mutado, igual no Discord).
+  useEffect(() => {
+    if (connectionState !== ConnectionState.Connected) return;
+    void room.localParticipant
+      .setAttributes({ [MIC_MUTED_ATTRIBUTE]: deafened || userMuted ? '1' : '0' })
+      .catch(() => {});
+  }, [connectionState, deafened, userMuted, room]);
+
   const syncRoom = useCallback(() => {
     const everyone: Participant[] = [
       room.localParticipant,
       ...Array.from(room.remoteParticipants.values()),
     ];
     setParticipants(everyone);
-    setMicEnabled(room.localParticipant.isMicrophoneEnabled);
     setScreenEnabled(room.localParticipant.isScreenShareEnabled);
     setCameraEnabled(room.localParticipant.isCameraEnabled);
     setCanPlaybackAudio(room.canPlaybackAudio);
@@ -548,6 +565,7 @@ export function useVoiceRoom() {
       .on(RoomEvent.ParticipantConnected, onParticipantConnected)
       .on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected)
       .on(RoomEvent.ParticipantMetadataChanged, syncRoom)
+      .on(RoomEvent.ParticipantAttributesChanged, syncRoom)
       .on(RoomEvent.TrackSubscribed, syncRoom)
       .on(RoomEvent.TrackUnsubscribed, onTrackUnsubscribed)
       .on(RoomEvent.TrackMuted, onTrackMuted)
@@ -617,7 +635,7 @@ export function useVoiceRoom() {
     if (connectionState !== ConnectionState.Connected || inputMode !== 'ptt') return;
 
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.code !== pttKeyRef.current || pttActive) return;
+      if (event.code !== pttKeyRef.current || pttActive || userMutedRef.current || deafenedRef.current) return;
       setPttActive(true);
       void room.localParticipant
         .setMicrophoneEnabled(true, currentMicCaptureOptions())
@@ -703,9 +721,11 @@ export function useVoiceRoom() {
             const shouldBeOpen = now - lastLoudAt < HANGOVER_MS;
             if (shouldBeOpen !== gateOpen) {
               gateOpen = shouldBeOpen;
-              void room.localParticipant
-                .setMicrophoneEnabled(gateOpen, gateOpen ? currentMicCaptureOptions() : undefined)
-                .then(syncRoom);
+              if (!userMutedRef.current) {
+                void room.localParticipant
+                  .setMicrophoneEnabled(gateOpen, gateOpen ? currentMicCaptureOptions() : undefined)
+                  .then(syncRoom);
+              }
             }
           }
           rafId = requestAnimationFrame(tick);
@@ -726,7 +746,7 @@ export function useVoiceRoom() {
       void audioContext?.close();
       // Se o gate tinha fechado o microfone, devolve pro estado normal
       // (ligado) ao sair desse modo — senão a pessoa ficaria muda sem saber.
-      if (!gateOpen) {
+      if (!gateOpen && !userMutedRef.current && !deafenedRef.current) {
         void room.localParticipant.setMicrophoneEnabled(true, currentMicCaptureOptions()).then(syncRoom);
       }
     };
@@ -751,6 +771,7 @@ export function useVoiceRoom() {
         }
         setMessages([]);
         setDeafened(false);
+        updateUserMuted(false);
         const credentials = await api.getLiveKitToken(channel.serverId, channel.id);
         suppressPresenceSoundsRef.current = true;
         await withTimeout(
@@ -772,6 +793,8 @@ export function useVoiceRoom() {
           }
           void refreshDevices();
         } catch (mediaError) {
+          // O microfone não abriu de verdade: o ícone precisa mostrar isso, e clicar nele tenta de novo.
+          updateUserMuted(true);
           setError(`${await describeMediaError(mediaError, 'microphone')} Você entrou com o microfone desligado.`);
         }
         syncRoom();
@@ -798,7 +821,7 @@ export function useVoiceRoom() {
         connectingRef.current = false;
       }
     },
-    [currentChannel, room, syncRoom, refreshDevices, applyActivity],
+    [currentChannel, room, syncRoom, refreshDevices, applyActivity, updateUserMuted],
   );
 
   const disconnect = useCallback(async () => {
@@ -812,7 +835,7 @@ export function useVoiceRoom() {
     setMessages([]);
     setSpeakers(new Set());
     setDeafened(false);
-    setMicEnabled(false);
+    updateUserMuted(false);
     setScreenEnabled(false);
     setCameraEnabled(false);
     setScreenTracks([]);
@@ -821,27 +844,27 @@ export function useVoiceRoom() {
   const toggleMicrophone = useCallback(async () => {
     if (deafened) return;
     setError('');
+    const nextMuted = !userMutedRef.current;
     try {
-      const enabled = !room.localParticipant.isMicrophoneEnabled;
-      await room.localParticipant.setMicrophoneEnabled(
-        enabled,
-        enabled ? currentMicCaptureOptions() : undefined,
-      );
-      (enabled ? playMicUnmuteSound : playMicMuteSound)(getOutputVolume());
+      // No push-to-talk o microfone só abre enquanto a tecla está apertada:
+      // desmutar só devolve esse direito, não abre o microfone.
+      const transmit = !nextMuted && inputModeRef.current !== 'ptt';
+      await room.localParticipant.setMicrophoneEnabled(transmit, transmit ? currentMicCaptureOptions() : undefined);
+      updateUserMuted(nextMuted);
+      (nextMuted ? playMicMuteSound : playMicUnmuteSound)(getOutputVolume());
       syncRoom();
     } catch (mediaError) {
       setError(await describeMediaError(mediaError, 'microphone'));
     }
-  }, [deafened, room, syncRoom]);
+  }, [deafened, room, syncRoom, updateUserMuted]);
 
   const toggleDeafen = useCallback(async () => {
     setError('');
     const next = !deafened;
     try {
       if (next) {
-        wasMicEnabled.current = room.localParticipant.isMicrophoneEnabled;
         await room.localParticipant.setMicrophoneEnabled(false);
-      } else if (wasMicEnabled.current) {
+      } else if (!userMutedRef.current && inputModeRef.current !== 'ptt') {
         await room.localParticipant.setMicrophoneEnabled(
           true,
           currentMicCaptureOptions(),
@@ -858,7 +881,7 @@ export function useVoiceRoom() {
     (mode: InputMode) => {
       localStorage.setItem(INPUT_MODE_KEY, mode);
       setInputModeState(mode);
-      if (mode === 'voice' && connectionState === ConnectionState.Connected) {
+      if (mode === 'voice' && connectionState === ConnectionState.Connected && !userMutedRef.current && !deafenedRef.current) {
         void room.localParticipant
           .setMicrophoneEnabled(true, currentMicCaptureOptions())
           .then(syncRoom);
@@ -1127,6 +1150,7 @@ export function useVoiceRoom() {
   );
 
   const connected = connectionState === ConnectionState.Connected;
+  const micMuted = isMicShownMuted({ connected, deafened, userMuted });
 
   return useMemo(
     () => ({
@@ -1141,7 +1165,7 @@ export function useVoiceRoom() {
       error,
       clearError: () => setError(''),
       deafened,
-      micEnabled,
+      micMuted,
       screenEnabled,
       shareAudioActive,
       cameraEnabled,
@@ -1196,7 +1220,7 @@ export function useVoiceRoom() {
       messages,
       error,
       deafened,
-      micEnabled,
+      micMuted,
       screenEnabled,
       shareAudioActive,
       cameraEnabled,

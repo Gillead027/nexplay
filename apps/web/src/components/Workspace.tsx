@@ -82,6 +82,7 @@ import {
 } from './Icons';
 import { connectRealtime, onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { copyText } from '../clipboard';
+import { liveMutedByIdentity } from '../micState';
 import { MemberList } from './MemberList';
 import { watchedStreamIdentities } from '../streamAudio';
 import { DEFAULT_PERSON_VOLUME, loadVolumes, saveVolumes, volumeStorageKey } from '../volumePrefs';
@@ -388,6 +389,7 @@ function ChannelButton({
   settings,
   onContextMenu,
   onParticipantContextMenu,
+  liveMuted,
   draggable,
   onDragStart,
 }: {
@@ -415,6 +417,9 @@ function ChannelButton({
   } | undefined;
   onContextMenu?: (event: ReactMouseEvent<HTMLElement>) => void;
   onParticipantContextMenu?: (event: ReactMouseEvent<HTMLElement>, participant: { identity: string; name: string }) => void;
+  // Mute ao vivo de cada pessoa, só pro canal em que você está agora. Nos outros
+  // canais vale o último estado que o servidor calculou.
+  liveMuted?: Map<string, boolean> | undefined;
   draggable?: boolean;
   onDragStart?: (event: ReactDragEvent<HTMLElement>) => void;
 }) {
@@ -493,7 +498,7 @@ function ChannelButton({
               <span className="channel-user-name">{participant.name}</span>
               {isBot && <span className="bot-badge">BOT</span>}
               {participant.isSharingScreen && <span className="live-badge live-badge-inline">AO VIVO</span>}
-              {!isBot && participant.isMuted && <MicOffIcon className="channel-user-muted" size={12} />}
+              {!isBot && (liveMuted?.get(participant.identity) ?? participant.isMuted) && <MicOffIcon className="channel-user-muted" size={12} />}
             </button>
             {canDisconnect && (
               <button
@@ -2358,6 +2363,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   }
 
   const typedParticipants = voice.participants as (LocalParticipant | RemoteParticipant)[];
+  const liveMuted = liveMutedByIdentity(typedParticipants, voice.micMuted);
   const activeTextChannel = textChannels.find(({ id }) => id === selectedTextChannelId);
   // Atividade só existe pra quem está no mesmo canal de voz que você agora —
   // o LiveKit não entrega metadata de participantes de salas que você não
@@ -2658,6 +2664,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                     onDisconnectParticipant={(identity, name) => void disconnectParticipantFromVoice(identity, name)}
                     disconnectingIdentity={disconnectingIdentity}
                     onParticipantContextMenu={openParticipantVolumeMenu}
+                    liveMuted={voice.currentChannel?.id === room.id && voice.connected ? liveMuted : undefined}
                   />
                 ));
 
@@ -2822,14 +2829,14 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           </div>
           <div className="sidebar-actions">
             <button
-              className={`icon-button ${!voice.micEnabled ? 'danger' : ''}`}
+              className={`icon-button ${voice.micMuted ? 'danger' : ''}`}
               type="button"
               onClick={() => void voice.toggleMicrophone()}
               disabled={!voice.connected || voice.deafened}
-              title={voice.micEnabled ? 'Desligar microfone' : 'Ligar microfone'}
-              aria-label={voice.micEnabled ? 'Desligar microfone' : 'Ligar microfone'}
+              title={voice.micMuted ? 'Ligar microfone' : 'Desligar microfone'}
+              aria-label={voice.micMuted ? 'Ligar microfone' : 'Desligar microfone'}
             >
-              <IconSwap on={voice.micEnabled} onIcon={<MicIcon />} offIcon={<MicOffIcon />} />
+              <IconSwap on={!voice.micMuted} onIcon={<MicIcon />} offIcon={<MicOffIcon />} />
             </button>
             <DeviceMenu
               devices={voice.audioInputs}
@@ -2996,8 +3003,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
             {voice.connected && (
               <div className="voice-toolbar" aria-label="Controles de voz">
                 <div className="voice-split-action">
-                  <button className={`voice-action ${!voice.micEnabled ? 'danger' : ''}`} type="button" onClick={() => void voice.toggleMicrophone()} disabled={voice.deafened} title={voice.micEnabled ? 'Desligar microfone' : 'Ligar microfone'} aria-label={voice.micEnabled ? 'Desligar microfone' : 'Ligar microfone'}>
-                    <IconSwap on={voice.micEnabled} onIcon={<MicIcon />} offIcon={<MicOffIcon />} />
+                  <button className={`voice-action ${voice.micMuted ? 'danger' : ''}`} type="button" onClick={() => void voice.toggleMicrophone()} disabled={voice.deafened} title={voice.micMuted ? 'Ligar microfone' : 'Desligar microfone'} aria-label={voice.micMuted ? 'Ligar microfone' : 'Desligar microfone'}>
+                    <IconSwap on={!voice.micMuted} onIcon={<MicIcon />} offIcon={<MicOffIcon />} />
                   </button>
                   <DeviceMenu devices={voice.audioInputs} selectedId={voice.selectedMicId} onSelect={(deviceId) => void voice.setMicrophoneDevice(deviceId)} label="Escolher microfone" />
                 </div>

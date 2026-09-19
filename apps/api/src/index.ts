@@ -47,6 +47,7 @@ import {
   type ForwardedFromMeta,
   type LiveKitTokenResponse,
   parseParticipantMetadata,
+  readSelfMuted,
   type HumanParticipantMetadata,
   type MusicCommandResponse,
   type MusicNowPlayingCard,
@@ -1646,7 +1647,7 @@ async function computeRoomSummary(channel: VoiceChannel): Promise<RoomSummary> {
         name: participant.name || participant.identity,
         participantType: metadata?.participantType ?? 'HUMAN',
         isSharingScreen: participant.tracks.some((track) => track.source === TrackSource.SCREEN_SHARE),
-        isMuted: microphoneTrack?.muted ?? true,
+        isMuted: readSelfMuted(participant.attributes) ?? microphoneTrack?.muted ?? true,
       };
     }),
   };
@@ -2482,6 +2483,10 @@ const webhookReceiver = new WebhookReceiver(config.LIVEKIT_API_KEY, config.LIVEK
 const ROOM_STATE_WEBHOOK_EVENTS = new Set([
   'participant_joined',
   'participant_left',
+  // O microfone só é publicado depois da entrada: sem recalcular aqui, quem acabou de entrar
+  // ficaria com o ícone de mutado até a próxima entrada ou saída de alguém.
+  'track_published',
+  'track_unpublished',
   'room_started',
   'room_finished',
 ]);

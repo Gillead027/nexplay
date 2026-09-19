@@ -353,6 +353,19 @@ function parseActivity(value: unknown): Activity | null {
   return null;
 }
 
+// Mute "de verdade": o que a pessoa escolheu ao clicar no microfone ou ao
+// ensurdecer, publicado como atributo do participante no LiveKit. O estado do
+// track de microfone não serve pra isso: o push-to-talk e a sensibilidade de
+// entrada ligam e desligam o track o tempo todo sem a pessoa ter mutado nada.
+export const MIC_MUTED_ATTRIBUTE = 'selfMuted';
+
+export function readSelfMuted(attributes: Record<string, string> | undefined): boolean | null {
+  const value = attributes?.[MIC_MUTED_ATTRIBUTE];
+  if (value === '1') return true;
+  if (value === '0') return false;
+  return null;
+}
+
 export function parseParticipantMetadata(value: string | undefined): ParticipantMetadata | null {
   if (!value) return null;
   try {
