@@ -80,9 +80,9 @@ import {
   UserIcon,
   VoiceIcon,
 } from './Icons';
-import { ActivityLine } from './ActivityDisplay';
 import { connectRealtime, onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { copyText } from '../clipboard';
+import { MemberList } from './MemberList';
 import { watchedStreamIdentities } from '../streamAudio';
 import { DEFAULT_PERSON_VOLUME, loadVolumes, saveVolumes, volumeStorageKey } from '../volumePrefs';
 import { DmChannelView } from './DmChannelView';
@@ -202,10 +202,6 @@ function useAvatarByIdentity(identity: string, isOwn: boolean, ownAvatarUrl: str
   return remoteAvatarCache.get(identity) || undefined;
 }
 
-function useRemoteAvatar(participant: LocalParticipant | RemoteParticipant, ownAvatarUrl: string): string | undefined {
-  return useAvatarByIdentity(participant.identity, participant instanceof LocalParticipant, ownAvatarUrl);
-}
-
 function ChannelUserAvatar({
   identity,
   name,
@@ -221,15 +217,6 @@ function ChannelUserAvatar({
 }) {
   const avatarUrl = useAvatarByIdentity(identity, identity === ownIdentity, ownAvatarUrl);
   return <Avatar name={name} avatarUrl={avatarUrl} speaking={speaking} compact />;
-}
-
-function participantAccentColor(
-  participant: LocalParticipant | RemoteParticipant,
-  ownAccentColor: AccentColor,
-): AccentColor | undefined {
-  if (participant instanceof LocalParticipant) return ownAccentColor;
-  const metadata = parseParticipantMetadata(participant.metadata);
-  return metadata?.participantType === 'HUMAN' ? metadata.accentColor : undefined;
 }
 
 function DeviceMenu({
@@ -526,72 +513,6 @@ function ChannelButton({
           </div>
         );
       })}
-    </div>
-  );
-}
-
-function ParticipantRow({
-  participant,
-  volume,
-  setVolume,
-  accentColor,
-  ownAvatarUrl,
-  onOpenProfile,
-}: {
-  participant: LocalParticipant | RemoteParticipant;
-  volume: number;
-  setVolume: (value: number) => void;
-  accentColor?: AccentColor | undefined;
-  ownAvatarUrl: string;
-  onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
-}) {
-  const name = participant.name || participant.identity;
-  const local = participant instanceof LocalParticipant;
-  const metadata = parseParticipantMetadata(participant.metadata);
-  const isBot = metadata?.participantType === 'BOT';
-  const avatarUrl = useRemoteAvatar(participant, ownAvatarUrl);
-
-  return (
-    <div className="participant-row">
-      <button
-        type="button"
-        className="participant-main"
-        disabled={isBot}
-        onClick={(event) => onOpenProfile(participant.identity, event)}
-        title={isBot ? undefined : `Ver perfil de ${name}`}
-      >
-        <Avatar name={name} accentColor={accentColor} avatarUrl={avatarUrl} compact />
-        <div className="participant-copy">
-          <strong>
-            {name}{local ? ' (você)' : ''}
-            {isBot && <span className="bot-badge">BOT</span>}
-          </strong>
-          {/* Sem status de conexão/mudo/transmissão aqui — isso mora na lista
-              de canais de voz. Esta segunda linha mostra só atividade de
-              verdade (jogo/mídia detectados pelo app desktop). */}
-          {isBot ? (
-            <span>Ocioso</span>
-          ) : (
-            metadata?.participantType === 'HUMAN' && metadata.activity && (
-              <ActivityLine activity={metadata.activity} />
-            )
-          )}
-        </div>
-      </button>
-      {!local && (
-        <label className="volume-control" title={`Volume de ${name}: ${volume}%`}>
-          <span>Vol.</span>
-          <input
-            aria-label={`Volume de ${name}`}
-            type="range"
-            min="0"
-            max="100"
-            value={volume}
-            onChange={(event) => setVolume(Number(event.target.value))}
-          />
-          <output>{volume}</output>
-        </label>
-      )}
     </div>
   );
 }
@@ -2436,20 +2357,6 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     }
   }
 
-  function renderParticipantRow(participant: LocalParticipant | RemoteParticipant) {
-    return (
-      <ParticipantRow
-        key={participant.identity}
-        participant={participant}
-        volume={volumes[participant.identity] ?? 100}
-        setVolume={(value) => setVolumes((current) => ({ ...current, [participant.identity]: value }))}
-        accentColor={participantAccentColor(participant, session.accentColor)}
-        ownAvatarUrl={session.avatarUrl}
-        onOpenProfile={openUserProfile}
-      />
-    );
-  }
-
   const typedParticipants = voice.participants as (LocalParticipant | RemoteParticipant)[];
   const activeTextChannel = textChannels.find(({ id }) => id === selectedTextChannelId);
   // Atividade só existe pra quem está no mesmo canal de voz que você agora —
@@ -3218,23 +3125,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           </aside>
           )}
 
-          {voice.connected && (
-            <aside className="member-list" aria-label="Membros do canal">
-              <div className="member-list-heading">
-                <span>MEMBROS</span>
-                <small>{voice.participants.length}</small>
-              </div>
-              <div className="member-list-scroll">
-                {/* Painel só de contagem/roster: sem nenhuma reação visual a
-                    quem está falando agora (isso mora no indicador ao lado
-                    do nome, na lista de canais de voz à esquerda) — aqui é
-                    só nome + acesso ao perfil, numa ordem sempre estável. */}
-                <div className="member-group">
-                  <span className="member-group-title">Conectado — {typedParticipants.length}</span>
-                  {typedParticipants.map(renderParticipantRow)}
-                </div>
-              </div>
-            </aside>
+          {activeServerId && (
+            <MemberList serverId={activeServerId} ownId={session.id} onOpenProfile={openUserProfile} />
           )}
         </div>
         </>

@@ -416,22 +416,20 @@ button:disabled { cursor: default; opacity: .45; }
 .member-list-scroll { min-height: 0; flex: 1; overflow-y: auto; padding: 10px 8px; }
 .member-group { display: flex; flex-direction: column; margin-bottom: 10px; }
 .member-group-title { padding: 4px 6px 6px; color: var(--text-muted); font-size: 10px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; }
-.participant-row { display: flex; flex-direction: column; gap: 6px; padding: 7px 8px; border-radius: var(--radius-sm); transition: background-color 150ms; }
-.participant-row:hover { background: var(--hover); }
-.participant-main { display: flex; align-items: center; gap: 8px; width: 100%; border: 0; border-radius: var(--radius-sm); background: none; font: inherit; text-align: left; cursor: pointer; }
-.participant-main:disabled { cursor: default; }
-.participant-main:not(:disabled):hover .participant-copy strong { text-decoration: underline; }
-.participant-copy { min-width: 0; flex: 1; }
-.participant-copy strong, .participant-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.participant-copy strong { color: var(--text-primary); font-size: 12px; font-weight: 600; }
+
+/* Lista de membros do servidor (online em cima, offline embaixo) */
+.member-list-note { margin: 8px 6px; color: var(--text-muted); font-size: 11px; }
+.member-row { display: flex; align-items: center; gap: 10px; width: 100%; padding: 5px 6px; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.member-row:hover { background: rgba(255, 255, 255, .04); }
+.member-avatar { position: relative; flex: 0 0 auto; display: grid; }
+.member-status-dot { position: absolute; right: -2px; bottom: -2px; width: 10px; height: 10px; border: 2px solid var(--panel); border-radius: 50%; background: #6d7383; }
+.member-row.online .member-status-dot { background: #4ec99a; }
+.member-copy { min-width: 0; display: grid; gap: 1px; }
+.member-copy strong { overflow: hidden; color: var(--text-primary); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.member-copy > span:not(.sr-only) { overflow: hidden; color: var(--text-muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.member-row.offline .member-avatar .avatar, .member-row.offline .member-copy { opacity: .45; }
+.member-row.offline:hover .member-avatar .avatar, .member-row.offline:hover .member-copy { opacity: .8; }
 .bot-badge { display: inline-flex; align-items: center; margin-left: 5px; padding: 1px 4px; border-radius: 3px; color: #edf5ef; background: var(--accent); font-size: 8px; font-weight: 800; letter-spacing: .45px; vertical-align: middle; }
-.participant-copy span { margin-top: 1px; color: var(--text-muted); font-size: 9px; }
-.participant-copy .activity-line { display: flex; align-items: center; gap: 4px; min-width: 0; }
-.participant-copy .activity-line svg { flex: none; opacity: .8; }
-.participant-copy .activity-line span { min-width: 0; flex: 1; margin-top: 0; }
-.volume-control { display: grid; grid-template-columns: 22px minmax(0, 1fr) 24px; align-items: center; gap: 5px; margin-left: 42px; color: var(--text-muted); font-size: 9px; }
-.volume-control input { width: 100%; height: 3px; accent-color: var(--accent); cursor: pointer; }
-.volume-control output { text-align: right; }
 .audio-sink { display: none; }
 
 /* Transmissão */
@@ -1067,8 +1065,6 @@ body { letter-spacing: -.01em; }
 .member-list-heading { height: 47px; flex-basis: 47px; padding: 0 17px; color: #7f8599; font-size: 10px; letter-spacing: .8px; }
 .member-list-scroll { padding: 14px 11px; }
 .member-group-title { padding: 4px 9px 9px; font-size: 9px; }
-.participant-row { padding: 9px; border-radius: 10px; }
-.participant-copy strong { font-size: 12px; }
 
 .voice-toolbar {
   position: absolute; z-index: 5; left: 50%; bottom: 26px; transform: translateX(-50%);

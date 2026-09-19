@@ -309,6 +309,7 @@ export const api = {
       method: 'DELETE',
     }),
   getMembers: (serverId: string) => request<{ members: MemberSummary[] }>(`${s(serverId)}/members`),
+  getPresence: (serverId: string) => request<{ onlineUserIds: string[] }>(`${s(serverId)}/presence`),
   timeoutMember: (serverId: string, userId: string, minutes: number) =>
     request<{ timeoutUntil: number }>(`${s(serverId)}/moderation/timeout`, {
       method: 'POST',
