@@ -6,7 +6,7 @@ Mapa completo da experiência operacional do NexPlay — toda interação, macro
 
 **Convenção de status por ficha**: `CORE` (existe, funciona, é o caminho normal do app), `PARTIAL` (existe mas incompleto — o campo relevante explica o que falta), `MISSING` (não existe — a ficha documenta o comportamento *esperado*, não o real, e isso é dito explicitamente), `DESKTOP_ONLY`, `ADMIN_ONLY`.
 
-Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). **Roteiro 10 completo** (7 fichas, configurações — aparência). **Roteiro 11 completo** (13 fichas, amigos e DMs). **Roteiro 12 completo** (8 fichas, configurações — meu perfil/conta e segurança/privacidade). Roteiros 13–69+ pendentes — ver nota de continuação no final do arquivo.
+Progresso deste documento: **Roteiro 0 completo** (24 fichas, cliente desktop). **Roteiro 1 completo** (18 fichas, login/sessão). **Roteiro 2 completo** (11 fichas, navegação). **Roteiro 3 completo** (19 fichas, servidores e canais). **Roteiro 4 completo** (23 fichas, mensagens). **Roteiro 5 completo** (8 fichas, tempo real). **Roteiro 6 completo** (9 fichas, voz — núcleo). **Roteiro 7 completo** (12 fichas, voz — participantes/dispositivos/chat da call/PTT/perfis de microfone). **Roteiro 8 completo** (8 fichas, vídeo e tela compartilhada — exibição em grid/foco). **Roteiro 9 completo** (15 fichas, cargos/permissões/membros/moderação/convites). **Roteiro 10 completo** (7 fichas, configurações — aparência). **Roteiro 11 completo** (13 fichas, amigos e DMs). **Roteiro 12 completo** (8 fichas, configurações — meu perfil/conta e segurança/privacidade). **Roteiro 13 completo** (17 fichas, lista de membros, mini-perfil e painel do próprio usuário; numeração do Atlas, equivale aos roteiros 18 a 20 do pedido original). Próximos (numeração do Atlas): 14 notificações e não lidas, 15 atalhos/Esc/hover/scroll, 16 estados vazios/carregando/offline/permissões de dispositivo, 17 Premium/Loja/Sobre.
 
 ---
 
@@ -1978,6 +1978,454 @@ Arquitetura real (verificada em `apps/web/src/components/Workspace.tsx` e `Serve
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **STATUS**: **`MISSING` por completo.** Confirmado por ausência: nenhum listener de `Ctrl+Alt+Seta`/`Alt+Seta` (os atalhos reais do Discord para isso) em `Workspace.tsx`. A única forma de trocar de servidor hoje é clicar diretamente num ícone da rail com o mouse, ou usar Tab pra alcançar os botões um por um (funcional, mas lento — sem um atalho dedicado de "próximo/servidor anterior").
 **CAMINHO EXATO ESPERADO** (não implementado): Atalho global, qualquer tela.
+---
+
+# ROTEIRO 13 — LISTA DE MEMBROS, MINI-PERFIL E PAINEL DO PRÓPRIO USUÁRIO
+
+Cobre os roteiros 18 (Member List), 19 (Mini Profile) e 20 (Painel do próprio usuário) do pedido original. Método: leitura de `Workspace.tsx`, `ProfilePopover.tsx`, `ServerSettings.tsx`, `styles.css` e da rota `GET /api/users/:id/profile`, **mais medição num Chromium real** (Playwright, janela 1280×720, ambiente local com banco descartável). Toda medida citada abaixo foi tirada assim, não estimada.
+
+**Resumo dos achados deste roteiro**:
+
+1. **Não existe lista de membros do servidor.** O painel "MEMBROS" só aparece na tela de voz, só enquanto se está conectada a uma call, e só lista quem está nela (`MEMBER_LIST_VOICE_ROSTER`, `MEMBER_LIST_SERVER_WIDE`).
+2. **Dois botões do cabeçalho da tela de voz não têm nenhuma função** (`MEMBER_LIST_TOGGLE_BUTTON`, `VOICE_HEADER_PINS_BUTTON`). Clicar não altera o DOM. São exatamente o tipo de controle decorativo que a instrução "nada sem função" manda eliminar, e a caça anterior não os tinha achado.
+3. **Cor do cargo e "exibir separadamente" são configurações sem efeito visível** em qualquer lugar do app fora do próprio editor (`ROLE_COLOR_ON_NAMES`, `ROLE_HOIST_MEMBER_GROUPING`).
+4. **O mini-perfil vaza da janela** quando aberto perto da borda inferior: a posição usa uma altura estimada de 260 px e a real mede 330 px (`MINI_PROFILE_POSITIONING`). O cache do perfil nunca invalida e uma falha de rede fica gravada para sempre (`MINI_PROFILE_LOADING_ERROR_CACHE`).
+5. **O painel do usuário diz "Desconectado" com o app aberto e funcionando**, porque mostra o estado da chamada de voz, não da pessoa (`USER_PANEL_IDENTITY`).
+6. **Hipótese descartada pela medição:** o `presence-dot` de todo avatar parecia um indicador falso de "online", mas o `overflow: hidden` do avatar o corta e sobra só uma lasca de poucos pixels (`PRESENCE_DOT_CLIPPED`). É código morto, não um falso positivo visível.
+
+---
+
+## 13.1 — MEMBER_LIST_VOICE_ROSTER *(CORE, com escopo menor que o nome sugere)*
+
+**ID**: `MEMBER_LIST_VOICE_ROSTER`
+**NOME**: Painel lateral "MEMBROS" da tela da call
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Servidor > clicar num canal de voz (conecta) > tela da call (sem canal de texto selecionado) > coluna direita "MEMBROS"`
+**POSIÇÃO NA INTERFACE**: `<aside className="member-list" aria-label="Membros do canal">`, coluna à direita da tela de voz, com borda esquerda. Fica dentro do ramo `!activeTextChannel` de `Workspace.tsx`.
+**APARÊNCIA**: Cabeçalho "MEMBROS" com contador (`voice.participants.length`), um único grupo "Conectado — N" e uma linha por participante (`ParticipantRow`): avatar compacto, nome com " (você)" para a própria pessoa, selo `BOT` para bots, linha de atividade (jogo ou mídia) e, para os outros, um slider "Vol." de 0 a 100.
+**ESTADO NORMAL**: Ordem estável, sem reagir a quem está falando (isso mora na lista de canais de voz à esquerda, segundo o comentário do próprio código).
+**HOVER**: O nome de uma linha clicável fica sublinhado (`.participant-main:not(:disabled):hover .participant-copy strong`); tooltip nativo "Ver perfil de {nome}".
+**ACTIVE/PRESSED**: Padrão de botão.
+**SELECTED**: Não aplicável.
+**DISABLED**: A linha de um bot fica `disabled` (cursor padrão, sem tooltip e sem abrir perfil).
+**LOADING**: Nenhum. A lista vem do estado do LiveKit já sincronizado.
+**TRIGGER**: Conectar a um canal de voz e estar olhando a tela da call.
+**PRÉ-CONDIÇÕES**: `voice.connected === true` **e** nenhum canal de texto selecionado.
+**RESULTADO IMEDIATO**: O painel monta com os participantes atuais do `Room`.
+**RESULTADO VISUAL**: Painel à direita com a contagem. Medido: sem call, na tela de voz, `.member-list` não existe (contagem 0). Com um canal de texto aberto, também não existe.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma confirmada.
+**POPOVER**: Clicar no nome abre o mini-perfil (ver `MEMBER_ROW_OPEN_PROFILE`).
+**MENU**: Não aplicável.
+**MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Roster de quem está na call, e só isso.
+**EFEITO LOCAL**: Nenhum além da exibição.
+**EFEITO REMOTO**: Não aplicável (só leitura).
+**REALTIME**: Eventos nativos do LiveKit (`ParticipantConnected`/`Disconnected`) via `syncRoom`, não pelo WebSocket do NexPlay.
+**BACKEND**: Nenhuma chamada.
+**BANCO**: Não aplicável.
+**REFRESH**: O painel some junto com a call (F5 derruba a call, ver `VOICE_CHANNEL_JOIN`).
+**RECONEXÃO**: Acompanha o estado do LiveKit.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: Não aplicável.
+**REVERSÃO**: Sair da call ou abrir um canal de texto esconde o painel.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Nenhum.
+**ACESSIBILIDADE**: `aria-label="Membros do canal"` no `<aside>`; linhas são `<button>` reais; slider com `aria-label="Volume de {nome}"`.
+
+**Achado — o texto "Ocioso" de um bot é fixo**: `ParticipantRow` renderiza `<span>Ocioso</span>` para qualquer bot, sem olhar o estado real. Um bot de música tocando continua aparecendo como "Ocioso" nesta linha.
+**Achado — os dois contadores são o mesmo número**: o cabeçalho usa `voice.participants.length` e o grupo usa `typedParticipants.length`, que é o mesmo array com outro tipo. Nunca divergem, e nenhum dos dois conta quem não está na call.
+
+---
+
+## 13.2 — MEMBER_LIST_SERVER_WIDE *(MISSING)*
+
+**ID**: `MEMBER_LIST_SERVER_WIDE`
+**NOME**: Lista de membros do servidor ao lado de um canal de texto
+**STATUS**: **`MISSING` por completo.** A ficha documenta o comportamento *esperado*.
+**Esperado (Discord)**: coluna direita no canal de texto, com todos os membros do servidor agrupados por cargo "exibido separadamente" e, dentro de cada grupo, por presença; botão no cabeçalho para mostrar e esconder.
+**Real**: ao abrir um canal de texto **não existe nenhum painel de membros** (medido: `.member-list` = 0). O único painel com esse nome é `MEMBER_LIST_VOICE_ROSTER`.
+**Onde o dado existe**: a API já tem `getMembers(serverId)` (`GET /api/servers/:serverId/members`, tipo `MemberSummary`), usada só por `ServerSettings > Membros` (`MembersPane`), que é uma superfície de moderação dentro do modal de configurações do servidor. Não reauditei nesta passagem se um membro comum consegue abrir essa aba.
+**Consequência**: não há como ver "quem está neste servidor" sem abrir as configurações. Depende de três lacunas já conhecidas para ficar completa: presença (`PRESENCE_STATUS`, `MISSING`), cor de cargo (`ROLE_COLOR_ON_NAMES`) e agrupamento por cargo (`ROLE_HOIST_MEMBER_GROUPING`).
+**Dependência de infraestrutura**: nenhuma nova para uma versão sem presença. Bastaria consumir `getMembers`, que já existe.
+
+---
+
+## 13.3 — MEMBER_LIST_TOGGLE_BUTTON *(BROKEN — controle decorativo)*
+
+**ID**: `MEMBER_LIST_TOGGLE_BUTTON`
+**NOME**: Botão "Mostrar membros" no cabeçalho da tela de voz
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Servidor > canal de voz (conectada ou não) > cabeçalho da sala > ícone de pessoa entre "Mensagens fixadas" e o indicador de conexão`
+**POSIÇÃO NA INTERFACE**: `Workspace.tsx`, dentro de `.room-header-actions`, que só renderiza quando `!activeTextChannel`.
+**APARÊNCIA**: `icon-button` com `UserIcon`, `title="Mostrar membros"`, `aria-label="Mostrar membros"`.
+**ESTADO NORMAL**: Idêntico a um botão funcional.
+**HOVER**: Tooltip "Mostrar membros" e o realce padrão de `icon-button`. Promete uma ação.
+**ACTIVE/PRESSED**: Realce padrão.
+**SELECTED**: Nunca. Não existe estado para refletir.
+**DISABLED**: Nunca, mesmo sem nada a mostrar.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Estar na tela de voz.
+**RESULTADO IMEDIATO**: **Nenhum.** O elemento não tem `onClick`. Medido: o tamanho do HTML de `.main-panel` e a contagem de `.member-list`, `.profile-popover` e `[role=dialog]` ficaram idênticos antes e depois do clique.
+**RESULTADO VISUAL**: Nenhum.
+**RESULTADO SONORO**: Nenhum.
+**ANIMAÇÃO**: Nenhuma.
+**POPOVER / MENU / MODAL**: Não aplicável.
+**SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Nada acontece.
+**EFEITO LOCAL / REMOTO**: Nenhum.
+**REALTIME / BACKEND / BANCO**: Nenhum.
+**REFRESH / RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável.
+**CANCELAMENTO / REVERSÃO**: Não aplicável.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Nenhum.
+**ACESSIBILIDADE**: Anuncia "Mostrar membros" a um leitor de tela e não faz nada, o pior caso para quem depende dele.
+
+**Nota de auditoria — viola a instrução "nada sem função"**: o painel que o botão sugere já fica sempre visível na call e não existe fora dela, então o botão nem tem um estado útil para alternar. **Correção proposta, sem executar**: remover o botão, ou, junto com `MEMBER_LIST_SERVER_WIDE`, fazê-lo mostrar e esconder o painel de verdade.
+
+---
+
+## 13.4 — VOICE_HEADER_PINS_BUTTON *(BROKEN — controle decorativo)*
+
+**ID**: `VOICE_HEADER_PINS_BUTTON`
+**NOME**: Botão "Mensagens fixadas" no cabeçalho da tela de voz
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Servidor > canal de voz > cabeçalho da sala > primeiro ícone da direita (glifo ⌖)`
+**POSIÇÃO NA INTERFACE**: Mesmo `.room-header-actions` de `MEMBER_LIST_TOGGLE_BUTTON`.
+**APARÊNCIA**: `icon-button` com `<span className="header-glyph">⌖</span>` (um caractere de mira, **não** o ícone de alfinete usado no canal de texto), `title="Mensagens fixadas"`.
+**ESTADO NORMAL / HOVER / ACTIVE / SELECTED / DISABLED**: Como um botão funcional. Nunca fica selecionado nem desabilitado.
+**LOADING**: Não aplicável.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Estar na tela de voz.
+**RESULTADO IMEDIATO**: **Nenhum**, sem `onClick`. Medido: DOM idêntico antes e depois do clique.
+**RESULTADO VISUAL / SONORO / ANIMAÇÃO**: Nenhum.
+**POPOVER / MENU / MODAL / SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Nada acontece.
+**EFEITO LOCAL / REMOTO / REALTIME / BACKEND / BANCO**: Nenhum.
+**REFRESH / RECONEXÃO / ERRO / CANCELAMENTO / REVERSÃO**: Não aplicável.
+**ATALHO / MENU DE CONTEXTO**: Nenhum.
+**ACESSIBILIDADE**: Anuncia "Mensagens fixadas" sem fazer nada.
+
+**Nota de auditoria**: a tela de voz não tem mensagens de texto para fixar. O painel de fixadas **real** existe no canal de texto (`TextChannels.tsx`, botão com o mesmo `title`, ver `PINNED_MESSAGES_PANEL_TOGGLE`, Roteiro 4). Este botão é um resto de layout de uma versão anterior. **Correção proposta, sem executar**: remover.
+
+---
+
+## 13.5 — ROLE_COLOR_ON_NAMES *(MISSING — a configuração não tem efeito visível)*
+
+**ID**: `ROLE_COLOR_ON_NAMES`
+**NOME**: Cor do cargo aplicada ao nome de quem o tem
+**STATUS**: **`MISSING` o efeito; a configuração em si é `CORE`.** O editor de cargo (`ROLE_EDIT_DISPLAY`, Roteiro 9) salva a cor, e `ROLE_UPDATE` a propaga em tempo real.
+**Esperado (Discord)**: o nome do membro aparece na cor do seu cargo mais alto que tenha cor, nas mensagens, na lista de membros e no mini-perfil.
+**Real**: a busca por `role.color`, `roleColor`, `topRole` e `nameColor` em todo o `apps/web/src`, fora de `ServerSettings.tsx`, **não encontrou nenhum uso**. O tipo `TextMessage` também não carrega nenhum campo de cor de cargo (`senderId`, `senderName`, `senderType`, `senderAvatarUrl`). Resultado: mudar a cor de um cargo não altera a aparência de nenhuma pessoa em lugar nenhum.
+**Consequência**: a opção existe, salva, sincroniza, e não tem consequência observável. É uma configuração decorativa de fato, mesmo com a UI e o backend corretos.
+**Dependência**: precisaria da cor do cargo mais alto de cada autor. O servidor já sabe (`user_roles` + `roles`).
+
+---
+
+## 13.6 — ROLE_HOIST_MEMBER_GROUPING *(MISSING — a configuração não tem efeito visível)*
+
+**ID**: `ROLE_HOIST_MEMBER_GROUPING`
+**NOME**: "Exibir membros do cargo separadamente"
+**STATUS**: **`MISSING` o efeito.** O campo `hoist` é salvo (`api.createRole`/`updateRole`) e há um switch no editor (`ServerSettings.tsx`, `static-switch`), mas o texto `hoist` não aparece em nenhum outro arquivo do cliente além de `api.ts`, que só o repassa ao servidor.
+**Esperado**: membros de cargos "separados" aparecem agrupados sob o nome do cargo, acima dos demais.
+**Real**: o único painel de membros é o roster da call, que tem **um grupo só** ("Conectado — N"). Não há onde o agrupamento se aplicar.
+**Consequência**: mesmo caso de `ROLE_COLOR_ON_NAMES`. Depende de `MEMBER_LIST_SERVER_WIDE` existir.
+
+---
+
+## 13.7 — MEMBER_ROW_OPEN_PROFILE *(CORE)*
+
+**ID**: `MEMBER_ROW_OPEN_PROFILE`
+**NOME**: Abrir o mini-perfil clicando numa pessoa da call
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Tela da call > painel MEMBROS > linha do participante > clique no nome/avatar` **e** `Sidebar > lista de canais de voz > participante embaixo do canal > clique`
+**POSIÇÃO NA INTERFACE**: `ParticipantRow` (roster) e as linhas de canal da sidebar (`Workspace.tsx`).
+**APARÊNCIA / ESTADO NORMAL / HOVER**: Ver `MEMBER_LIST_VOICE_ROSTER`.
+**ACTIVE/PRESSED / SELECTED**: Padrão / não aplicável.
+**DISABLED**: Bots (`disabled={isBot}` no roster; `if (!isBot)` na sidebar).
+**LOADING**: "Carregando perfil…" dentro do popover (ver `MINI_PROFILE_LOADING_ERROR_CACHE`).
+**TRIGGER**: Clique esquerdo. Na sidebar, o mesmo clique.
+**PRÉ-CONDIÇÕES**: Ser um usuário humano; para participantes remotos, o `identity` do LiveKit é o id do usuário.
+**RESULTADO IMEDIATO**: `openUserProfile(participant.identity, event)` guarda `{ userId, rect: currentTarget.getBoundingClientRect() }` em `profileTarget`.
+**RESULTADO VISUAL**: O popover abre ancorado no elemento clicado.
+**RESULTADO SONORO / ANIMAÇÃO**: Nenhum som; o popover entra com `message-in` de 160 ms.
+**POPOVER**: Sim. Ver `MINI_PROFILE_*`.
+**MENU / MODAL / SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Mini-perfil aberto.
+**EFEITO LOCAL**: Apenas UI. **EFEITO REMOTO**: Nenhum (a outra pessoa não é avisada).
+**REALTIME**: Nenhum. **BACKEND**: `GET /api/users/:id/profile` (ver `MINI_PROFILE_LOADING_ERROR_CACHE`). **BANCO**: Leitura de `users`.
+**REFRESH / RECONEXÃO**: O popover fecha ao recarregar; o cache de perfis também é zerado.
+**ERRO**: Ver `MINI_PROFILE_LOADING_ERROR_CACHE`.
+**CANCELAMENTO / REVERSÃO**: Ver `MINI_PROFILE_CLOSE`.
+**ATALHO**: Nenhum além de Tab e Enter no botão.
+**MENU DE CONTEXTO**: Não existe botão direito na linha (`MESSAGE_CONTEXT_MENU` e afins seguem `MISSING`).
+**ACESSIBILIDADE**: Botão real com tooltip; o foco **não** vai para o popover depois (ver `MINI_PROFILE_CLOSE`).
+
+---
+
+## 13.8 — MINI_PROFILE_OPEN *(CORE — todos os pontos de entrada)*
+
+**ID**: `MINI_PROFILE_OPEN`
+**NOME**: Abrir o mini-perfil de qualquer pessoa
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: qualquer um dos pontos de entrada abaixo.
+**POSIÇÃO NA INTERFACE**: `openUserProfile` é definido uma vez em `Workspace.tsx` e repassado como `onOpenProfile`.
+**Pontos de entrada confirmados no código**:
+- avatar e nome do autor de uma mensagem de **canal** (`TextChannels.tsx`);
+- avatar e nome do autor de uma mensagem de **DM** e o cabeçalho de identidade da DM (`DmChannelView.tsx`);
+- linhas de **Amigos**: Todos, Pendentes (recebidos e enviados) e Adicionar amigo (`Friends.tsx`);
+- avatar e nome em mensagens do **chat da call** (`Workspace.tsx`);
+- participantes na sidebar de canais de voz e no roster (`MEMBER_ROW_OPEN_PROFILE`).
+**Não são pontos de entrada**: o avatar e o nome do painel do próprio usuário (ver `USER_PANEL_IDENTITY`), a aba Membros das configurações do servidor, e menções no texto (não há sistema de menção).
+**APARÊNCIA / ESTADO NORMAL / HOVER / ACTIVE / SELECTED / DISABLED**: Dependem do ponto de entrada; nomes de autor são `message-name-trigger`, avatares são `message-avatar-trigger`.
+**LOADING**: Ver `MINI_PROFILE_LOADING_ERROR_CACHE`.
+**TRIGGER**: Clique esquerdo.
+**PRÉ-CONDIÇÕES**: Nenhuma além de ter o id do usuário.
+**RESULTADO IMEDIATO / VISUAL**: `setProfileTarget({ userId, rect })`, popover renderizado no topo de `Workspace` com `position: fixed; z-index: 60`.
+**RESULTADO SONORO / ANIMAÇÃO**: Nenhum / `message-in` 160 ms.
+**POPOVER**: Sim (`role="dialog"`, `aria-label="Perfil do usuário"`).
+**MENU / MODAL / SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Um único popover aberto por vez (um novo clique substitui o alvo).
+**EFEITO LOCAL / REMOTO**: Só UI / nenhum.
+**REALTIME**: Nenhum. **BACKEND**: `GET /api/users/:id/profile`, exceto o perfil próprio, que vem da sessão. **BANCO**: Leitura.
+**REFRESH / RECONEXÃO**: Fecha.
+**ERRO**: Ver `MINI_PROFILE_LOADING_ERROR_CACHE`.
+**CANCELAMENTO / REVERSÃO**: `MINI_PROFILE_CLOSE`.
+**ATALHO**: Nenhum.
+**MENU DE CONTEXTO**: Nenhum.
+**ACESSIBILIDADE**: Todos os gatilhos são `<button>`.
+
+**Nota de auditoria — troca de alvo**: clicar em outra pessoa com o popover aberto dispara `mousedown` (fecha) e depois `click` (abre o novo), então a troca funciona sem piscar visivelmente. Não testei frame a frame.
+
+---
+
+## 13.9 — MINI_PROFILE_POSITIONING *(PARTIAL — defeito medido)*
+
+**ID**: `MINI_PROFILE_POSITIONING`
+**NOME**: Onde o mini-perfil aparece na tela
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: automático ao abrir qualquer mini-perfil.
+**POSIÇÃO NA INTERFACE**: `clampPosition(rect)` em `ProfilePopover.tsx`. Largura fixa de 300 px, margem de 12 px.
+**Regra do código**: `left = rect.left`, limitado a `viewport − 300 − 12`. `top = rect.bottom + 8`; se `top + 260 > altura da janela`, tenta abrir **acima** (`rect.top − 260 − 8`, mínimo 12 px).
+**Defeito medido**: a altura de **260 px é uma constante estimada**, e o popover real mede **330 px** mesmo no perfil mais curto (o próprio, sem botões de ação e sem bio). Com o nome da mensagem em `bottom = 184` e a janela com 492 px de altura, o código concluiu que cabe (`192 + 260 = 452 < 492`), mas o popover terminou em `bottom = 522`: **30 px cortados abaixo da janela**. Perfis de outras pessoas têm botões de ação e, muitas vezes, bio, então passam disso. Não medi essas alturas.
+**Também**: a posição é calculada uma vez a partir de um retângulo guardado no clique. Se a janela é redimensionada ou a lista rola com o popover aberto, ele **não acompanha** o elemento de origem.
+**APARÊNCIA / ESTADO NORMAL**: 300 px de largura, cantos `--radius-lg`, sombra, `overflow: hidden`.
+**HOVER / ACTIVE / SELECTED / DISABLED / LOADING**: Não aplicável a posicionamento.
+**TRIGGER**: Abertura do popover.
+**PRÉ-CONDIÇÕES**: `target` não nulo.
+**RESULTADO IMEDIATO**: `style={{ top, left }}`.
+**RESULTADO VISUAL**: Correto em janelas altas; cortado por baixo na faixa entre a estimativa e a altura real.
+**RESULTADO SONORO / ANIMAÇÃO / POPOVER / MENU / MODAL / SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Popover às vezes parcialmente fora da janela, sem rolagem para alcançá-lo (`position: fixed`).
+**EFEITO LOCAL / REMOTO / REALTIME / BACKEND / BANCO**: Não aplicável.
+**REFRESH / RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável.
+**CANCELAMENTO / REVERSÃO**: Fechar e reabrir não corrige.
+**ATALHO / MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Botões cortados ficam inalcançáveis com o mouse.
+**Correção proposta, sem executar**: medir a altura real depois de montar (`getBoundingClientRect` no `ref`) e reposicionar, em vez de estimar.
+
+---
+
+## 13.10 — MINI_PROFILE_CONTENT *(PARTIAL)*
+
+**ID**: `MINI_PROFILE_CONTENT`
+**NOME**: O que o mini-perfil mostra
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: dentro do popover aberto.
+**POSIÇÃO NA INTERFACE**: `.profile-preview` reaproveitado da tela Meu perfil.
+**Conteúdo real**, na ordem: banner (imagem, ou fundo com a cor do perfil `avatar-color-N`), avatar, nome de exibição em destaque, pronomes (`<em>`), texto de status, bio, atividade e, se não for o próprio perfil, os botões de ação.
+**Atividade**: só aparece se a pessoa está **no mesmo canal de voz que você agora**. O comentário no código explica: o LiveKit só entrega metadados de quem divide sala. Fora disso o popover simplesmente omite a seção.
+**Ausente frente ao Discord**: cargos, "membro desde", servidores e amigos em comum, selos, nota pessoal e indicador de presença.
+**ESTADO NORMAL / HOVER / ACTIVE / SELECTED / DISABLED**: Conteúdo estático; só os botões reagem.
+**LOADING / ERRO**: `MINI_PROFILE_LOADING_ERROR_CACHE`.
+**TRIGGER / PRÉ-CONDIÇÕES**: Abrir o popover.
+**RESULTADO IMEDIATO / VISUAL**: Cartão de 300 px com os campos acima.
+**RESULTADO SONORO / ANIMAÇÃO**: Nenhum / entrada de 160 ms.
+**POPOVER / MENU / MODAL / SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Perfil público resumido.
+**EFEITO LOCAL / REMOTO / REALTIME**: Nenhum.
+**BACKEND**: `GET /api/users/:id/profile` devolve `toUserSession(user)`. Qualquer usuário autenticado pode consultar qualquer id existente (404 para inexistente); não há checagem de servidor em comum.
+**BANCO**: Leitura de `users`.
+**REFRESH / RECONEXÃO**: Ver cache.
+**CANCELAMENTO / REVERSÃO / ATALHO / MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: `role="dialog"`, `aria-label="Perfil do usuário"`; imagem do banner com `alt=""`.
+
+**Nota de auditoria**: como cor de cargo e cargos não aparecem em nenhum lugar (`ROLE_COLOR_ON_NAMES`), o mini-perfil também não diz que papel a pessoa tem no servidor.
+
+---
+
+## 13.11 — MINI_PROFILE_LOADING_ERROR_CACHE *(PARTIAL — dois defeitos de cache)*
+
+**ID**: `MINI_PROFILE_LOADING_ERROR_CACHE`
+**NOME**: Carregamento, erro e cache do perfil de outra pessoa
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: abrir o mini-perfil de alguém que não seja você.
+**POSIÇÃO NA INTERFACE**: `useUserProfile` e `remoteProfileCache` (um `Map` de módulo) em `ProfilePopover.tsx`.
+**Estados**: `undefined` mostra "Carregando perfil…"; `null` mostra "Não foi possível carregar esse perfil."; objeto mostra o cartão. O perfil **próprio** nunca passa pelo cache, vem da sessão, e por isso as edições aparecem na hora.
+**Defeito 1 — o cache nunca invalida**: depois da primeira carga bem-sucedida, o perfil daquela pessoa é reutilizado até recarregar a página. Se ela trocar avatar, status ou bio, o popover mostra a versão antiga. O comentário do próprio código admite que o cache "nunca invalida". Não existe evento de tempo real de atualização de perfil no `RealtimeEvent` (busca por `USER_UPDATE`, `PROFILE_UPDATE` e `USER_PROFILE` em `packages/shared` não achou nada).
+**Defeito 2 — uma falha fica gravada para sempre**: se a primeira carga der erro de rede, o código grava `null` no cache. Como o efeito começa com `remoteProfileCache.has(userId)`, **nunca mais tenta** para aquela pessoa até recarregar, e o popover não tem botão de tentar de novo.
+**Ressalva**: se o popover fecha antes da resposta chegar (`active === false`), nada é gravado e a próxima abertura tenta de novo.
+**APARÊNCIA / ESTADO NORMAL**: Texto centralizado `.profile-popover-loading`.
+**HOVER / ACTIVE / SELECTED / DISABLED**: Não aplicável.
+**LOADING**: Sim, o texto acima.
+**TRIGGER**: Abrir o popover de uma pessoa ainda não vista.
+**PRÉ-CONDIÇÕES**: Sessão válida.
+**RESULTADO IMEDIATO**: `api.getUserProfile(userId)` e `forceRender`.
+**RESULTADO VISUAL**: Carregando, depois cartão ou mensagem de erro.
+**RESULTADO SONORO / ANIMAÇÃO / POPOVER / MENU / MODAL / SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Perfil (possivelmente desatualizado) ou erro permanente.
+**EFEITO LOCAL**: Preenche o cache. **EFEITO REMOTO**: Nenhum.
+**REALTIME**: Nenhum. **BACKEND**: `GET /api/users/:id/profile` (`requireSession`; 404 se o usuário não existe). **BANCO**: Leitura.
+**REFRESH**: Zera o cache (módulo recarrega). **RECONEXÃO**: Não zera; o cache sobrevive a quedas de rede.
+**ERRO**: Mensagem fixa, sem detalhe da causa.
+**CANCELAMENTO**: Fechar o popover durante o carregamento descarta o resultado.
+**REVERSÃO**: Só recarregar a página.
+**ATALHO / MENU DE CONTEXTO**: Não aplicável.
+**ACESSIBILIDADE**: Texto de carregamento sem `aria-live`.
+**Correção proposta, sem executar**: não gravar `null` no cache, e invalidar quando o app receber um evento de perfil atualizado (o servidor precisaria emiti-lo em `PATCH /api/profile`).
+
+---
+
+## 13.12 — MINI_PROFILE_FRIEND_BLOCK_ACTIONS *(CORE)*
+
+**ID**: `MINI_PROFILE_FRIEND_BLOCK_ACTIONS`
+**NOME**: Ações de amizade e bloqueio dentro do mini-perfil
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Mini-perfil de outra pessoa > área de botões abaixo da bio`
+**POSIÇÃO NA INTERFACE**: `.profile-popover-actions`, com borda superior e `flex-wrap`.
+**APARÊNCIA**: `secondary-pill` de 30 px; "Bloquear" usa também `danger-pill`.
+**Botões por relação** (`relationshipStatus`, calculada ao vivo a partir das listas já mantidas em tempo real): sem relação, "Adicionar amigo"; pedido enviado, "Cancelar pedido"; pedido recebido, "Aceitar pedido" e "Recusar"; amigos, "Enviar mensagem" e "Remover amigo". **Sempre**, "Bloquear" ou "Desbloquear".
+**ESTADO NORMAL / HOVER / ACTIVE / SELECTED**: Padrão de pílula; nenhum estado selecionado.
+**DISABLED**: Nunca. Não há estado de "enviando": nada no código impede um segundo clique enquanto a primeira chamada está em curso.
+**LOADING**: Nenhum indicador.
+**TRIGGER**: Clique.
+**PRÉ-CONDIÇÕES**: Não ser o próprio perfil (as ações somem no próprio).
+**RESULTADO IMEDIATO**: `runFriendAction(api.sendFriendRequest | removeFriendship | blockUser | unblockUser)`. "Enviar mensagem" chama `openDmWith`.
+**RESULTADO VISUAL**: Sucesso não mostra aviso. Os botões **trocam sozinhos** quando a relação muda, via tempo real (`FRIENDSHIP_UPDATE`, `BLOCK_UPDATE`), e o popover continua aberto. "Enviar mensagem" leva à tela de Amigos com a DM aberta e fecha o popover.
+**RESULTADO SONORO / ANIMAÇÃO**: Nenhum.
+**POPOVER / MENU / MODAL**: Nenhum. **Sem confirmação** em nenhuma das ações.
+**SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Relação alterada.
+**EFEITO LOCAL**: Botões mudam. **EFEITO REMOTO**: A outra pessoa recebe `FRIENDSHIP_UPDATE` (as regras de escopo estão em `REALTIME_EVENT_SCOPING`).
+**REALTIME**: `FRIENDSHIP_UPDATE`, `BLOCK_UPDATE`. **BACKEND**: As mesmas rotas de `FRIEND_REQUEST_SEND` e `DM_UNBLOCK`. **BANCO**: `friendships` e `blocks`.
+**REFRESH / RECONEXÃO**: O estado de amigos refaz o fetch ao reconectar (`onRealtimeConnect` em `Friends.tsx`).
+**ERRO**: `friendActionError` aparece em `.friend-action-toast` (`role="alert"`, topo central, vermelho, `z-index: 200`) com "×" para fechar. **Nenhum fechamento automático** no código.
+**CANCELAMENTO**: Não aplicável. **REVERSÃO**: O botão oposto, no próprio popover.
+**ATALHO / MENU DE CONTEXTO**: Nenhum.
+**ACESSIBILIDADE**: Botões reais; o toast é anunciado por `role="alert"`.
+
+**Achado — inconsistência de confirmação**: "Remover amigo" aqui age **sem confirmar**, enquanto o mesmo ato na aba Todos de Amigos usa `window.confirm('Remover esse amigo?')` (`FRIEND_REMOVE`, Roteiro 11). O mesmo vale para "Recusar" e "Cancelar pedido", que já eram imediatos lá.
+
+---
+
+## 13.13 — MINI_PROFILE_CLOSE *(CORE, com lacuna de teclado)*
+
+**ID**: `MINI_PROFILE_CLOSE`
+**NOME**: Fechar o mini-perfil
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: botão X do popover, clique fora, ou Esc.
+**POSIÇÃO NA INTERFACE**: `.profile-popover-close`, canto do cartão.
+**APARÊNCIA**: Ícone `CloseIcon` de 13 px, com realce no hover.
+**ESTADO NORMAL / ACTIVE / SELECTED / DISABLED / LOADING**: Padrão / não aplicável.
+**HOVER**: Fundo escuro translúcido.
+**TRIGGER**: Clique no X; `mousedown` fora do popover; tecla `Escape`.
+**PRÉ-CONDIÇÕES**: Popover aberto. Os dois listeners globais (`window`) só existem enquanto `target` não é nulo.
+**RESULTADO IMEDIATO**: `onClose()` limpa `profileTarget`.
+**RESULTADO VISUAL**: Popover some. **Medido**: Esc fecha (contagem de `.profile-popover` cai a 0).
+**RESULTADO SONORO / ANIMAÇÃO**: Nenhum / sem animação de saída.
+**POPOVER / MENU / MODAL / SEGUNDA ETAPA**: Não aplicável.
+**RESULTADO FINAL**: Sem popover.
+**EFEITO LOCAL / REMOTO / REALTIME / BACKEND / BANCO**: Nenhum.
+**REFRESH / RECONEXÃO**: Não aplicável.
+**ERRO**: Não aplicável.
+**CANCELAMENTO**: É o próprio cancelar. **REVERSÃO**: Reabrir.
+**ATALHO**: `Esc`. O handler é global e **não chama `stopPropagation`**, então outros tratadores de Esc (configurações, tela cheia) reagem ao mesmo toque. A ordem de prioridade entre eles é o assunto do roteiro 39 do pedido, ainda não auditado.
+**MENU DE CONTEXTO**: Nenhum.
+**ACESSIBILIDADE — lacuna medida**: o popover é `role="dialog"` sem `aria-modal`, e **o foco não vai para dentro dele ao abrir** (medido: `document.activeElement` continua no botão de origem, `message-name-trigger`) nem **volta ao gatilho ao fechar**. Como o popover é renderizado no início do `Workspace`, antes da rail e da sidebar, quem navega por Tab a partir do gatilho segue a ordem do DOM e **não chega aos botões do popover**. Isso é inferido pela ordem do DOM, não testado com leitor de tela.
+
+---
+
+## 13.14 — MINI_PROFILE_OWN *(PARTIAL)*
+
+**ID**: `MINI_PROFILE_OWN`
+**NOME**: Abrir o próprio mini-perfil
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: clicar no próprio nome ou avatar numa mensagem, ou na própria linha "(você)" da call.
+**Comportamento real**: abre o mesmo cartão, com dados da **sessão** (sem chamada de rede, por isso edições recentes já aparecem) e **sem nenhum botão de ação**. Medido: `.profile-popover-actions` = 0.
+**Ausente**: não há "Editar perfil" que leve às configurações; para editar é preciso abrir Configurações > Meu perfil por outro caminho.
+**Campos restantes (36)**: iguais a `MINI_PROFILE_OPEN`, `MINI_PROFILE_POSITIONING` e `MINI_PROFILE_CLOSE`. Sem loading, sem erro possível e sem backend.
+
+---
+
+## 13.15 — USER_PANEL_IDENTITY *(PARTIAL — texto enganoso, sem interação)*
+
+**ID**: `USER_PANEL_IDENTITY`
+**NOME**: Avatar, nome e linha de estado do painel do próprio usuário
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: `Rodapé da sidebar esquerda (.sidebar-user) > avatar e duas linhas de texto`
+**POSIÇÃO NA INTERFACE**: `<footer className="sidebar-user">`, altura de 58 px (68 px na regra final do CSS, que vale), grade `34px | 1fr | auto`.
+**APARÊNCIA**: Avatar de 34 px, nome de exibição em negrito (ellipsis se longo), segunda linha pequena e apagada com `connectionLabel`.
+**ESTADO NORMAL**: **Medido, logada e sem nenhuma call: "auditor13 / Desconectado".**
+**Achado — a linha mistura duas coisas**: `connectionLabel` traduz `voice.connectionState` (`Conectado`, `Conectando`, `Reconectando`, `Desconectado`). É o estado da **chamada de voz**, não da pessoa. Quem acabou de abrir o app e está conversando num canal de texto lê "Desconectado" embaixo do próprio nome. No Discord essa linha é o **status de presença** (Online, Ausente, etc.).
+**HOVER / ACTIVE / SELECTED / DISABLED / LOADING**: Nenhum. **Medido**: o avatar é um `<span>` fora de qualquer `<button>` ou `<a>`, e o nome também não é interativo.
+**TRIGGER**: Não existe.
+**PRÉ-CONDIÇÕES**: Não aplicável.
+**RESULTADO IMEDIATO / VISUAL / SONORO / ANIMAÇÃO**: Clicar não faz nada.
+**POPOVER / MENU / MODAL**: **Nenhum.** Falta o menu de status e o atalho para o próprio perfil que o Discord abre ao clicar aqui (`MISSING`).
+**SEGUNDA ETAPA / RESULTADO FINAL**: Não aplicável.
+**EFEITO LOCAL / REMOTO / REALTIME**: Nenhum.
+**BACKEND / BANCO**: Nenhum.
+**REFRESH / RECONEXÃO**: A linha acompanha `ConnectionState` do LiveKit.
+**ERRO / CANCELAMENTO / REVERSÃO**: Não aplicável.
+**ATALHO / MENU DE CONTEXTO**: Nenhum. Copiar o próprio nome de usuário não é possível por aqui.
+**ACESSIBILIDADE**: Texto legível por leitor de tela; sem foco e sem ação.
+**Correção proposta, sem executar**: mostrar "Online" fora de call e o estado da call só quando estiver em uma; tornar o bloco clicável para abrir o próprio mini-perfil.
+
+---
+
+## 13.16 — USER_PANEL_CONTROLS *(referência — já auditado em outras fichas)*
+
+**ID**: `USER_PANEL_CONTROLS`
+**NOME**: Microfone, ensurdecer, seletores de dispositivo e Configurações do painel do usuário
+**CAMINHO EXATO**: `.sidebar-actions`, à direita do nome: microfone, chevron de microfone, fone, chevron de saída, engrenagem.
+**STATUS**: `CORE` para o conjunto; o comportamento de cada controle já tem ficha própria: `VOICE_SELF_MUTE` (6.3), `VOICE_SELF_DEAFEN` (6.4) e `VOICE_DEVICE_SELECT` (7.6).
+**Achados novos desta passagem**:
+- **Fora de uma call, o microfone e o fone ficam desabilitados** (`disabled={!voice.connected || ...}`; medido: microfone `disabled = true`). Não existe "pré-mutar" antes de entrar, algo que o Discord permite. O ícone do microfone já aparece riscado mesmo sem call (`micEnabled` falso).
+- **Tooltips** dizem "Desligar microfone/Ligar microfone" e "Desativar áudio/Ativar áudio". Os textos do pedido original são "Silenciar/Ativar microfone", só uma diferença de redação.
+- **`DeviceMenu` fecha só com clique fora** (`mousedown` na `window`). Não há tratamento de Esc, nem navegação por setas na lista, no código lido.
+- **Engrenagem**: abre `SettingsModal` (`setSettingsOpen(true)`), fica com a classe `selected` enquanto aberto e devolve o foco ao botão ao fechar (`returnFocusRef`). `aria-label="Configurações"`.
+**Campos (36) restantes**: cada botão é `<button type="button">` com `title` e `aria-label`; nenhum atalho de teclado (`MISSING`, ver 6.3 e 6.4); efeito remoto só via `TrackMuted`/`Unmuted` do LiveKit.
+
+---
+
+## 13.17 — PRESENCE_DOT_CLIPPED *(código morto — hipótese de "presença falsa" descartada)*
+
+**ID**: `PRESENCE_DOT_CLIPPED`
+**NOME**: Ponto de presença renderizado dentro de todo avatar
+**PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
+**CAMINHO EXATO**: componente `Avatar` (`Workspace.tsx`), presente em todo lugar que mostra uma pessoa.
+**STATUS**: **`PARTIAL`: elemento existe e está quase invisível.** Registro do que aconteceu, porque a primeira leitura do código estava errada.
+**O que o código diz**: `Avatar` sempre renderiza `<span className="presence-dot" />`. O CSS o pinta com `--accent-hover` (medido: `rgb(100, 212, 187)`, `display: block`, 8×8 px) na posição `right: -3px; bottom: -3px`. Só é escondido dentro de mensagens (`.message .presence-dot { display: none }`). Lendo só isso, parecia um **indicador de "online" falso** em listas de amigos, DMs, popover e no painel do usuário, já que o app **não tem presença** (`PRESENCE_STATUS`, `MISSING`).
+**O que a medição mostrou**: o `.avatar` tem `overflow: hidden` e `border-radius: 50%`. O ponto de 8 px, deslocado −3 px para fora, é **cortado pelo círculo**. Medido: ele ultrapassa a borda do avatar em 1 px à direita e 1 px embaixo, e na captura ampliada 3× do avatar do painel do usuário só aparece **uma lasca de poucos pixels** na borda direita, nada que se leia como um ponto de status.
+**Conclusão**: não há falsa indicação de "online" visível. É marcação e CSS mortos, e provavelmente sobraram de uma versão que tinha presença. Fica como pendência de limpeza e como ponto de partida quando a presença existir: o elemento está lá, mas precisaria sair do `overflow: hidden` para funcionar.
+**Campos (36)**: sem interação, sem estado e sem efeito. HOVER, ACTIVE, SELECTED, DISABLED, LOADING, TRIGGER, RESULTADO SONORO, ANIMAÇÃO, POPOVER, MENU, MODAL, SEGUNDA ETAPA, EFEITO REMOTO, REALTIME, BACKEND, BANCO, REFRESH, RECONEXÃO, ERRO, CANCELAMENTO, REVERSÃO, ATALHO e MENU DE CONTEXTO: **não aplicáveis**. ACESSIBILIDADE: o `<span>` vazio não tem texto nem papel, então não polui a leitura de tela.
+
+---
+
+**Achados mais importantes do Roteiro 13** (por ordem de impacto):
+
+1. **Dois botões do cabeçalho de voz sem nenhuma função** (`MEMBER_LIST_TOGGLE_BUTTON`, `VOICE_HEADER_PINS_BUTTON`), confirmados por clique e comparação de DOM. Correção trivial: remover.
+2. **Não existe lista de membros do servidor** (`MEMBER_LIST_SERVER_WIDE`). Os dados já estão na API.
+3. **Cor do cargo e agrupamento por cargo são configurações sem consequência visível** (`ROLE_COLOR_ON_NAMES`, `ROLE_HOIST_MEMBER_GROUPING`).
+4. **Mini-perfil cortado pela borda inferior**, medido em 30 px, por uma altura estimada errada (`MINI_PROFILE_POSITIONING`).
+5. **Cache de perfil que nunca invalida e grava falhas para sempre** (`MINI_PROFILE_LOADING_ERROR_CACHE`).
+6. **Painel do usuário mostra "Desconectado" com o app aberto** e o avatar e o nome não são clicáveis (`USER_PANEL_IDENTITY`).
+7. **Acessibilidade do popover**: sem foco de entrada, sem devolução de foco e provavelmente inalcançável por Tab (`MINI_PROFILE_CLOSE`).
+8. **Inconsistência**: "Remover amigo" sem confirmação no popover, com confirmação em Amigos (`MINI_PROFILE_FRIEND_BLOCK_ACTIONS`).
 
 ---
 
@@ -5702,3 +6150,5 @@ Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente apropri
 **Achados desta seção**: (1) confirmação de que "Nome de exibição" é intencionalmente somente-leitura, não um bug — mesma limitação de fundação já conhecida (username fixo); (2) inconsistência pequena de estilo de erro (banner de perfil usa classe neutra, senha usa classe de erro real); (3) Meu Perfil é a única tela desta auditoria com padrão "editar tudo, salvar em lote" — todas as outras telas de configuração salvam campo a campo; (4) texto de Privacidade descreve consequências (chamada, atividade) que não se aplicam totalmente às features reais do app — copy herdada, não adaptada.
 
 **Próximo na fila**: com a superfície de app/servidor/voz/mensagens/amigos/configurações mapeada em profundidade (175 fichas, 13 roteiros), a auditoria agora tem material suficiente pra começar os três documentos de síntese ainda não criados: `DISCORD_NAVIGATION_TREE.md` (árvore de navegação completa), `DISCORD_INTERACTION_MATRIX.md` (tabela mestra de todas as interações), e `DISCORD_USER_JOURNEYS.md` (roteiros de usuário ponta a ponta) — nessa ordem, já que a árvore de navegação é a base estrutural mais simples de montar primeiro a partir do que já foi mapeado.
+
+**Atualização — Roteiro 13 (lista de membros, mini-perfil, painel do usuário)**: acrescentou **17 fichas**, levando o total a **192 fichas em 14 roteiros** (numeração do Atlas). Os quatro documentos de síntese (`DISCORD_INTERACTION_MATRIX.md`, `DISCORD_NAVIGATION_TREE.md`, `DISCORD_USER_JOURNEYS.md`, `DISCORD_PARITY_PLAN.md`) foram atualizados para incluí-lo. Diferente dos roteiros anteriores, este teve **medição num Chromium real** além da leitura do código, e a medição corrigiu uma hipótese (o ponto de presença, ficha `PRESENCE_DOT_CLIPPED`).
