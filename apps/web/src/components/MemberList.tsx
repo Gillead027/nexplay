@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import type { MemberSummary } from '@nexplay/shared';
-import { groupMembersByPresence } from '../memberListState';
+import { buildMemberSections } from '../memberListState';
 import { useServerMemberList } from '../useServerMemberList';
 import { Avatar } from './Workspace';
 
@@ -38,10 +38,12 @@ function MemberRow({
   );
 }
 
-// Painel da direita: só os membros do servidor. Quem está com o app aberto fica
-// em cima, em "Online"; quem não está fica numa categoria "Offline" embaixo, e
-// sobe sozinho quando ficar online. Nada de controles de voz aqui: quem está em
-// cada call e o volume de cada pessoa ficam na lista de canais de voz à esquerda.
+// Painel da direita: os membros do servidor em categorias, como no Discord.
+// Primeiro uma categoria por cargo que esteja com "Exibir membros do cargo
+// separadamente" ligado (só quem está online), depois "Online" e, por último,
+// "Offline". Quem abre ou fecha o app muda de categoria sozinho. Nada de
+// controles de voz aqui: o volume de cada pessoa fica no botão direito na lista
+// de canais de voz, à esquerda.
 export function MemberList({
   serverId,
   ownId,
@@ -51,8 +53,8 @@ export function MemberList({
   ownId: string;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
 }) {
-  const { members, onlineIds, loading, failed } = useServerMemberList(serverId);
-  const groups = useMemo(() => groupMembersByPresence(members, onlineIds, ownId), [members, onlineIds, ownId]);
+  const { members, roles, onlineIds, loading, failed } = useServerMemberList(serverId);
+  const sections = useMemo(() => buildMemberSections(members, onlineIds, ownId, roles), [members, onlineIds, ownId, roles]);
   const empty = members.length === 0;
 
   return (
@@ -64,22 +66,22 @@ export function MemberList({
       <div className="member-list-scroll">
         {empty && loading && <p className="member-list-note">Carregando membros…</p>}
         {empty && !loading && failed && <p className="member-list-note" role="alert">Não foi possível carregar os membros.</p>}
-        {groups.online.length > 0 && (
-          <div className="member-group">
-            <span className="member-group-title">Online — {groups.online.length}</span>
-            {groups.online.map((member) => (
-              <MemberRow key={member.id} member={member} online isOwn={member.id === ownId} onOpenProfile={onOpenProfile} />
+        {sections.map((section) => (
+          <div className="member-group" key={section.key} data-kind={section.kind}>
+            <span className="member-group-title">
+              {section.title} — {section.members.length}
+            </span>
+            {section.members.map((member) => (
+              <MemberRow
+                key={member.id}
+                member={member}
+                online={section.kind !== 'offline'}
+                isOwn={member.id === ownId}
+                onOpenProfile={onOpenProfile}
+              />
             ))}
           </div>
-        )}
-        {groups.offline.length > 0 && (
-          <div className="member-group">
-            <span className="member-group-title">Offline — {groups.offline.length}</span>
-            {groups.offline.map((member) => (
-              <MemberRow key={member.id} member={member} online={false} isOwn={false} onOpenProfile={onOpenProfile} />
-            ))}
-          </div>
-        )}
+        ))}
       </div>
     </aside>
   );
