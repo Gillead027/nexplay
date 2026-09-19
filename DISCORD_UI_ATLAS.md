@@ -2687,12 +2687,15 @@ Cobre os roteiros 38 (Keyboard navigation), 39 (Esc), 40 (Hover, só o que é te
 5. **Não existe histórico de navegação.** A URL fica sempre `/`, o botão Voltar do navegador sai do app, e **F5 perde o canal**: medido, estando em `#segundo`, o app volta a `#geral` (`BACK_FORWARD_HISTORY`, `STATE_RESTORE_ON_RELOAD`).
 6. **Não existe nenhum atalho global além do PTT**, nenhum duplo clique em lugar nenhum, nenhum link de mensagem copiável, nenhum link do tipo `nexplay://` e nenhum modo desenvolvedor.
 
+**Atualização — correções publicadas**: (a) copiar no desktop, a captura do PTT e o Esc do diálogo de excluir servidor foram corrigidos só no `web` (commit `624b8a5`, em produção); a cópia ganhou plano B por `execCommand` e "Copiado!", e conserta também as versões do desktop já instaladas; (b) o desktop `0.2.11` (release `v0.2.11`, commit `6a6752f`) abre links `http(s)` no navegador do sistema e libera a escrita na área de transferência. **Continuam abertos**: Esc sem pilha de camadas (só o diálogo de excluir servidor foi tratado), atalhos, duplo clique, histórico/URL por canal, restaurar canal após F5, deep links, permalink, modo desenvolvedor. Verificado num Chromium real e num Electron real, inclusive no **executável empacotado** `0.2.11`.
+
 ---
 
 ## 15.1 — CLIPBOARD_COPY_DESKTOP *(BROKEN — copiar não funciona no desktop)*
 
 **ID**: `CLIPBOARD_COPY_DESKTOP`
 **NOME**: Copiar para a área de transferência (texto da mensagem, ID da categoria, código de convite)
+**STATUS ATUAL**: **corrigido** (commit `624b8a5`, em produção; e desktop `0.2.11`, release `v0.2.11` (commit `6a6752f`)). A função `copyText` tenta `navigator.clipboard.writeText` e, se a permissão for negada, cai para `document.execCommand('copy')`, que não depende dela. Por isso a correção do `web` vale também para o desktop já instalado. Message e DM mostram "Copiado!" ou "Não foi possível copiar"; o convite só diz "Copiado!" quando a cópia realmente aconteceu. Verificado no Electron real com a permissão ainda negada (mensagem e código de convite copiaram) e, depois, no desktop `0.2.11`, onde a API nativa passou a funcionar (permissão `clipboard-write` = `granted`; `clipboard-read` e notificações continuam `denied`). O texto abaixo registra o defeito original.
 **PLATAFORMA**: `DESKTOP_WINDOWS` (quebrado), `WEB` (não medido nesta rodada)
 **CAMINHO EXATO**: `Mensagem > barra de ações no hover > "Copiar texto"` (canal e DM), `Categoria > botão direito > "Copiar ID da Categoria"`, `Configurações do servidor > Convites > "Copiar"`.
 **POSIÇÃO NA INTERFACE**: `TextChannels.tsx` (mensagem de canal), `DmChannelView.tsx` (mensagem de DM), `Workspace.tsx` (menu da categoria), `ServerSettings.tsx` (convite).
@@ -2722,6 +2725,7 @@ Cobre os roteiros 38 (Keyboard navigation), 39 (Esc), 40 (Hover, só o que é te
 
 **ID**: `MESSAGE_LINK_OPEN`
 **NOME**: Clicar num link `http(s)` dentro de uma mensagem
+**STATUS ATUAL**: **corrigido no desktop `0.2.11`, release `v0.2.11` (commit `6a6752f`).** O tratador de `window.open` passou a abrir só `http` e `https` no navegador do sistema (sem usuário e senha embutidos, sem outros esquemas) e continua negando a janela. Verificado no Electron real e no executável empacotado: `https` vai a `shell.openExternal`; `file:`, `ms-settings:`, `javascript:`, `vscode:`, `mailto:` e link com senha não são abertos. **Chega às máquinas por auto-update**, na próxima vez que o app for aberto; até lá, nas versões anteriores o link continua morto. O texto abaixo registra o defeito original.
 **PLATAFORMA**: `DESKTOP_WINDOWS` (quebrado), `WEB` (funciona)
 **CAMINHO EXATO**: `Mensagem com URL > clicar no link`
 **POSIÇÃO NA INTERFACE**: `<a target="_blank" rel="noopener noreferrer">` gerado por `Markdown.tsx` (`URL_PATTERN` só reconhece `http://` e `https://`).
@@ -2750,6 +2754,7 @@ Cobre os roteiros 38 (Keyboard navigation), 39 (Esc), 40 (Hover, só o que é te
 
 **ID**: `PTT_KEY_CAPTURE_ESCAPE`
 **NOME**: Apertar Esc durante a captura da tecla de "apertar para falar"
+**STATUS ATUAL**: **corrigido** (commit `624b8a5`, em produção). Durante a captura, Esc cancela sem gravar tecla e sem fechar as Configurações (o ouvinte de captura roda na fase de captura e consome o toque). Uma tecla normal continua sendo gravada, e fora da captura o Esc fecha o modal como antes. Verificado no Chromium e no Electron reais. O texto abaixo registra o defeito original.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Configurações > Voz e vídeo > modo "Push to talk" > botão da tecla (`.ptt-key-button`) > "Pressione uma tecla…" > Esc`
 **POSIÇÃO NA INTERFACE**: Efeito em `Workspace.tsx` (`listeningForKey`), que registra um `keydown` no `window`.
@@ -2778,6 +2783,7 @@ Cobre os roteiros 38 (Keyboard navigation), 39 (Esc), 40 (Hover, só o que é te
 
 **ID**: `ESCAPE_LAYER_PRIORITY`
 **NOME**: O que o Esc fecha quando há mais de uma camada aberta
+**STATUS ATUAL**: **corrigido só o caso medido** (commit `624b8a5`, em produção): o diálogo de excluir servidor agora trata o próprio Esc, e um toque fecha só o diálogo, deixando as Configurações do servidor abertas. **Continua `PARTIAL`**: os dez ouvintes seguem independentes, sem pilha de camadas. O texto abaixo registra o estado medido antes da correção.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: qualquer tela com diálogo, menu ou painel aberto, tecla `Escape`.
 **Situação real**: cada camada registra o **seu próprio** ouvinte de Esc no `window`, sem coordenação. Ouvintes globais confirmados no código: menu de contexto (`ContextMenu.tsx`), encaminhar mensagem (`ForwardMessage.tsx`), mini-perfil (`ProfilePopover.tsx`), tela cheia da transmissão no desktop (`ScreenStage.tsx`), adicionar servidor (`Servers.tsx`), configurações do servidor (`ServerSettings.tsx`), soundboard (`Soundboard.tsx`), criar canal (`TextChannels.tsx`), criar categoria e configurações do app (`Workspace.tsx`). **Dez ao todo.** Fora esses, os campos de mensagem tratam Esc no próprio `textarea` (cancelar resposta ou edição, `TextChannels.tsx` e `DmChannelView.tsx`). Nenhum chama `stopPropagation`, nenhum consulta se existe outra camada por cima.
@@ -3927,7 +3933,7 @@ Arquitetura real (verificada em `apps/web/src/components/TextChannels.tsx`, ~126
 
 **ID**: `MESSAGE_COPY_TEXT`
 **NOME**: Copiar o texto de uma mensagem
-**STATUS ATUAL — CORREÇÃO (Roteiro 15 do Atlas)**: esta ficha partia do princípio de que a cópia funcionava e só apontava a falta de feedback. **No app desktop ela não funciona**: medido num Electron real, a permissão `clipboard-write` está negada e `writeText` falha com `NotAllowedError`. Ver `CLIPBOARD_COPY_DESKTOP` (15.1). O texto abaixo vale para o navegador comum, e mesmo lá continua sem feedback.
+**STATUS ATUAL — CORREÇÃO (Roteiro 15 do Atlas)**: esta ficha partia do princípio de que a cópia funcionava e só apontava a falta de feedback. **No app desktop ela não funciona**: medido num Electron real, a permissão `clipboard-write` está negada e `writeText` falha com `NotAllowedError`. Ver `CLIPBOARD_COPY_DESKTOP` (15.1), onde está registrada a correção. O texto abaixo vale para o estado anterior: sem feedback de cópia.
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
 **CAMINHO EXATO**: `Mensagem > toolbar de hover > ícone Copiar`
 **POSIÇÃO NA INTERFACE**: Terceiro ícone da toolbar.

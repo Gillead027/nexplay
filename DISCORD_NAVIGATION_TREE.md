@@ -120,7 +120,7 @@ APP
 │   │   │   │   ├── Silenciar / config. de notificação (escondidos até haver notificação)   DONE (Roteiro 14)
 │   │   │   │   ├── Editar categoria (nome, staff)                           CORE
 │   │   │   │   ├── Excluir categoria (confirm() nativo)              ADMIN  CORE
-│   │   │   │   ├── Copiar ID da categoria (sem aviso "Copiado")             BROKEN no desktop (Roteiro 15)
+│   │   │   │   ├── Copiar ID da categoria (funciona; o menu fecha, sem aviso)        DONE
 │   │   │   │   └── Duplicar categoria                                       MISSING
 │   │   │   ├── Categoria "restrita à staff": invisível para quem só tem @everyone   CORE
 │   │   │   └── Arrastar categoria para reordenar                            MISSING
@@ -149,7 +149,7 @@ APP
 │   │   ├── Mensagem (passar o mouse → barra de ações)
 │   │   │   ├── Responder → banner acima do composer → prévia clicável       CORE
 │   │   │   ├── Encaminhar → canal/servidor/DM (um destino por vez)          CORE
-│   │   │   ├── Copiar texto (sem aviso "Copiado")                           BROKEN no desktop (Roteiro 15)
+│   │   │   ├── Copiar texto (mostra "Copiado!" ou o erro)                       DONE
 │   │   │   ├── Adicionar reação → picker de emoji (busca + 9 categorias)    CORE
 │   │   │   ├── Fixar / desafixar (MANAGE_MESSAGES, teto 50)          ADMIN  CORE
 │   │   │   ├── Editar (só a própria)                                        CORE
@@ -322,11 +322,11 @@ APP
 │   └── Badge de pedidos de amizade no botão Início                          CORE (único badge do app)
 │
 ├── TECLADO, HISTÓRICO, COPIAR E LINKS                                  [Roteiro 15]
-│   ├── Copiar (texto da mensagem, ID da categoria, código de convite)      BROKEN no desktop (permissão negada; sem aviso)
-│   ├── Clicar num link de mensagem                                          BROKEN no desktop (CORE na web)
+│   ├── Copiar (texto da mensagem, ID da categoria, código de convite)      DONE (mostra "Copiado!"; funciona no desktop)
+│   ├── Clicar num link de mensagem                                          DONE (desktop 0.2.11; chega por auto-update)
 │   ├── Esc
-│   │   ├── Fechar a camada de cima só                                       PARTIAL (dez ouvintes sem pilha)
-│   │   └── Cancelar a captura da tecla do PTT                               BROKEN (grava Escape e fecha as configurações)
+│   │   ├── Fechar a camada de cima só                                       PARTIAL (excluir servidor corrigido; dez ouvintes sem pilha)
+│   │   └── Cancelar a captura da tecla do PTT                               DONE (cancela sem gravar)
 │   ├── Atalhos globais (Ctrl+K, Ctrl+/, mute, canais)                       MISSING (só PTT, Enter e Esc)
 │   ├── Foco e Tab em camadas                                                PARTIAL (só Configurações do app)
 │   ├── Duplo clique                                                         MISSING (barra de título: a confirmar)
@@ -367,7 +367,7 @@ APP
 | Voz e vídeo | atalho de mute, som de deafen/câmera, preview/blur, trocar qualidade sem parar, foco em quem fala |
 | Configurações do app | alterar username, sessões ativas, seções removidas (notificações, atalhos, idioma) |
 | Notificações e não lidas | rastreio de leitura, menções, notificação e flash do desktop (o Electron nega `notifications`), título com contador, inbox, silenciar servidor/canal/DM, som fora do chat da call; o modo de notificação da categoria grava e nada o lê |
-| Teclado, histórico, copiar e links | copiar e abrir link no desktop (quebrados), Esc em camadas e na captura do PTT, atalhos, histórico e URL por canal, restaurar canal após F5, deep links, permalink de mensagem, modo desenvolvedor |
+| Teclado, histórico, copiar e links | Esc sem pilha de camadas, atalhos, histórico e URL por canal, restaurar canal após F5, deep links, permalink de mensagem, modo desenvolvedor |
 | Tempo real | presença, "digitando", indicador de reconexão do WebSocket |
 
 ## O que a árvore mostra
