@@ -91,7 +91,6 @@ import { DmChannelView } from './DmChannelView';
 import { FriendsHome, FriendsSidebar, isBlockedByMe as computeIsBlockedByMe, relationshipStatus, useFriendsState } from './Friends';
 import { ProfilePopover, type ProfilePopoverTarget } from './ProfilePopover';
 import { RemoteAudioSink } from './RemoteAudioSink';
-import { ScreenStage } from './ScreenStage';
 import { type StageEntry, VoiceStage } from './VoiceStage';
 import { ForwardMessageModal, type ForwardSource } from './ForwardMessage';
 import { AboutPane } from './AboutPane';
@@ -1769,6 +1768,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   // Na sala de voz a lista de membros fica escondida (o palco mostra quem está na chamada); o botão do
   // cabeçalho a traz de volta.
   const [voiceMembersOpen, setVoiceMembersOpen] = useState(false);
+  // Assistindo uma transmissão: esconde a faixa de participantes e os controles da chamada (a setinha embaixo).
+  const [callChromeHidden, setCallChromeHidden] = useState(false);
   const [chatSeenCount, setChatSeenCount] = useState(0);
   useEffect(() => {
     setChatSeenCount(voice.messages.length);
@@ -2455,6 +2456,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const unreadChat = chatOpen ? 0 : voice.messages.slice(chatSeenCount).filter((message) => message.senderId !== session.id).length;
   const cameraViews = voice.screenTracks.filter((view) => view.publication.source === Track.Source.Camera && !view.publication.isMuted);
   const shareViews = voice.screenTracks.filter((view) => view.publication.source === Track.Source.ScreenShare);
+  const watchingStream = shareViews.some((view) => watchingScreenIds.has(view.id));
+  const chromeHidden = watchingStream && callChromeHidden;
   // Quem gerencia o servidor pode convidar direto da sala de voz (o convite é do servidor inteiro).
   const copyServerInvite =
     canManageServer && activeServerId
@@ -2475,14 +2478,27 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       })()
     : null;
 
-  const renderVoiceStage = (compact: boolean) => (
+  const voiceStage = (
     <VoiceStage
       participants={typedParticipants}
       cameras={cameraViews}
+      shares={shareViews}
+      watchingIds={watchingScreenIds}
+      onWatch={(id) => setWatchingScreenIds((current) => new Set(current).add(id))}
+      onStopWatching={(id) =>
+        setWatchingScreenIds((current) => {
+          const next = new Set(current);
+          next.delete(id);
+          return next;
+        })
+      }
+      streamVolumes={streamVolumes}
+      setStreamVolume={(identity, value) => setStreamVolumes((current) => ({ ...current, [identity]: value }))}
+      chromeHidden={chromeHidden}
+      onToggleChrome={() => setCallChromeHidden((hidden) => !hidden)}
       speakingIds={voice.speakers}
       liveMuted={liveMuted}
       channelName={voice.currentChannel?.name ?? 'este canal'}
-      compact={compact}
       renderAvatar={(entry) => <StageAvatar entry={entry} ownIdentity={session.id} ownAvatarUrl={session.avatarUrl} />}
       onParticipantContextMenu={openParticipantVolumeMenu}
       onOpenProfile={openUserProfile}
@@ -3112,36 +3128,14 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           </div>
         )}
 
-        <div className={`room-content ${voice.connected ? 'voice-live' : ''} ${chatOpen && voice.connected ? 'with-chat' : ''} ${voice.connected && voiceMembersOpen ? 'with-members' : ''}`}>
+        <div className={`room-content ${voice.connected ? 'voice-live' : ''} ${chatOpen && voice.connected ? 'with-chat' : ''} ${voice.connected && voiceMembersOpen ? 'with-members' : ''} ${voice.connected && watchingStream ? 'call-watching' : ''} ${chromeHidden ? 'call-chrome-hidden' : ''}`}>
           <section className="stage-column">
             <div className="stage-content">
               {voice.connected && <SoundboardToast event={voice.soundboardEvent} />}
               {joiningId || voice.connectionState === ConnectionState.Connecting ? (
                 <RoomSkeleton />
               ) : voice.connected ? (
-                shareViews.length > 0 ? (
-                  <div className="stage-with-strip">
-                    <div className="stage-share">
-                      <ScreenStage
-                        screens={shareViews}
-                        streamVolumes={streamVolumes}
-                        setStreamVolume={(identity, value) => setStreamVolumes((current) => ({ ...current, [identity]: value }))}
-                        watchingIds={watchingScreenIds}
-                        onWatch={(id) => setWatchingScreenIds((current) => new Set(current).add(id))}
-                        onStopWatching={(id) =>
-                          setWatchingScreenIds((current) => {
-                            const next = new Set(current);
-                            next.delete(id);
-                            return next;
-                          })
-                        }
-                      />
-                    </div>
-                    {renderVoiceStage(true)}
-                  </div>
-                ) : (
-                  renderVoiceStage(false)
-                )
+                voiceStage
               ) : (
                 <div className="disconnected-stage">
                   <VoiceIcon size={20} />

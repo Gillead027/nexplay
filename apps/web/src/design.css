@@ -305,7 +305,7 @@ button:hover > .avatar, .avatar:hover { box-shadow: 0 0 0 2px color-mix(in srgb,
 .member-group-title, .member-list-heading { color: var(--text-muted); font-weight: 700; letter-spacing: .09em; }
 
 /* ---------- voz ---------- */
-.voice-toolbar { border-color: var(--border-light); background: color-mix(in srgb, var(--panel-raised) 82%, transparent); backdrop-filter: blur(20px); box-shadow: var(--shadow-lg); animation: toolbar-in 420ms var(--ease-out) both; }
+.voice-toolbar { border-color: var(--border-light); background: color-mix(in srgb, var(--panel-raised) 82%, transparent); backdrop-filter: blur(20px); box-shadow: var(--shadow-lg); animation: toolbar-in 420ms var(--ease-out) backwards; transition: transform 320ms var(--ease-out), opacity 220ms var(--ease-out); }
 .voice-action { border-color: var(--border-light); color: var(--text-secondary); background: var(--panel-raised); transition: background-color var(--dur), color var(--dur), transform var(--dur-fast) var(--ease-out), box-shadow var(--dur); }
 .voice-action:hover:not(:disabled) { color: var(--text-primary); background: var(--hover); transform: translateY(-2px); }
 .voice-action.danger { color: #fff; border-color: transparent; background: var(--danger); }
@@ -459,9 +459,6 @@ html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #
 .room-content.voice-live .stage-content { padding: 20px 20px 104px; }
 .room-content.voice-live .stage-content::before { opacity: .35; }
 
-.stage-with-strip { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; position: relative; z-index: 1; }
-.stage-share { flex: 1; min-height: 0; display: flex; }
-.stage-share .screen-stage { border-radius: 16px; overflow: hidden; border-color: var(--border-light); }
 
 .voice-stage { position: relative; z-index: 1; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .voice-tiles { flex: 1; min-height: 0; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 12px; overflow: hidden; }
@@ -508,12 +505,6 @@ html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #
   100% { box-shadow: 0 8px 28px rgba(2, 6, 20, .45), 0 0 0 clamp(10px, 3.4cqw, 26px) rgba(46, 230, 240, 0); }
 }
 
-/* Faixa de quadrados pequenos sob uma transmissão de tela */
-.voice-stage.compact { flex: 0 0 auto; }
-.voice-stage.compact .voice-tiles { flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-start; align-content: flex-start; overflow-x: auto; padding-bottom: 2px; }
-.voice-stage.compact .voice-tile { --tile-w: 196px; border-radius: 14px; }
-.voice-stage.compact .voice-tile-label { left: 8px; bottom: 8px; padding: 3px 8px; font-size: var(--fs-xs); }
-
 /* Sozinho na sala: convite logo abaixo do quadrado */
 .voice-invite {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 28px; margin: 12px auto 0; padding: 16px 24px;
@@ -548,3 +539,76 @@ html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #
 
 [data-perf="lite"] .voice-tile { animation: none; }
 [data-perf="lite"] .voice-tile.speaking .voice-tile-avatar .avatar { animation: none; }
+
+/* ---------- transmissão de tela ----------
+   Sem assistir: cada transmissão é um quadrado na grade, ao lado dos das pessoas ("Assista à transmissão").
+   Assistindo: a transmissão ocupa o palco e as pessoas viram uma faixa embaixo; a setinha esconde a faixa e os
+   controles da chamada para a transmissão ficar quase em tela cheia. */
+.stream-tile { cursor: pointer; }
+.stream-tile-art { position: absolute; left: 50%; top: 45%; width: 24cqw; height: 24cqw; transform: translate(-50%, -50%); color: #fff; opacity: .12; }
+.stream-watch-button {
+  position: relative; z-index: 2; display: inline-flex; align-items: center; gap: 8px; height: 40px; padding: 0 18px; border: 1px solid rgba(255, 255, 255, .18); border-radius: 12px;
+  color: #fff; background: rgba(3, 7, 20, .55); backdrop-filter: blur(10px); font-size: var(--fs-md); font-weight: 700;
+}
+.stream-tile:hover .stream-watch-button, .stream-watch-button:hover { border-color: transparent; background: var(--accent); box-shadow: 0 8px 22px var(--accent-glow); }
+.watch-live {
+  position: absolute; z-index: 2; top: 12px; left: 12px; padding: 3px 8px; border-radius: 7px; color: #fff; background: var(--danger);
+  font-size: var(--fs-2xs); font-weight: 800; letter-spacing: .06em; line-height: 1.3;
+}
+
+.watch-stage { position: relative; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.watch-heroes { flex: 1; min-height: 0; display: flex; gap: 12px; }
+.watch-hero {
+  position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border-radius: 18px; background: #02050f;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07), var(--shadow-lg); animation: tile-pop 420ms var(--ease-out) both;
+}
+.watch-hero video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.watch-hero-label {
+  position: absolute; z-index: 2; left: 12px; bottom: 12px; display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 9px; color: #fff;
+  background: rgba(3, 7, 20, .62); backdrop-filter: blur(8px); font-size: var(--fs-sm); font-weight: 650;
+}
+.watch-hero-actions { position: absolute; z-index: 3; top: 12px; right: 12px; display: flex; gap: 8px; opacity: 0; transform: translateY(-4px); transition: opacity var(--dur) var(--ease-out), transform var(--dur) var(--ease-out); }
+.watch-hero:hover .watch-hero-actions, .watch-hero:focus-within .watch-hero-actions { opacity: 1; transform: none; }
+.watch-hero-button {
+  height: 36px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 0 13px; border: 1px solid rgba(255, 255, 255, .14); border-radius: 10px;
+  color: #fff; background: rgba(3, 7, 20, .7); backdrop-filter: blur(10px); font-size: var(--fs-sm); font-weight: 650;
+}
+.watch-hero-button.icon { width: 36px; padding: 0; }
+.watch-hero-button:hover { border-color: var(--accent); background: rgba(20, 32, 70, .88); }
+.watch-hero .screen-volume {
+  right: 12px; bottom: 12px; padding: 6px 12px; border: 0; border-radius: 10px; color: #fff; background: rgba(3, 7, 20, .62); backdrop-filter: blur(8px);
+  opacity: 0; transition: opacity var(--dur) var(--ease-out);
+}
+.watch-hero:hover .screen-volume, .watch-hero .screen-volume:focus-within { opacity: 1; }
+.watch-hero .screen-volume input[type="range"] { width: 96px; }
+.watch-hero .screen-volume output { color: #fff; }
+
+.watch-strip { flex: 0 0 auto; display: grid; grid-template-rows: 1fr; transition: grid-template-rows 320ms var(--ease-out), opacity 220ms var(--ease-out), margin-top 320ms var(--ease-out); }
+.watch-strip-inner { min-height: 0; overflow: hidden; }
+.voice-tiles.strip { flex: 0 0 auto; flex-wrap: nowrap; justify-content: safe center; align-content: flex-start; overflow-x: auto; overflow-y: hidden; padding: 2px; }
+.voice-tiles.strip .voice-tile { --tile-w: 200px; border-radius: 14px; }
+.voice-tiles.strip .voice-tile-label { left: 8px; bottom: 8px; padding: 3px 8px; font-size: var(--fs-xs); }
+.voice-tiles.strip .stream-watch-button { width: 40px; padding: 0; justify-content: center; }
+.voice-tiles.strip .stream-watch-button span { display: none; }
+.voice-tiles.strip .watch-live { top: 8px; left: 8px; }
+.watch-stage.chrome-hidden .watch-strip { grid-template-rows: 0fr; margin-top: -12px; opacity: 0; pointer-events: none; visibility: hidden; transition: grid-template-rows 320ms var(--ease-out), opacity 220ms var(--ease-out), margin-top 320ms var(--ease-out), visibility 0s 320ms; }
+
+.watch-chrome-tab {
+  position: absolute; z-index: 7; left: 50%; bottom: -24px; width: 60px; height: 20px; margin-left: -30px; display: grid; place-items: center;
+  border: 1px solid var(--border-light); border-bottom: 0; border-radius: 10px 10px 0 0; color: var(--text-secondary); background: var(--panel-raised);
+  transition: background-color var(--dur), color var(--dur), bottom 320ms var(--ease-out);
+}
+.watch-chrome-tab:hover { color: #fff; background: var(--accent); }
+.watch-chrome-tab svg { transition: transform 320ms var(--ease-out); }
+.watch-stage.chrome-hidden .watch-chrome-tab { bottom: -30px; }
+.watch-stage.chrome-hidden .watch-chrome-tab svg { transform: rotate(180deg); }
+.watch-stage.native-fullscreen { position: fixed; inset: 0; z-index: 1000; padding: 16px 16px 30px; background: var(--rail); }
+.watch-stage.native-fullscreen .watch-chrome-tab, .watch-stage.native-fullscreen.chrome-hidden .watch-chrome-tab { bottom: 0; }
+
+.room-content.voice-live .stage-content { transition: padding-bottom 320ms var(--ease-out); }
+.room-content.voice-live.call-watching .stage-content { padding-bottom: 122px; }
+.room-content.voice-live.call-chrome-hidden .stage-content { padding-bottom: 38px; }
+.room-content.call-chrome-hidden .voice-toolbar { transform: translate(-50%, 170%); opacity: 0; pointer-events: none; visibility: hidden; transition: transform 320ms var(--ease-out), opacity 220ms var(--ease-out), visibility 0s 320ms; }
+
+[data-perf="lite"] .watch-hero { animation: none; }
+[data-perf="lite"] .watch-strip, [data-perf="lite"] .watch-chrome-tab { transition: none; }

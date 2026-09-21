@@ -12,8 +12,8 @@ import {
 import type { LocalParticipant, RemoteParticipant } from 'livekit-client';
 import { ACCENT_COLORS, MUSIC_BOT_IDENTITY, parseParticipantMetadata } from '@nexplay/shared';
 import type { ScreenTrackView } from '../livekit/useVoiceRoom';
-import { attachVideo } from './ScreenStage';
-import { MicOffIcon, UserPlusIcon } from './Icons';
+import { attachVideo, WatchStage } from './WatchStage';
+import { EyeIcon, MicOffIcon, ShareIcon, UserPlusIcon } from './Icons';
 
 export interface StageEntry {
   identity: string;
@@ -25,6 +25,14 @@ export interface StageEntry {
   muted: boolean;
   speaking: boolean;
   camera: ScreenTrackView | null;
+}
+
+// Uma transmissão de tela que ainda não está sendo assistida: ganha um quadrado próprio, ao lado dos das pessoas.
+interface StreamEntry {
+  view: ScreenTrackView;
+  name: string;
+  isLocal: boolean;
+  colorIndex: number;
 }
 
 const TILE_GAP = 12;
@@ -152,13 +160,37 @@ function Tile({
   );
 }
 
+function StreamTile({ entry, onWatch }: { entry: StreamEntry; onWatch: () => void }) {
+  const label = entry.isLocal ? 'Ver minha transmissão' : 'Assista à transmissão';
+  return (
+    <article className={`voice-tile stream-tile tile-color-${entry.colorIndex}`} onClick={onWatch}>
+      <ShareIcon className="stream-tile-art" size={64} />
+      <span className="watch-live">AO VIVO</span>
+      <button type="button" className="stream-watch-button" onClick={(event) => { event.stopPropagation(); onWatch(); }} title={label}>
+        <EyeIcon size={16} /> <span>{label}</span>
+      </button>
+      <div className="voice-tile-label">
+        <ShareIcon size={13} />
+        <span className="voice-tile-name">{entry.isLocal ? 'Sua transmissão' : entry.name}</span>
+      </div>
+    </article>
+  );
+}
+
 export function VoiceStage({
   participants,
   cameras,
+  shares,
+  watchingIds,
+  onWatch,
+  onStopWatching,
+  streamVolumes,
+  setStreamVolume,
+  chromeHidden,
+  onToggleChrome,
   speakingIds,
   liveMuted,
   channelName,
-  compact = false,
   renderAvatar,
   onParticipantContextMenu,
   onOpenProfile,
@@ -166,11 +198,18 @@ export function VoiceStage({
 }: {
   participants: (LocalParticipant | RemoteParticipant)[];
   cameras: ScreenTrackView[];
+  shares: ScreenTrackView[];
+  watchingIds: Set<string>;
+  onWatch: (id: string) => void;
+  onStopWatching: (id: string) => void;
+  streamVolumes: Record<string, number>;
+  setStreamVolume: (identity: string, value: number) => void;
+  // Esconde a faixa de participantes (e, em quem chama, os controles da chamada) enquanto assiste uma transmissão.
+  chromeHidden: boolean;
+  onToggleChrome: () => void;
   speakingIds: Set<string>;
   liveMuted: Map<string, boolean>;
   channelName: string;
-  // Faixa de quadrados pequenos embaixo de uma transmissão de tela.
-  compact?: boolean;
   renderAvatar: (entry: StageEntry) => ReactNode;
   onParticipantContextMenu: (event: ReactMouseEvent<HTMLElement>, participant: { identity: string; name: string }) => void;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
@@ -178,18 +217,53 @@ export function VoiceStage({
   copyInvite?: (() => Promise<boolean>) | undefined;
 }) {
   const entries = useMemo(() => buildEntries(participants, cameras, speakingIds, liveMuted), [participants, cameras, speakingIds, liveMuted]);
+  const heroes = shares.filter((view) => watchingIds.has(view.id));
+  const streams: StreamEntry[] = shares
+    .filter((view) => !watchingIds.has(view.id))
+    .map((view) => {
+      const owner = entries.find((entry) => entry.identity === view.participant.identity);
+      const name = view.participant.name || view.participant.identity;
+      return { view, name, isLocal: view.participant.isLocal, colorIndex: owner?.colorIndex ?? colorFromName(name) };
+    });
+
   const gridRef = useRef<HTMLDivElement>(null);
-  const tileWidth = useTileWidth(gridRef, entries.length, !compact);
+  const watching = heroes.length > 0;
+  const tileWidth = useTileWidth(gridRef, entries.length + streams.length, !watching);
   const invite = useInviteCopy(copyInvite);
-  const alone = entries.length === 1 && !compact;
+  const alone = entries.length === 1 && streams.length === 0 && !watching;
   const inviteLabel = invite.state === 'copied' ? 'Link copiado!' : invite.state === 'failed' ? 'Não foi possível copiar' : 'Convidar para voz';
 
+  const tiles = (
+    <>
+      {streams.map((entry) => (
+        <StreamTile key={entry.view.id} entry={entry} onWatch={() => onWatch(entry.view.id)} />
+      ))}
+      {entries.map((entry) => (
+        <Tile key={entry.identity} entry={entry} renderAvatar={renderAvatar} onParticipantContextMenu={onParticipantContextMenu} onOpenProfile={onOpenProfile} />
+      ))}
+    </>
+  );
+
+  if (watching) {
+    return (
+      <div className="voice-stage watching">
+        <WatchStage
+          heroes={heroes}
+          streamVolumes={streamVolumes}
+          setStreamVolume={setStreamVolume}
+          onStopWatching={onStopWatching}
+          strip={<div className="voice-tiles strip">{tiles}</div>}
+          chromeHidden={chromeHidden}
+          onToggleChrome={onToggleChrome}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className={`voice-stage ${compact ? 'compact' : ''}`}>
-      <div className="voice-tiles" ref={gridRef} style={compact ? undefined : ({ '--tile-w': `${tileWidth}px` } as CSSProperties)}>
-        {entries.map((entry) => (
-          <Tile key={entry.identity} entry={entry} renderAvatar={renderAvatar} onParticipantContextMenu={onParticipantContextMenu} onOpenProfile={onOpenProfile} />
-        ))}
+    <div className="voice-stage">
+      <div className="voice-tiles" ref={gridRef} style={{ '--tile-w': `${tileWidth}px` } as CSSProperties}>
+        {tiles}
       </div>
 
       {alone && (
@@ -206,7 +280,7 @@ export function VoiceStage({
         </div>
       )}
 
-      {!alone && !compact && copyInvite && (
+      {!alone && copyInvite && (
         <button
           type="button"
           className={`voice-invite-fab ${invite.state}`}
