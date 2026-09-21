@@ -3,6 +3,7 @@ import { ACCENT_COLORS, type AccentColor, type UserSession } from '@nexplay/shar
 import { api } from '../api';
 import { DESKTOP_DOWNLOAD_URL } from '../appLinks';
 import { deepLinkUrl, peekPendingInvite } from '../pendingInvite';
+import { DownloadIcon } from './Icons';
 
 interface EntryScreenProps {
   onAuthenticated: (session: UserSession) => void | Promise<void>;
@@ -54,119 +55,143 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
     }
   }
 
+  const login = mode === 'login';
+  // O app desktop já é o aplicativo: só o navegador mostra a coluna do download.
+  const inBrowser = !window.desktop;
+
   return (
     <main className="entry-screen">
-      <section className="entry-window" aria-labelledby="entry-title">
-        {pendingInvite && (
-          <p className="entry-invite-banner" role="status">
-            {registrationOpen
-              ? 'Você recebeu um convite para um servidor. Entre na sua conta, ou crie uma, para aceitar.'
-              : 'Você recebeu um convite para um servidor. Entre na sua conta, ou crie uma com o código de cadastro, para aceitar.'}
-            {!window.desktop && pendingInviteCode && (
-              <>
-                {' '}
-                <a href={deepLinkUrl(pendingInviteCode)}>Já tem o app instalado? Abrir no aplicativo</a>
-              </>
-            )}
-          </p>
-        )}
-        <header className="entry-heading">
-          <img className="brand-logo entry-logo" src="/logo-320.png" alt="" width="84" height="84" draggable={false} />
-          <div>
-            <h1 id="entry-title">NexPlay</h1>
-            <p>Servidor privado</p>
-          </div>
-        </header>
+      <div className="entry-backdrop" aria-hidden="true">
+        <img className="entry-ghost a" src="/logo-320.png" alt="" draggable={false} />
+        <img className="entry-ghost b" src="/logo-320.png" alt="" draggable={false} />
+        <span className="entry-sparkle" />
+        <span className="entry-sparkle" />
+        <span className="entry-sparkle" />
+        <span className="entry-sparkle" />
+        <span className="entry-sparkle" />
+        <span className="entry-sparkle" />
+      </div>
 
-        <div className="entry-mode-toggle" role="tablist" aria-label="Entrar ou cadastrar">
-          <button type="button" role="tab" aria-selected={mode === 'login'} className={mode === 'login' ? 'active' : ''} onClick={() => switchMode('login')}>
-            Entrar
-          </button>
-          <button type="button" role="tab" aria-selected={mode === 'register'} className={mode === 'register' ? 'active' : ''} onClick={() => switchMode('register')}>
-            Criar conta
-          </button>
-        </div>
+      <header className="entry-brand">
+        <img className="brand-logo" src="/logo-320.png" alt="" width="40" height="40" draggable={false} />
+        <span>NexPlay</span>
+      </header>
 
-        <form className="entry-form" onSubmit={handleSubmit}>
-          {notice && <div className="form-notice" role="status">{notice}</div>}
-
-          <label htmlFor="username">Usuário</label>
-          <input
-            id="username"
-            autoComplete="username"
-            minLength={2}
-            maxLength={24}
-            required
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            placeholder="Seu nome de usuário"
-          />
-
-          <label htmlFor="password">Senha</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-            minLength={mode === 'register' ? 8 : undefined}
-            required
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            placeholder={mode === 'register' ? 'Pelo menos 8 caracteres' : 'Sua senha'}
-          />
-
-          {mode === 'register' && (
-            <>
-              {!registrationOpen && (
+      <section className={`entry-window ${inBrowser ? '' : 'single'}`} aria-labelledby="entry-title">
+        <div className="entry-main">
+          {pendingInvite && (
+            <p className="entry-invite-banner" role="status">
+              {registrationOpen
+                ? 'Você recebeu um convite para um servidor. Entre na sua conta, ou crie uma, para aceitar.'
+                : 'Você recebeu um convite para um servidor. Entre na sua conta, ou crie uma com o código de cadastro, para aceitar.'}
+              {inBrowser && pendingInviteCode && (
                 <>
-                  <label htmlFor="inviteToken">Código de cadastro</label>
-                  <input
-                    id="inviteToken"
-                    type="password"
-                    autoComplete="off"
-                    required
-                    value={inviteToken}
-                    onChange={(event) => setInviteToken(event.target.value)}
-                    placeholder="Código para criar a conta"
-                  />
+                  {' '}
+                  <a href={deepLinkUrl(pendingInviteCode)}>Já tem o app instalado? Abrir no aplicativo</a>
                 </>
               )}
-
-              <label htmlFor="accent-color-picker">Cor do perfil</label>
-              <div className="accent-picker" id="accent-color-picker" role="radiogroup" aria-label="Cor do perfil">
-                {ACCENT_COLORS.map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    role="radio"
-                    aria-checked={accentColor === color}
-                    aria-label={`Cor ${color}`}
-                    className={`accent-swatch ${accentColor === color ? 'selected' : ''}`}
-                    data-color={color}
-                    onClick={() => setAccentColor(color)}
-                  />
-                ))}
-              </div>
-            </>
+            </p>
           )}
 
-          {error && <div className="form-error" role="alert">{error}</div>}
+          <h1 id="entry-title">{login ? 'Boas-vindas de volta!' : 'Criar uma conta'}</h1>
+          <p className="entry-lead">
+            {login ? 'Estamos felizes em te ver de novo.' : 'Escolha um usuário e uma senha.'}
+          </p>
 
-          <button className="primary-button entry-submit" type="submit" disabled={loading}>
-            {loading ? (
-              <span className="button-spinner-row">
-                <span className="spinner" aria-hidden="true" /> {mode === 'login' ? 'Entrando…' : 'Criando conta…'}
-              </span>
-            ) : mode === 'login' ? (
-              'Entrar'
-            ) : (
-              'Criar conta e entrar'
+          <form className="entry-form" onSubmit={handleSubmit}>
+            {notice && <div className="form-notice" role="status">{notice}</div>}
+
+            <label htmlFor="username">Usuário<span className="required" aria-hidden="true">*</span></label>
+            <input
+              id="username"
+              autoComplete="username"
+              minLength={2}
+              maxLength={24}
+              required
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="Seu nome de usuário"
+            />
+
+            <label htmlFor="password">Senha<span className="required" aria-hidden="true">*</span></label>
+            <input
+              id="password"
+              type="password"
+              autoComplete={login ? 'current-password' : 'new-password'}
+              minLength={login ? undefined : 8}
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+              placeholder={login ? 'Sua senha' : 'Pelo menos 8 caracteres'}
+            />
+
+            {!login && (
+              <>
+                {!registrationOpen && (
+                  <>
+                    <label htmlFor="inviteToken">Código de cadastro<span className="required" aria-hidden="true">*</span></label>
+                    <input
+                      id="inviteToken"
+                      type="password"
+                      autoComplete="off"
+                      required
+                      value={inviteToken}
+                      onChange={(event) => setInviteToken(event.target.value)}
+                      placeholder="Código para criar a conta"
+                    />
+                  </>
+                )}
+
+                <label htmlFor="accent-color-picker">Cor do perfil</label>
+                <div className="accent-picker" id="accent-color-picker" role="radiogroup" aria-label="Cor do perfil">
+                  {ACCENT_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      type="button"
+                      role="radio"
+                      aria-checked={accentColor === color}
+                      aria-label={`Cor ${color}`}
+                      className={`accent-swatch ${accentColor === color ? 'selected' : ''}`}
+                      data-color={color}
+                      onClick={() => setAccentColor(color)}
+                    />
+                  ))}
+                </div>
+              </>
             )}
-          </button>
-        </form>
-        {!window.desktop && (
-          <a className="entry-download" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
-            Baixar o app para Windows
-          </a>
+
+            {error && <div className="form-error" role="alert">{error}</div>}
+
+            <button className="primary-button entry-submit" type="submit" disabled={loading}>
+              {loading ? (
+                <span className="button-spinner-row">
+                  <span className="spinner" aria-hidden="true" /> {login ? 'Entrando…' : 'Criando conta…'}
+                </span>
+              ) : login ? (
+                'Entrar'
+              ) : (
+                'Criar conta e entrar'
+              )}
+            </button>
+          </form>
+
+          <p className="entry-switch">
+            {login ? 'Precisando de uma conta?' : 'Já tem uma conta?'}{' '}
+            <button type="button" onClick={() => switchMode(login ? 'register' : 'login')}>
+              {login ? 'Registre-se' : 'Entrar'}
+            </button>
+          </p>
+        </div>
+
+        {inBrowser && (
+          <aside className="entry-side" aria-label="Aplicativo para Windows">
+            <img className="brand-logo entry-side-logo" src="/logo-320.png" alt="" width="132" height="132" draggable={false} />
+            <h2>Use o app no computador</h2>
+            <p>O aplicativo se atualiza sozinho e deixa você escolher qual janela transmitir, com o áudio dela.</p>
+            <a className="entry-download-button" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
+              <DownloadIcon size={18} /> Baixar para Windows
+            </a>
+          </aside>
         )}
       </section>
     </main>

@@ -66,6 +66,10 @@ export function CameraOffIcon(props: IconProps) {
   return <Icon {...props}><path d="m4 4 16 16M9 6h5.5A1.5 1.5 0 0 1 16 7.5v1.6l5-3v10l-3.2-1.92M16 15.5A1.5 1.5 0 0 1 14.5 17H4.5A1.5 1.5 0 0 1 3 15.5v-7A1.5 1.5 0 0 1 4.5 7H5" /></Icon>;
 }
 
+export function DownloadIcon(props: IconProps) {
+  return <Icon {...props}><path d="M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5M4 20h16" /></Icon>;
+}
+
 export function CloseIcon(props: IconProps) {
   return <Icon {...props}><path d="m6 6 12 12M18 6 6 18" /></Icon>;
 }
