@@ -182,7 +182,10 @@ try {
   const authorization = await authorizeMusicCommand({
     roomId: roomName,
     text: '/play Numb Linkin Park',
-    channels: [{ id: roomName, serverId: 'server-1', name: 'Integração', description: 'Teste isolado', createdBy: null, createdAt: 0 }],
+    channels: [{
+      id: roomName, serverId: 'server-1', categoryId: null, name: 'Integração', description: 'Teste isolado', slowModeSeconds: 0,
+      contentVisibility: 'default', bitrateKbps: 0, videoQuality: 'auto', userLimit: 0, createdBy: null, createdAt: 0,
+    }],
     requester,
     listParticipantIdentities: async (canonicalRoomName) =>
       (await roomService.listParticipants(canonicalRoomName)).map(({ identity }) => identity),
