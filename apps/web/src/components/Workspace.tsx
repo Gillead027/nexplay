@@ -97,7 +97,7 @@ import type { UpdateCheckOutcome } from '../aboutInfo';
 import { AdminOverviewPane } from './AdminOverview';
 import { StatusNotices } from './StatusNotices';
 import { useConnectivity } from '../useConnectivity';
-import { takePendingInvite } from '../pendingInvite';
+import { PENDING_INVITE_EVENT, takePendingInvite } from '../pendingInvite';
 import { AddServerModal, useActiveServerMember, useServersState } from './Servers';
 import { ServerSettings } from './ServerSettings';
 import { SoundboardPanel, SoundboardToast } from './Soundboard';
@@ -145,6 +145,8 @@ declare global {
       // Novos no desktop 0.2.12: um app mais antigo não tem, e a tela Sobre esconde os botões.
       checkForUpdates?: () => Promise<UpdateCheckOutcome>;
       openLogs?: () => Promise<boolean>;
+      // Novo no desktop 0.2.13: link nexplay://convite/<CÓDIGO> entregue pelo sistema.
+      onDeepLink?: (listener: (url: string) => void) => (() => void);
       onActivityChanged?: (listener: (activity: Activity | null) => void) => (() => void);
       getCurrentActivity?: () => Promise<Activity | null>;
       windowAction?: (action: 'minimize' | 'toggle-maximize' | 'close') => void;
@@ -1881,18 +1883,24 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   }, [serversState.servers, activeServerId]);
   const activeServer = serversState.servers.find((server) => server.id === activeServerId) ?? null;
 
-  // Chegou por um link de convite: entra no servidor e abre ele.
+  // Chegou por um link de convite (https ou nexplay://): entra no servidor e abre ele. Vale na
+  // abertura da tela e também quando o app desktop entrega um link com a tela já aberta.
   useEffect(() => {
-    const code = takePendingInvite();
-    if (!code) return;
-    void api.redeemInvite(code).then(({ server }) => {
-      serversState.refresh();
-      setActiveServerId(server.id);
-      setView('server');
-      setInviteMessage({ text: `Você entrou em ${server.name}.`, failed: false });
-    }).catch((requestError) => {
-      setInviteMessage({ text: requestError instanceof Error ? requestError.message : 'Não foi possível usar o convite.', failed: true });
-    });
+    const acceptPendingInvite = () => {
+      const code = takePendingInvite();
+      if (!code) return;
+      void api.redeemInvite(code).then(({ server }) => {
+        serversState.refresh();
+        setActiveServerId(server.id);
+        setView('server');
+        setInviteMessage({ text: `Você entrou em ${server.name}.`, failed: false });
+      }).catch((requestError) => {
+        setInviteMessage({ text: requestError instanceof Error ? requestError.message : 'Não foi possível usar o convite.', failed: true });
+      });
+    };
+    acceptPendingInvite();
+    window.addEventListener(PENDING_INVITE_EVENT, acceptPendingInvite);
+    return () => window.removeEventListener(PENDING_INVITE_EVENT, acceptPendingInvite);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // Conta nova não entra em servidor nenhum sozinha: sem servidor, a tela mostra como criar um ou entrar com convite.

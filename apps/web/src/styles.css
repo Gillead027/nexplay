@@ -1507,6 +1507,9 @@ body { letter-spacing: -.01em; }
 
 /* Tela de entrada */
 .entry-invite-banner { margin: 0 0 14px; padding: 10px 12px; border: 1px solid #2b4a5c; border-radius: 10px; color: #a9cfe3; background: #16222a; font-size: 12px; }
+.entry-invite-banner a { color: #cfe6f3; text-decoration: underline; }
+.friends-empty, .dm-list-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.friends-empty p, .dm-list-empty p { margin: 0; }
 .entry-download { display: block; margin-top: 16px; color: #8fa6b5; font-size: 12px; text-align: center; text-decoration: underline; }
 
 /* Configurações > Sobre */

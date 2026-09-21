@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { extractInviteCode, inviteUrl, peekPendingInvite, savePendingInvite, takePendingInvite } from './pendingInvite';
+import { deepLinkUrl, extractDeepLinkInvite, extractInviteCode, inviteUrl, peekPendingInvite, savePendingInvite, takePendingInvite } from './pendingInvite';
 
 test('extrai o código de um link de convite', () => {
   assert.equal(extractInviteCode('/convite/6U8JDJU3'), '6U8JDJU3');
@@ -44,4 +44,16 @@ test('guarda, espia e consome o convite pendente uma vez só', () => {
   } finally {
     delete (globalThis as { sessionStorage?: Storage }).sessionStorage;
   }
+});
+
+test('extrai o código de um link nexplay://convite/ entregue pelo app desktop', () => {
+  assert.equal(extractDeepLinkInvite('nexplay://convite/6U8JDJU3'), '6U8JDJU3');
+  assert.equal(extractDeepLinkInvite('nexplay://convite/6U8JDJU3/'), '6U8JDJU3');
+  assert.equal(extractDeepLinkInvite('nexplay://canal/6U8JDJU3'), null);
+  assert.equal(extractDeepLinkInvite('https://exemplo.io/convite/6U8JDJU3'), null);
+  assert.equal(extractDeepLinkInvite('nexplay://convite/abc'), null);
+});
+
+test('monta o link que abre o app instalado', () => {
+  assert.equal(deepLinkUrl('6U8JDJU3'), 'nexplay://convite/6U8JDJU3');
 });

@@ -2,7 +2,7 @@ import { type FormEvent, useState } from 'react';
 import { ACCENT_COLORS, type AccentColor, type UserSession } from '@nexplay/shared';
 import { api } from '../api';
 import { DESKTOP_DOWNLOAD_URL } from '../appLinks';
-import { peekPendingInvite } from '../pendingInvite';
+import { deepLinkUrl, peekPendingInvite } from '../pendingInvite';
 
 interface EntryScreenProps {
   onAuthenticated: (session: UserSession) => void | Promise<void>;
@@ -18,7 +18,8 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
   const [password, setPassword] = useState('');
   const [inviteToken, setInviteToken] = useState('');
   const [accentColor, setAccentColor] = useState<AccentColor>(ACCENT_COLORS[0]);
-  const pendingInvite = peekPendingInvite() !== null;
+  const pendingInviteCode = peekPendingInvite();
+  const pendingInvite = pendingInviteCode !== null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -50,6 +51,12 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
         {pendingInvite && (
           <p className="entry-invite-banner" role="status">
             Você recebeu um convite para um servidor. Entre na sua conta, ou crie uma com o código de cadastro, para aceitar.
+            {!window.desktop && pendingInviteCode && (
+              <>
+                {' '}
+                <a href={deepLinkUrl(pendingInviteCode)}>Já tem o app instalado? Abrir no aplicativo</a>
+              </>
+            )}
           </p>
         )}
         <header className="entry-heading">

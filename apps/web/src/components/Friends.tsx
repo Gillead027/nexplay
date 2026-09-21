@@ -122,7 +122,10 @@ export function FriendsSidebar({
         <div className="section-title"><span>MENSAGENS DIRETAS</span></div>
         <div className="text-channel-list">
           {dmChannels.length === 0 ? (
-            <p className="dm-list-empty">Nenhuma conversa ainda.</p>
+            <div className="dm-list-empty">
+              <p>Nenhuma conversa ainda.</p>
+              <button type="button" className="secondary-pill" onClick={onBackToHome}>Ver amigos</button>
+            </div>
           ) : (
             dmChannels.map((channel) => {
               const other = channel.participants.find((participant) => participant.id !== ownId);
@@ -304,7 +307,10 @@ export function FriendsHome({
       {tab === 'all' && (
         <div className="friends-list">
           {state.friends.length === 0 ? (
-            <p className="friends-empty">Você ainda não tem amigos adicionados.</p>
+            <div className="friends-empty">
+              <p>Você ainda não tem amigos adicionados.</p>
+              <button type="button" className="secondary-pill" onClick={() => setTab('add')}>Adicionar amigo</button>
+            </div>
           ) : (
             state.friends.map((friend) => (
               <div className="friend-row" key={friend.id}>
