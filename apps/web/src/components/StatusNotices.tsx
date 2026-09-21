@@ -13,6 +13,10 @@ export function StatusNotices({
   onDismissNotice,
   inviteMessage,
   onDismissInvite,
+  newVersion,
+  onReload,
+  onDismissNewVersion,
+  inCall,
 }: {
   connectivity: ConnectivityState;
   onRetryConnection: () => void;
@@ -23,12 +27,16 @@ export function StatusNotices({
   onDismissNotice: () => void;
   inviteMessage: { text: string; failed: boolean } | null;
   onDismissInvite: () => void;
+  newVersion: boolean;
+  onReload: () => void;
+  onDismissNewVersion: () => void;
+  inCall: boolean;
 }) {
   const connectionText = connectivityMessage(connectivity);
   const target = errorAction === 'camera' ? 'a câmera' : 'o microfone';
   const canOpenSystemSettings = Boolean(window.desktop?.openMediaSettings);
 
-  if (!connectionText && !error && !notice && !inviteMessage) return null;
+  if (!connectionText && !error && !notice && !inviteMessage && !newVersion) return null;
   return (
     <div className="floating-notices">
       {connectionText && (
@@ -59,6 +67,16 @@ export function StatusNotices({
         <div className={`floating-notice ${inviteMessage.failed ? 'error' : 'info'}`} role={inviteMessage.failed ? 'alert' : 'status'}>
           <span>{inviteMessage.text}</span>
           <button type="button" onClick={onDismissInvite}>Fechar</button>
+        </div>
+      )}
+      {newVersion && (
+        <div className="floating-notice info" role="status">
+          <span>
+            Há uma nova versão do NexPlay.
+            {inCall && <small> Você está em uma chamada: atualizar desconecta da voz.</small>}
+          </span>
+          <button type="button" className="notice-primary" onClick={onReload}>Atualizar agora</button>
+          <button type="button" onClick={onDismissNewVersion}>Depois</button>
         </div>
       )}
       {notice && (

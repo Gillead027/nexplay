@@ -654,3 +654,9 @@ img.server-settings-avatar { object-fit: contain; background: var(--panel-raised
 .server-preview-banner.has-image::after { display: none; }
 .server-preview-banner-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .server-color-eyebrow { display: block; margin-top: 18px; }
+
+/* Aviso de nova versão: o botão principal se destaca dos "Depois"/"Fechar" sublinhados */
+.floating-notice .notice-primary { padding: 5px 12px; border-radius: 8px; color: #fff; background: var(--accent-gradient); font-weight: 700; text-decoration: none; box-shadow: 0 4px 12px var(--accent-glow); }
+.floating-notice .notice-primary:hover { box-shadow: 0 6px 16px var(--accent-glow-strong); }
+/* Avisos flutuantes ficam por cima do cabeçalho: fundo opaco, senão o texto de trás atrapalha a leitura */
+.floating-notice.info { background: color-mix(in srgb, var(--accent) 16%, var(--panel-raised)); }

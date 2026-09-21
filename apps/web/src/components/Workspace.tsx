@@ -97,6 +97,7 @@ import { AboutPane } from './AboutPane';
 import type { UpdateCheckOutcome } from '../aboutInfo';
 import { AdminOverviewPane } from './AdminOverview';
 import { StatusNotices } from './StatusNotices';
+import { useNewVersion } from '../useNewVersion';
 import { ConnectionSignal } from './ConnectionSignal';
 import { ServerImage } from './ServerImage';
 import { describeConnectionSignal } from '../connectionSignal';
@@ -1717,6 +1718,7 @@ function SettingsModal({
 export function Workspace({ session, config, onSignOut, onProfileUpdated }: WorkspaceProps) {
   const voice = useVoiceRoom();
   const connectivity = useConnectivity();
+  const newVersion = useNewVersion();
   const [inviteMessage, setInviteMessage] = useState<{ text: string; failed: boolean } | null>(null);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [livekitAvailable, setLivekitAvailable] = useState(true);
@@ -2544,6 +2546,10 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         onDismissNotice={voice.clearNotice}
         inviteMessage={inviteMessage}
         onDismissInvite={() => setInviteMessage(null)}
+        newVersion={newVersion.available}
+        onReload={() => window.location.reload()}
+        onDismissNewVersion={newVersion.dismiss}
+        inCall={voice.connected}
       />
       {friendActionError && (
         <div className="friend-action-toast" role="alert">
