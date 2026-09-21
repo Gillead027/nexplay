@@ -298,6 +298,13 @@ ensureColumns('servers', [
   // pra "faixa" colorida do perfil do servidor — sem inventar uma segunda
   // paleta. NULL = ainda sem cor escolhida (perfil mostra o degradê padrão).
   ['accent_color', 'TEXT'],
+  // Painel (banner) do servidor, como o ícone: data: URL de uma imagem ou GIF animado. Os "animated" são calculados ao
+  // gravar (para a lista de servidores não precisar decodificar megabytes) e assets_rev sobe a cada troca de ícone ou
+  // painel, virando a versão na URL para o navegador não reaproveitar a imagem antiga.
+  ['banner_data_url', "TEXT NOT NULL DEFAULT ''"],
+  ['icon_animated', 'INTEGER NOT NULL DEFAULT 0'],
+  ['banner_animated', 'INTEGER NOT NULL DEFAULT 0'],
+  ['assets_rev', 'INTEGER NOT NULL DEFAULT 0'],
 ]);
 
 db.exec(`

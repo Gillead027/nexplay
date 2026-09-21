@@ -33,9 +33,6 @@ export async function fileToResizedDataUrl(file: File, maxDimension: number, max
   return dataUrl;
 }
 
-const ICON_MAX_DIMENSION = 1024;
-const ICON_RESIZED_DIMENSION = 512;
-
 function blobToDataUrl(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -45,12 +42,23 @@ function blobToDataUrl(blob: Blob): Promise<string> {
   });
 }
 
+export interface ServerImageOptions {
+  // Tamanho máximo da data: URL (o arquivo, em base64, pesa 4/3 do original).
+  maxLength: number;
+  // O mesmo limite em megabytes, só para a mensagem de erro.
+  maxMegabytes: number;
+  // Imagem parada até esta dimensão (o lado maior) e dentro do limite é guardada exatamente como veio.
+  keepDimension: number;
+  // Acima disso a imagem parada é reduzida até este lado maior, mantendo a proporção.
+  resizeDimension: number;
+}
+
 /**
- * Ícone de servidor: a imagem inteira, sem recorte. Quando já cabe no limite ela é guardada exatamente como veio (o GIF ou
- * WebP animado continua animado, o PNG mantém a transparência, nada é recomprimido). Só uma imagem parada grande demais é
- * reduzida, mantendo a proporção. Um GIF/WebP animado grande demais não dá para reduzir aqui, então a pessoa é avisada.
+ * Ícone ou painel de servidor: a imagem inteira, sem recorte. Quando já cabe no limite ela é guardada exatamente como veio
+ * (o GIF ou WebP animado continua animado, o PNG mantém a transparência, nada é recomprimido). Só uma imagem parada grande
+ * demais é reduzida, mantendo a proporção. Um GIF/WebP animado grande demais não dá para reduzir aqui, então a pessoa é avisada.
  */
-export async function fileToServerIconDataUrl(file: File, maxLength: number): Promise<string> {
+export async function fileToServerImageDataUrl(file: File, options: ServerImageOptions): Promise<string> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   const format = sniffIconFormat(bytes);
   if (!format) throw new Error('Use uma imagem PNG, JPG, WebP ou GIF.');
@@ -59,17 +67,17 @@ export async function fileToServerIconDataUrl(file: File, maxLength: number): Pr
   const original = await blobToDataUrl(new Blob([bytes], { type: mime }));
 
   const bitmap = await createImageBitmap(file);
-  const fitsAsIs = original.length <= maxLength && (animated || Math.max(bitmap.width, bitmap.height) <= ICON_MAX_DIMENSION);
+  const fitsAsIs = original.length <= options.maxLength && (animated || Math.max(bitmap.width, bitmap.height) <= options.keepDimension);
   if (fitsAsIs) {
     bitmap.close();
     return original;
   }
   if (animated) {
     bitmap.close();
-    throw new Error('Esse GIF animado passa de 1 MB. Escolha um menor ou reduza o GIF antes de enviar.');
+    throw new Error(`Esse GIF animado passa de ${options.maxMegabytes} MB. Escolha um menor ou reduza o GIF antes de enviar.`);
   }
 
-  let dimension = Math.min(ICON_RESIZED_DIMENSION, Math.max(bitmap.width, bitmap.height));
+  let dimension = Math.min(options.resizeDimension, Math.max(bitmap.width, bitmap.height));
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const scale = Math.min(1, dimension / Math.max(bitmap.width, bitmap.height));
     const canvas = document.createElement('canvas');
@@ -78,10 +86,10 @@ export async function fileToServerIconDataUrl(file: File, maxLength: number): Pr
     const context = canvas.getContext('2d');
     if (!context) break;
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
-    // WebP guarda transparência e pesa menos que PNG; a qualidade alta evita perder detalhe no ícone.
+    // WebP guarda transparência e pesa menos que PNG; a qualidade alta evita perder detalhe.
     for (const quality of [0.95, 0.85, 0.72]) {
       const dataUrl = canvas.toDataURL('image/webp', quality);
-      if (dataUrl.startsWith('data:image/webp') && dataUrl.length <= maxLength) {
+      if (dataUrl.startsWith('data:image/webp') && dataUrl.length <= options.maxLength) {
         bitmap.close();
         return dataUrl;
       }

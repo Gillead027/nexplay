@@ -98,7 +98,7 @@ import type { UpdateCheckOutcome } from '../aboutInfo';
 import { AdminOverviewPane } from './AdminOverview';
 import { StatusNotices } from './StatusNotices';
 import { ConnectionSignal } from './ConnectionSignal';
-import { ServerIcon } from './ServerIcon';
+import { ServerImage } from './ServerImage';
 import { describeConnectionSignal } from '../connectionSignal';
 import { useConnectivity } from '../useConnectivity';
 import { inviteUrl, PENDING_INVITE_EVENT, takePendingInvite } from '../pendingInvite';
@@ -244,9 +244,9 @@ function StageAvatar({ entry, ownIdentity, ownAvatarUrl }: { entry: StageEntry; 
 }
 
 // Botão de um servidor na barra da esquerda. O ícone (imagem ou GIF) aparece inteiro; o animado só se mexe com o mouse em cima.
-function ServerRailButton({ server, active, onSelect }: { server: { name: string; iconDataUrl: string }; active: boolean; onSelect: () => void }) {
+function ServerRailButton({ server, active, onSelect }: { server: { name: string; iconUrl: string; iconAnimated: boolean }; active: boolean; onSelect: () => void }) {
   const [hovered, setHovered] = useState(false);
-  const hasIcon = Boolean(server.iconDataUrl);
+  const hasIcon = Boolean(server.iconUrl);
   return (
     <button
       className={`server-button server-current ${hasIcon ? 'has-icon' : ''} ${active ? 'active' : ''}`}
@@ -259,7 +259,7 @@ function ServerRailButton({ server, active, onSelect }: { server: { name: string
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
     >
-      {hasIcon ? <ServerIcon dataUrl={server.iconDataUrl} playing={hovered} /> : server.name.charAt(0).toUpperCase()}
+      {hasIcon ? <ServerImage src={server.iconUrl} animated={server.iconAnimated} playing={hovered} /> : server.name.charAt(0).toUpperCase()}
     </button>
   );
 }
@@ -2765,7 +2765,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       <aside className="sidebar">
         {view === 'server' ? (
           <>
-            <header className="sidebar-header">
+            <header className={`sidebar-header ${activeServer?.bannerUrl ? 'has-banner' : ''}`}>
+              {activeServer?.bannerUrl && <ServerImage className="sidebar-banner" src={activeServer.bannerUrl} animated={activeServer.bannerAnimated} playing />}
               <button type="button" className="server-menu-trigger" onClick={() => setServerSettingsOpen(true)} aria-label="Abrir configurações do servidor" disabled={noServers}>
                 <strong>{activeServer?.name ?? (noServers ? 'Sem servidor' : 'Carregando…')}</strong>
                 <ChevronIcon size={16} />

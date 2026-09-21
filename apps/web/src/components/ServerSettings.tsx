@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ACCENT_COLORS,
+  SERVER_BANNER_DATA_URL_MAX_LENGTH,
+  SERVER_BANNER_MAX_BYTES,
   SERVER_ICON_DATA_URL_MAX_LENGTH,
+  SERVER_ICON_MAX_BYTES,
   hasPermission,
   PERMISSION_DEFINITIONS,
   Permission,
@@ -19,8 +22,9 @@ import {
 import { api } from '../api';
 import { copyText } from '../clipboard';
 import { inviteUrl } from '../pendingInvite';
-import { fileToServerIconDataUrl } from '../imageResize';
-import { ServerIcon } from './ServerIcon';
+import { fileToServerImageDataUrl } from '../imageResize';
+import { dataUrlIsAnimated } from '../iconImage';
+import { ServerImage } from './ServerImage';
 import { onRealtimeEvent } from '../realtime';
 import { CloseIcon, CopyIcon, ImageIcon, PlusIcon, SearchIcon, SettingsIcon, TrashIcon, UserIcon } from './Icons';
 
@@ -83,8 +87,8 @@ export function ServerSettings({
     <section className="server-settings-shell" aria-label="Configurações do servidor">
       <nav className="server-settings-nav">
         <div className="server-settings-heading">
-          {server.iconDataUrl
-            ? <ServerIcon className="server-settings-avatar" dataUrl={server.iconDataUrl} />
+          {server.iconUrl
+            ? <ServerImage className="server-settings-avatar" src={server.iconUrl} animated={server.iconAnimated} />
             : <span className="server-settings-avatar">{server.name.charAt(0).toUpperCase()}</span>}
           <div><strong>{server.name}</strong><span>Configurações do servidor</span></div>
         </div>
@@ -241,29 +245,46 @@ function ServerProfilePane({
 }) {
   const [name, setName] = useState(server.name);
   const [description, setDescription] = useState(server.description);
-  const [iconDataUrl, setIconDataUrl] = useState(server.iconDataUrl);
+  // null = sem mudança; '' = remover; data: URL = imagem nova, ainda não salva.
+  const [icon, setIcon] = useState<string | null>(null);
+  const [banner, setBanner] = useState<string | null>(null);
   const [accentColor, setAccentColor] = useState<AccentColor | null>(server.accentColor);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [iconError, setIconError] = useState('');
+  const [bannerError, setBannerError] = useState('');
   const iconInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
+  const iconSrc = icon === null ? server.iconUrl : icon;
+  const iconAnimated = icon === null ? server.iconAnimated : dataUrlIsAnimated(icon);
+  const bannerSrc = banner === null ? server.bannerUrl : banner;
+  const bannerAnimated = banner === null ? server.bannerAnimated : dataUrlIsAnimated(banner);
 
   useEffect(() => {
     setName(server.name);
     setDescription(server.description);
-    setIconDataUrl(server.iconDataUrl);
+    setIcon(null);
+    setBanner(null);
     setAccentColor(server.accentColor);
-  }, [server.id, server.name, server.description, server.iconDataUrl, server.accentColor]);
+  }, [server.id, server.name, server.description, server.iconUrl, server.bannerUrl, server.accentColor]);
 
   const dirty = name.trim() !== server.name || description !== server.description
-    || iconDataUrl !== server.iconDataUrl || accentColor !== server.accentColor;
+    || icon !== null || banner !== null || accentColor !== server.accentColor;
 
   async function save() {
     if (!name.trim() || saving) return;
     setSaving(true);
     setError('');
     try {
-      const { server: updated } = await api.updateServer(server.id, { name: name.trim(), description, iconDataUrl, accentColor });
+      const { server: updated } = await api.updateServer(server.id, {
+        name: name.trim(),
+        description,
+        accentColor,
+        ...(icon !== null ? { iconDataUrl: icon } : {}),
+        ...(banner !== null ? { bannerDataUrl: banner } : {}),
+      });
+      setIcon(null);
+      setBanner(null);
       onServerUpdated(updated);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível salvar as alterações.');
@@ -275,18 +296,41 @@ function ServerProfilePane({
   function discard() {
     setName(server.name);
     setDescription(server.description);
-    setIconDataUrl(server.iconDataUrl);
+    setIcon(null);
+    setBanner(null);
     setAccentColor(server.accentColor);
     setError('');
+    setIconError('');
+    setBannerError('');
   }
 
   async function handleIconFile(file: File | undefined) {
     if (!file) return;
     setIconError('');
     try {
-      setIconDataUrl(await fileToServerIconDataUrl(file, SERVER_ICON_DATA_URL_MAX_LENGTH));
+      setIcon(await fileToServerImageDataUrl(file, {
+        maxLength: SERVER_ICON_DATA_URL_MAX_LENGTH,
+        maxMegabytes: SERVER_ICON_MAX_BYTES / (1024 * 1024),
+        keepDimension: 1024,
+        resizeDimension: 512,
+      }));
     } catch (error) {
       setIconError(error instanceof Error ? error.message : 'Não foi possível usar essa imagem. Tente um arquivo menor.');
+    }
+  }
+
+  async function handleBannerFile(file: File | undefined) {
+    if (!file) return;
+    setBannerError('');
+    try {
+      setBanner(await fileToServerImageDataUrl(file, {
+        maxLength: SERVER_BANNER_DATA_URL_MAX_LENGTH,
+        maxMegabytes: SERVER_BANNER_MAX_BYTES / (1024 * 1024),
+        keepDimension: 2560,
+        resizeDimension: 1920,
+      }));
+    } catch (error) {
+      setBannerError(error instanceof Error ? error.message : 'Não foi possível usar essa imagem. Tente um arquivo menor.');
     }
   }
 
@@ -300,7 +344,7 @@ function ServerProfilePane({
       <div className="server-profile-columns">
         <div className="server-profile-form">
           <section className="server-settings-card server-identity-card">
-            {iconDataUrl ? <ServerIcon className="server-icon-large" dataUrl={iconDataUrl} playing /> : <div className="server-icon-large">{iconGlyph}</div>}
+            {iconSrc ? <ServerImage className="server-icon-large" src={iconSrc} animated={iconAnimated} playing /> : <div className="server-icon-large">{iconGlyph}</div>}
             <div className="server-name-fields">
               <label>
                 Nome do servidor
@@ -326,23 +370,43 @@ function ServerProfilePane({
           {canManageServer && (
             <section className="server-settings-card">
               <span className="field-eyebrow">Ícone</span>
-              <p className="settings-hint">A imagem aparece inteira dentro do quadrado, sem cortes. PNG ou GIF com fundo transparente fica melhor. Aceita GIF animado de até 1 MB.</p>
+              <p className="settings-hint">A imagem aparece inteira dentro do quadrado, sem cortes. PNG ou GIF com fundo transparente fica melhor. Aceita GIF animado de até {SERVER_ICON_MAX_BYTES / (1024 * 1024)} MB.</p>
               <input ref={iconInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden
                 onChange={(event) => void handleIconFile(event.target.files?.[0])} />
               <div className="server-form-actions" style={{ marginTop: 10 }}>
                 <button type="button" className="secondary-pill" onClick={() => iconInputRef.current?.click()}>
                   <ImageIcon size={13} /> Alterar ícone
                 </button>
-                {iconDataUrl && (
-                  <button type="button" className="secondary-pill" onClick={() => setIconDataUrl('')}>Remover ícone</button>
+                {iconSrc && (
+                  <button type="button" className="secondary-pill" onClick={() => setIcon('')}>Remover ícone</button>
                 )}
               </div>
               {iconError && <p className="form-error" role="alert">{iconError}</p>}
             </section>
           )}
           <section className="server-settings-card">
-            <span className="field-eyebrow">Faixa</span>
-            <div className="accent-picker" role="radiogroup" aria-label="Cor da faixa do servidor">
+            <span className="field-eyebrow">Painel do servidor</span>
+            {canManageServer && (
+              <>
+                <p className="settings-hint">
+                  A imagem do topo do servidor: aparece no alto da lista de canais e na pré-visualização. Aceita GIF animado de até {SERVER_BANNER_MAX_BYTES / (1024 * 1024)} MB.
+                  Recomendado: 960×540 (16:9); o que passar disso é cortado nas bordas.
+                </p>
+                <input ref={bannerInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden
+                  onChange={(event) => { void handleBannerFile(event.target.files?.[0]); event.target.value = ''; }} />
+                <div className="server-form-actions" style={{ marginTop: 10 }}>
+                  <button type="button" className="secondary-pill" onClick={() => bannerInputRef.current?.click()}>
+                    <ImageIcon size={13} /> Alterar painel
+                  </button>
+                  {bannerSrc && (
+                    <button type="button" className="secondary-pill" onClick={() => setBanner('')}>Remover painel</button>
+                  )}
+                </div>
+                {bannerError && <p className="form-error" role="alert">{bannerError}</p>}
+              </>
+            )}
+            <span className="field-eyebrow server-color-eyebrow">Cor de fundo (quando não há imagem)</span>
+            <div className="accent-picker" role="radiogroup" aria-label="Cor de fundo do painel do servidor">
               {ACCENT_COLORS.map((color) => (
                 <button
                   key={color}
@@ -371,11 +435,13 @@ function ServerProfilePane({
         <aside className="server-live-preview">
           <span className="field-eyebrow">Pré-visualização</span>
           <div className="server-preview-card">
-            <div className="server-preview-banner" style={accentColor ? { background: accentColor } : undefined}>
-              {!accentColor && <><i /><i /><i /></>}
+            <div className={`server-preview-banner ${bannerSrc ? 'has-image' : accentColor ? `avatar-color-${ACCENT_COLORS.indexOf(accentColor)}` : ''}`}>
+              {bannerSrc
+                ? <ServerImage className="server-preview-banner-image" src={bannerSrc} animated={bannerAnimated} playing />
+                : !accentColor && <><i /><i /><i /></>}
             </div>
             <div className="server-preview-body">
-              {iconDataUrl ? <ServerIcon className="server-icon-large" dataUrl={iconDataUrl} playing /> : <span className="server-icon-large">{iconGlyph}</span>}
+              {iconSrc ? <ServerImage className="server-icon-large" src={iconSrc} animated={iconAnimated} playing /> : <span className="server-icon-large">{iconGlyph}</span>}
               <h2>{name || server.name}</h2>
               <p>{description}</p>
             </div>

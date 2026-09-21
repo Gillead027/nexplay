@@ -643,3 +643,14 @@ html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #
 img.server-icon-large { object-fit: contain; background: var(--panel-raised); }
 .server-settings-avatar { color: #fff; background: var(--accent-gradient); }
 img.server-settings-avatar { object-fit: contain; background: var(--panel-raised); }
+
+/* ---------- painel (banner) do servidor ----------
+   No alto da lista de canais e na pré-visualização; imagem ou GIF animado, sempre preenchendo a área. */
+.sidebar-header.has-banner { position: relative; height: 128px; flex-basis: 128px; padding: 0; overflow: hidden; background: var(--rail); }
+.sidebar-banner { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.sidebar-header.has-banner::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(3, 7, 20, .05) 35%, rgba(3, 7, 20, .82) 100%); }
+.sidebar-header.has-banner .server-menu-trigger { position: relative; z-index: 1; align-items: flex-end; padding: 0 16px 12px; }
+.sidebar-header.has-banner .server-menu-trigger strong, .sidebar-header.has-banner .server-menu-trigger svg { color: #fff; text-shadow: 0 1px 10px rgba(0, 0, 0, .65); }
+.server-preview-banner.has-image::after { display: none; }
+.server-preview-banner-image { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.server-color-eyebrow { display: block; margin-top: 18px; }

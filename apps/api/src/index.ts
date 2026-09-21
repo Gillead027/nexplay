@@ -11,11 +11,14 @@ import multer, { MulterError } from 'multer';
 import { z } from 'zod';
 import {
   ACCENT_COLORS,
+  IMAGE_MIME,
+  parseImageDataUrl,
   MUSIC_BOT_IDENTITY,
   ATTACHMENT_INLINE_IMAGE_TYPES,
   ATTACHMENT_MAX_PER_MESSAGE,
   ATTACHMENT_MAX_SIZE_BYTES,
   AVATAR_DATA_URL_MAX_LENGTH,
+  SERVER_BANNER_DATA_URL_MAX_LENGTH,
   SERVER_ICON_DATA_URL_MAX_LENGTH,
   BAN_REASON_MAX_LENGTH,
   BANNER_DATA_URL_MAX_LENGTH,
@@ -152,7 +155,7 @@ import {
   updateRole,
 } from './roles.js';
 import { authorizeModerationAction, banUser, isBanned, listBans, unbanUser } from './moderation.js';
-import { createServer, deleteServer, getServerById, listServersForUser, updateServer } from './servers.js';
+import { createServer, deleteServer, getServerAsset, getServerById, listServersForUser, updateServer } from './servers.js';
 import {
   getServerMember,
   isServerMember,
@@ -200,7 +203,15 @@ app.use(
     methods: ['GET', 'POST', 'PATCH', 'DELETE'],
   }),
 );
-app.use(express.json({ limit: '2mb' }));
+const smallJson = express.json({ limit: '2mb' });
+// Ícone e painel do servidor chegam em base64 dentro do JSON (uns 4 MB e 8 MB). Só essa rota aceita um corpo assim, e só
+// depois de conferir a sessão e a permissão (o leitor de JSON grande vem depois delas, na própria rota).
+const serverProfileJson = express.json({ limit: '16mb' });
+const isServerProfileUpdate = (request: express.Request) => request.method === 'PATCH' && /^\/api\/servers\/[^/]+$/.test(request.path);
+app.use((request, response, next) => {
+  if (isServerProfileUpdate(request)) next();
+  else smallJson(request, response, next);
+});
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -326,6 +337,11 @@ const loginSchema = z.object({
 });
 
 const dataUrlPattern = /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/]+=*$/;
+// A data: URL precisa ser mesmo uma imagem do formato que diz ser (confere os primeiros bytes, não só o texto).
+const isRealImageDataUrl = (value: string) => {
+  const parsed = parseImageDataUrl(value);
+  return parsed !== null && parsed.actual === parsed.declared;
+};
 const audioDataUrlPattern = /^data:audio\/(mpeg|ogg|wav|webm);base64,[A-Za-z0-9+/]+=*$/;
 
 const soundboardSoundSchema = z.object({
@@ -375,7 +391,12 @@ const serverUpdateSchema = z.object({
   iconDataUrl: z
     .string()
     .max(SERVER_ICON_DATA_URL_MAX_LENGTH)
-    .refine((value) => value === '' || dataUrlPattern.test(value), 'Ícone inválido.')
+    .refine((value) => value === '' || (dataUrlPattern.test(value) && isRealImageDataUrl(value)), 'Ícone inválido.')
+    .optional(),
+  bannerDataUrl: z
+    .string()
+    .max(SERVER_BANNER_DATA_URL_MAX_LENGTH)
+    .refine((value) => value === '' || (dataUrlPattern.test(value) && isRealImageDataUrl(value)), 'Painel inválido.')
     .optional(),
   accentColor: z.enum(ACCENT_COLORS).nullable().optional(),
 });
@@ -858,10 +879,11 @@ app.patch(
   requireSession,
   requireServerMembership,
   requireServerPermission(Permission.MANAGE_SERVER),
+  serverProfileJson,
   (request, response) => {
     const body = serverUpdateSchema.safeParse(request.body);
     if (!body.success) {
-      response.status(400).json({ error: 'Servidor inválido — verifique nome, descrição e ícone.' });
+      response.status(400).json({ error: 'Servidor inválido — verifique nome, descrição, ícone e painel.' });
       return;
     }
     const result = updateServer(currentServerId(response), body.data);
@@ -873,6 +895,22 @@ app.patch(
     response.json({ server: result.server });
   },
 );
+
+// Ícone e painel do servidor como arquivo de imagem (o JSON só leva a URL). A URL traz a versão (?v=), então o navegador
+// pode guardar para sempre; só quem é do servidor enxerga.
+for (const kind of ['icon', 'banner'] as const) {
+  app.get(`/api/servers/:serverId/${kind}`, requireSession, requireServerMembership, (_request, response) => {
+    const asset = getServerAsset(currentServerId(response), kind);
+    if (!asset) {
+      response.status(404).json({ error: 'Imagem não encontrada.' });
+      return;
+    }
+    response.setHeader('Content-Type', IMAGE_MIME[asset.format]);
+    response.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+    response.setHeader('Content-Length', String(asset.bytes.length));
+    response.end(Buffer.from(asset.bytes));
+  });
+}
 
 // Só o dono exclui o servidor (mesmo padrão do Discord real) — Gerenciar
 // Servidor sozinho não basta, já que isso é irreversível e apaga tudo em

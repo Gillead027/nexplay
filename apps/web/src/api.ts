@@ -138,7 +138,7 @@ export const api = {
   getServers: () => request<{ servers: Server[] }>('/api/servers'),
   createServer: (name: string, description: string) =>
     request<{ server: Server }>('/api/servers', { method: 'POST', body: JSON.stringify({ name, description }) }),
-  updateServer: (serverId: string, patch: { name?: string; description?: string; iconDataUrl?: string; accentColor?: AccentColor | null }) =>
+  updateServer: (serverId: string, patch: { name?: string; description?: string; iconDataUrl?: string; bannerDataUrl?: string; accentColor?: AccentColor | null }) =>
     request<{ server: Server }>(s(serverId), { method: 'PATCH', body: JSON.stringify(patch) }),
   deleteServer: (serverId: string, confirmName: string) =>
     request<void>(s(serverId), { method: 'DELETE', body: JSON.stringify({ confirmName }) }),

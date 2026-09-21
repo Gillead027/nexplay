@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { AccentColor, Server } from '@nexplay/shared';
+import { parseImageDataUrl, type AccentColor, type ImageFormat, type Server } from '@nexplay/shared';
 import { bootstrapServerRoles, db } from './db.js';
 import { addServerMember } from './serverMembers.js';
 import { createTextChannel } from './textChannels.js';
@@ -11,6 +11,10 @@ interface ServerRow {
   name: string;
   description: string;
   icon_data_url: string;
+  banner_data_url: string;
+  icon_animated: number;
+  banner_animated: number;
+  assets_rev: number;
   accent_color: AccentColor | null;
   owner_id: string | null;
   created_at: number;
@@ -28,16 +32,22 @@ const insertServerStatement = db.prepare(
   'INSERT INTO servers (id, name, description, icon_data_url, owner_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
 );
 const updateServerStatement = db.prepare(
-  'UPDATE servers SET name = ?, description = ?, icon_data_url = ?, accent_color = ? WHERE id = ?',
+  `UPDATE servers SET name = ?, description = ?, icon_data_url = ?, banner_data_url = ?, icon_animated = ?, banner_animated = ?,
+    assets_rev = ?, accent_color = ? WHERE id = ?`,
 );
 const deleteServerStatement = db.prepare('DELETE FROM servers WHERE id = ?');
+
+export type ServerAssetKind = 'icon' | 'banner';
 
 function toServer(row: ServerRow): Server {
   return {
     id: row.id,
     name: row.name,
     description: row.description,
-    iconDataUrl: row.icon_data_url,
+    iconUrl: row.icon_data_url ? `/api/servers/${row.id}/icon?v=${row.assets_rev}` : '',
+    iconAnimated: row.icon_animated === 1,
+    bannerUrl: row.banner_data_url ? `/api/servers/${row.id}/banner?v=${row.assets_rev}` : '',
+    bannerAnimated: row.banner_animated === 1,
     accentColor: row.accent_color,
     ownerId: row.owner_id,
     createdAt: row.created_at,
@@ -65,12 +75,15 @@ export function createServer(name: string, description: string, owner: UserRecor
     id: randomUUID(),
     name,
     description,
-    iconDataUrl: '',
+    iconUrl: '',
+    iconAnimated: false,
+    bannerUrl: '',
+    bannerAnimated: false,
     accentColor: null,
     ownerId: owner.id,
     createdAt: Date.now(),
   };
-  insertServerStatement.run(server.id, server.name, server.description, server.iconDataUrl, server.ownerId, server.createdAt);
+  insertServerStatement.run(server.id, server.name, server.description, '', server.ownerId, server.createdAt);
   addServerMember(server.id, owner.id);
   bootstrapServerRoles(server.id, [owner.id], owner.id);
   createTextChannel(server.id, 'geral', 'Conversa geral da comunidade', owner.id);
@@ -80,26 +93,54 @@ export function createServer(name: string, description: string, owner: UserRecor
 
 export type UpdateServerResult = { ok: true; server: Server } | { ok: false; reason: 'NOT_FOUND' };
 
+// Ícone e painel chegam (e ficam guardados) como data: URL; '' remove.
 export function updateServer(
   id: string,
   patch: {
     name?: string | undefined;
     description?: string | undefined;
     iconDataUrl?: string | undefined;
+    bannerDataUrl?: string | undefined;
     accentColor?: AccentColor | null | undefined;
   },
 ): UpdateServerResult {
-  const existing = getServerById(id);
-  if (!existing) return { ok: false, reason: 'NOT_FOUND' };
-  const next: Server = {
-    ...existing,
-    name: patch.name ?? existing.name,
-    description: patch.description ?? existing.description,
-    iconDataUrl: patch.iconDataUrl ?? existing.iconDataUrl,
-    accentColor: patch.accentColor !== undefined ? patch.accentColor : existing.accentColor,
+  const row = selectServerByIdStatement.get(id) as unknown as ServerRow | undefined;
+  if (!row) return { ok: false, reason: 'NOT_FOUND' };
+  const iconChanged = patch.iconDataUrl !== undefined && patch.iconDataUrl !== row.icon_data_url;
+  const bannerChanged = patch.bannerDataUrl !== undefined && patch.bannerDataUrl !== row.banner_data_url;
+  const next: ServerRow = {
+    ...row,
+    name: patch.name ?? row.name,
+    description: patch.description ?? row.description,
+    icon_data_url: patch.iconDataUrl ?? row.icon_data_url,
+    banner_data_url: patch.bannerDataUrl ?? row.banner_data_url,
+    icon_animated: iconChanged ? Number(parseImageDataUrl(patch.iconDataUrl ?? '')?.animated ?? false) : row.icon_animated,
+    banner_animated: bannerChanged ? Number(parseImageDataUrl(patch.bannerDataUrl ?? '')?.animated ?? false) : row.banner_animated,
+    assets_rev: iconChanged || bannerChanged ? row.assets_rev + 1 : row.assets_rev,
+    accent_color: patch.accentColor !== undefined ? patch.accentColor : row.accent_color,
   };
-  updateServerStatement.run(next.name, next.description, next.iconDataUrl, next.accentColor, id);
-  return { ok: true, server: next };
+  updateServerStatement.run(
+    next.name,
+    next.description,
+    next.icon_data_url,
+    next.banner_data_url,
+    next.icon_animated,
+    next.banner_animated,
+    next.assets_rev,
+    next.accent_color,
+    id,
+  );
+  return { ok: true, server: toServer(next) };
+}
+
+// O arquivo do ícone ou do painel, já decodificado, para a rota que o entrega ao navegador.
+export function getServerAsset(id: string, kind: ServerAssetKind): { format: ImageFormat; bytes: Uint8Array } | null {
+  const row = selectServerByIdStatement.get(id) as unknown as ServerRow | undefined;
+  const dataUrl = kind === 'icon' ? row?.icon_data_url : row?.banner_data_url;
+  if (!dataUrl) return null;
+  const parsed = parseImageDataUrl(dataUrl);
+  if (!parsed?.actual) return null;
+  return { format: parsed.actual, bytes: parsed.bytes };
 }
 
 // Sem rota associada nesta rodada (exclusão de servidor fica fora de escopo

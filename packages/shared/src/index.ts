@@ -1,4 +1,5 @@
 export * from './emoji-data.js';
+export * from './imageFormat.js';
 
 export const DISPLAY_NAME_MIN_LENGTH = 2;
 export const DISPLAY_NAME_MAX_LENGTH = 24;
@@ -14,8 +15,11 @@ export const BIO_MAX_LENGTH = 300;
 export const PRONOUNS_MAX_LENGTH = 30;
 export const AVATAR_DATA_URL_MAX_LENGTH = 400_000;
 export const BANNER_DATA_URL_MAX_LENGTH = 1_100_000;
-// Ícone de servidor: cabe uma imagem ou GIF animado de até ~1 MB (a data: URL tem 4/3 do tamanho do arquivo).
-export const SERVER_ICON_DATA_URL_MAX_LENGTH = 1_400_000;
+// Ícone e painel (banner) do servidor: imagem ou GIF animado. A data: URL em base64 tem 4/3 do tamanho do arquivo.
+export const SERVER_ICON_MAX_BYTES = 3 * 1024 * 1024;
+export const SERVER_BANNER_MAX_BYTES = 6 * 1024 * 1024;
+export const SERVER_ICON_DATA_URL_MAX_LENGTH = Math.ceil((SERVER_ICON_MAX_BYTES * 4) / 3) + 64;
+export const SERVER_BANNER_DATA_URL_MAX_LENGTH = Math.ceil((SERVER_BANNER_MAX_BYTES * 4) / 3) + 64;
 export const VOICE_CHAT_TOPIC = 'nexplay-chat';
 export const SOUNDBOARD_ANNOUNCE_TOPIC = 'nexplay-soundboard';
 export const MUSIC_BOT_IDENTITY = 'music-bot';
@@ -155,7 +159,12 @@ export interface Server {
   id: string;
   name: string;
   description: string;
-  iconDataUrl: string;
+  // Ícone e painel são servidos por /api/servers/:id/icon e /banner (a URL já traz a versão, então o navegador guarda em
+  // cache); vazio = o servidor não tem. "Animated" diz se é GIF/WebP/PNG animado, para a interface parar no primeiro quadro.
+  iconUrl: string;
+  iconAnimated: boolean;
+  bannerUrl: string;
+  bannerAnimated: boolean;
   // Reaproveita a mesma paleta ACCENT_COLORS de usuários pra "faixa" do
   // perfil do servidor — null = ainda sem cor escolhida.
   accentColor: AccentColor | null;
