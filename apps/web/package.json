@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit && vite build",
     "licenses": "node scripts/generate-licenses.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "test": "node --import tsx --test src/musicCommandRouting.test.ts src/components/Markdown.test.tsx src/realtime.test.ts src/components/profilePopoverPosition.test.ts src/clipboard.test.ts src/streamAudio.test.ts src/volumePrefs.test.ts src/memberListState.test.ts src/micState.test.ts src/adminFormat.test.ts src/connectivity.test.ts src/deviceChanges.test.ts src/mediaAccess.test.ts src/aboutInfo.test.ts src/pendingInvite.test.ts"
+    "test": "node --import tsx --test src/musicCommandRouting.test.ts src/components/Markdown.test.tsx src/realtime.test.ts src/components/profilePopoverPosition.test.ts src/clipboard.test.ts src/streamAudio.test.ts src/volumePrefs.test.ts src/memberListState.test.ts src/micState.test.ts src/adminFormat.test.ts src/connectivity.test.ts src/deviceChanges.test.ts src/mediaAccess.test.ts src/aboutInfo.test.ts src/pendingInvite.test.ts src/connectionSignal.test.ts"
   },
   "dependencies": {
     "@livekit/krisp-noise-filter": "^0.4.4",

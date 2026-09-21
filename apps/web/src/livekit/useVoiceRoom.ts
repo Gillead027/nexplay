@@ -1,6 +1,7 @@
 import { onRealtimeEvent } from '../realtime';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ConnectionQuality,
   ConnectionState,
   LocalAudioTrack,
   LocalParticipant,
@@ -301,6 +302,8 @@ export function useVoiceRoom() {
   }), []);
 
   const [connectionState, setConnectionState] = useState<ConnectionState>(ConnectionState.Disconnected);
+  // Qualidade da conexão desta pessoa com a chamada, medida pelo servidor de voz (perda de pacotes, atraso...).
+  const [connectionQuality, setConnectionQuality] = useState<ConnectionQuality>(ConnectionQuality.Unknown);
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [speakers, setSpeakers] = useState<Set<string>>(new Set());
   const [screenTracks, setScreenTracks] = useState<ScreenTrackView[]>([]);
@@ -501,7 +504,15 @@ export function useVoiceRoom() {
         // Ignora pacotes de dados que não pertencem ao chat.
       }
     };
-    const onStateChanged = (state: ConnectionState) => setConnectionState(state);
+    const onStateChanged = (state: ConnectionState) => {
+      setConnectionState(state);
+      // A medição vale para a chamada que acabou de começar ou terminar; a próxima leitura chega por evento.
+      if (state !== ConnectionState.Connected) setConnectionQuality(ConnectionQuality.Unknown);
+      else setConnectionQuality(room.localParticipant.connectionQuality);
+    };
+    const onConnectionQuality = (quality: ConnectionQuality, participant: Participant) => {
+      if (participant.isLocal) setConnectionQuality(quality);
+    };
     const onMediaError = (mediaError: Error) => {
       if (isScreenShareCancelled(mediaError)) return;
       void describeMediaError(mediaError).then(setError);
@@ -590,6 +601,7 @@ export function useVoiceRoom() {
       .on(RoomEvent.ActiveSpeakersChanged, onActiveSpeakers)
       .on(RoomEvent.DataReceived, onData)
       .on(RoomEvent.ConnectionStateChanged, onStateChanged)
+      .on(RoomEvent.ConnectionQualityChanged, onConnectionQuality)
       .on(RoomEvent.MediaDevicesError, onMediaError)
       .on(RoomEvent.AudioPlaybackStatusChanged, syncRoom);
 
@@ -1212,6 +1224,7 @@ export function useVoiceRoom() {
       room,
       currentChannel,
       connectionState,
+      connectionQuality,
       connected,
       participants,
       speakers,
@@ -1271,6 +1284,7 @@ export function useVoiceRoom() {
       room,
       currentChannel,
       connectionState,
+      connectionQuality,
       connected,
       participants,
       speakers,

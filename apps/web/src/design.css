@@ -164,7 +164,7 @@ input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus, text
   position: relative; z-index: 1; width: min(800px, 100%); margin: auto; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 0; padding: 40px;
   border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border-light)); border-radius: 22px;
   background: color-mix(in srgb, var(--panel) 94%, transparent); box-shadow: var(--shadow-modal);
-  backdrop-filter: blur(18px); animation: card-in 640ms var(--ease-out) both;
+  backdrop-filter: blur(18px); animation: card-in 640ms var(--ease-out) backwards;
 }
 .entry-window::before { display: none; }
 .entry-window.single { width: min(440px, 100%); grid-template-columns: minmax(0, 1fr); }
@@ -238,7 +238,7 @@ input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus, text
 .server-button.server-current { color: #fff; background: var(--accent-gradient); box-shadow: 0 8px 22px var(--accent-glow); border: 0; }
 .server-button.server-current::before {
   content: ''; position: absolute; left: -14px; top: 50%; width: 4px; height: 30px; margin-top: -15px; border-radius: 0 5px 5px 0;
-  background: var(--accent-2); box-shadow: 0 0 12px var(--accent-2); animation: rail-pill 320ms var(--ease-out) both;
+  background: var(--accent-2); box-shadow: 0 0 12px var(--accent-2); animation: rail-pill 320ms var(--ease-out) backwards;
 }
 .server-button.server-current.active { box-shadow: 0 10px 26px var(--accent-glow-strong); }
 .server-button.add { color: var(--accent-2); background: transparent; border: 1.5px dashed color-mix(in srgb, var(--accent) 55%, transparent); }
@@ -259,7 +259,7 @@ input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus, text
 .text-channel-button:hover:not(:disabled), .channel-button:hover:not(:disabled) { color: var(--text-primary); background: var(--hover); transform: translateX(3px); }
 .text-channel-button.active, .channel-button.active { color: var(--text-primary); background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent); transform: none; }
 .text-channel-button.active::before, .channel-button.active::before {
-  left: -10px; top: 8px; width: 4px; height: 22px; border-radius: 0 4px 4px 0; background: var(--accent-gradient); animation: rail-pill 260ms var(--ease-out) both;
+  left: -10px; top: 8px; width: 4px; height: 22px; border-radius: 0 4px 4px 0; background: var(--accent-gradient); animation: rail-pill 260ms var(--ease-out) backwards;
 }
 .channel-button.active svg, .text-channel-button.active .channel-hash { color: var(--accent-2); }
 .channel-hash { transition: color var(--dur); }
@@ -277,9 +277,7 @@ input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus, text
 .room-header { background: color-mix(in srgb, var(--sidebar) 88%, transparent); backdrop-filter: blur(14px); border-bottom: 1px solid var(--border); }
 .room-title h1 { font-size: var(--fs-lg); font-weight: 700; letter-spacing: -.01em; }
 .room-title p { color: var(--text-muted); font-size: var(--fs-xs); }
-.main-panel > *, .room-content, .friends-home { animation: view-in 340ms var(--ease-out) both; }
-.connection-state { border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
-.connection-state span { background: var(--success); box-shadow: 0 0 10px var(--success); }
+.main-panel > *, .room-content, .friends-home { animation: view-in 340ms var(--ease-out) backwards; }
 
 /* ---------- chat ---------- */
 .message { padding: 6px 12px; margin-left: -12px; margin-right: -12px; border-radius: 12px; transition: background-color var(--dur); }
@@ -313,20 +311,20 @@ button:hover > .avatar, .avatar:hover { box-shadow: 0 0 0 2px color-mix(in srgb,
 .voice-action.leave:hover:not(:disabled) { background: color-mix(in srgb, var(--danger) 88%, #fff); }
 
 /* ---------- janelas, menus e configurações ---------- */
-.dialog-overlay { background: rgba(3, 7, 20, .66); backdrop-filter: blur(6px); animation: fade-in 200ms var(--ease-out) both; }
-.channel-dialog { border-radius: 22px; border-color: var(--border-light); animation: modal-in 320ms var(--ease-out) both; }
+.dialog-overlay { background: rgba(3, 7, 20, .66); backdrop-filter: blur(6px); animation: fade-in 200ms var(--ease-out) backwards; }
+.channel-dialog { border-radius: 22px; border-color: var(--border-light); animation: modal-in 320ms var(--ease-out) backwards; }
 .channel-dialog h2 { font-weight: 750; letter-spacing: -.015em; }
 .context-menu, .device-menu-popover, .emoji-picker, .soundboard-panel {
   border: 1px solid var(--border-light); border-radius: 14px; background: color-mix(in srgb, var(--panel-raised) 94%, transparent);
-  box-shadow: var(--shadow-lg); backdrop-filter: blur(16px); animation: pop-in 180ms var(--ease-out) both; transform-origin: top left;
+  box-shadow: var(--shadow-lg); backdrop-filter: blur(16px); animation: pop-in 180ms var(--ease-out) backwards; transform-origin: top left;
 }
 .context-menu button, .device-menu-popover button { border-radius: 9px; transition: background-color var(--dur-fast), color var(--dur-fast), padding var(--dur) var(--ease-out); }
 .context-menu button:hover:not(:disabled), .device-menu-popover button:hover:not(:disabled) { background: var(--accent-soft); color: var(--text-primary); }
-.settings-modal { animation: view-in 320ms var(--ease-out) both; }
+.settings-modal { animation: view-in 320ms var(--ease-out) backwards; }
 .settings-nav button { border-radius: 10px; transition: background-color var(--dur), color var(--dur), transform var(--dur) var(--ease-out); }
 .settings-nav button:hover:not(.active) { background: var(--hover); transform: translateX(3px); }
 .settings-nav button.active { color: var(--text-primary); background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
-.settings-pane { animation: view-in 360ms var(--ease-out) both; }
+.settings-pane { animation: view-in 360ms var(--ease-out) backwards; }
 .settings-pane h2 { font-weight: 750; letter-spacing: -.02em; }
 .server-settings-card { border-radius: 16px; border-color: var(--border-light); background: var(--panel); }
 .floating-notice { border-radius: 14px; backdrop-filter: blur(14px); }
@@ -353,7 +351,7 @@ button:hover > .avatar, .avatar:hover { box-shadow: 0 0 0 2px color-mix(in srgb,
 @keyframes aurora-b { 0%, 100% { transform: translate(0, 0) scale(1); } 50% { transform: translate(-90px, -50px) scale(1.1); } }
 
 /* Lista de servidores e canais: entram em sequência ao trocar de servidor */
-.server-rail > .server-button, .channels > *, .member-list-scroll > * { animation: view-in 320ms var(--ease-out) both; }
+.server-rail > .server-button, .channels > *, .member-list-scroll > * { animation: view-in 320ms var(--ease-out) backwards; }
 .server-rail > .server-button:nth-child(2) { animation-delay: 30ms; }
 .server-rail > .server-button:nth-child(3) { animation-delay: 60ms; }
 .server-rail > .server-button:nth-child(4) { animation-delay: 90ms; }
@@ -470,7 +468,7 @@ html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #
     radial-gradient(90% 90% at 50% 0%, color-mix(in srgb, var(--tile-color) 34%, transparent), transparent 70%),
     linear-gradient(160deg, color-mix(in srgb, var(--tile-color) 22%, #0b1230), color-mix(in srgb, var(--tile-color) 8%, #060a1a));
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06), var(--shadow-md);
-  animation: tile-pop 420ms var(--ease-out) both;
+  animation: tile-pop 420ms var(--ease-out) backwards;
   transition: box-shadow var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
 }
 .voice-tile:hover { transform: translateY(-2px); }
@@ -509,7 +507,7 @@ html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #
 .voice-invite {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 28px; margin: 12px auto 0; padding: 16px 24px;
   border: 1px solid var(--border-light); border-radius: 18px; background: color-mix(in srgb, var(--panel-raised) 92%, transparent);
-  backdrop-filter: blur(12px); box-shadow: var(--shadow-md); animation: view-in 420ms var(--ease-out) 120ms both;
+  backdrop-filter: blur(12px); box-shadow: var(--shadow-md); animation: view-in 420ms var(--ease-out) 120ms backwards;
 }
 .voice-invite-text { display: grid; gap: 3px; text-align: left; }
 .voice-invite-text strong { color: var(--text-primary); font-size: var(--fs-lg); font-weight: 700; }
@@ -526,14 +524,14 @@ html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #
 .voice-invite-fab:hover { color: #fff; border-color: var(--accent); background: var(--accent); transform: translateY(-2px); }
 .voice-invite-fab.copied { color: #fff; border-color: transparent; background: #17a877; }
 .voice-invite-fab.failed { color: #fff; border-color: transparent; background: var(--danger); }
-.voice-invite-fab-note { position: absolute; left: 54px; padding: 6px 10px; border-radius: 9px; color: #fff; background: rgba(3, 7, 20, .82); font-size: var(--fs-xs); font-weight: 650; white-space: nowrap; animation: view-in 200ms var(--ease-out) both; }
+.voice-invite-fab-note { position: absolute; left: 54px; padding: 6px 10px; border-radius: 9px; color: #fff; background: rgba(3, 7, 20, .82); font-size: var(--fs-xs); font-weight: 650; white-space: nowrap; animation: view-in 200ms var(--ease-out) backwards; }
 
 /* Chat da sala: escondido atrás do ícone no canto superior direito; um contador avisa de mensagem nova */
 .icon-button.chat-toggle { position: relative; }
 .chat-unread-badge {
   position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; display: grid; place-items: center; padding: 0 4px;
   border: 2px solid var(--main); border-radius: 999px; color: #fff; background: var(--danger); font-size: 10px; font-weight: 800; line-height: 1;
-  animation: badge-pop 320ms var(--ease-out) both;
+  animation: badge-pop 320ms var(--ease-out) backwards;
 }
 @keyframes badge-pop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
@@ -560,7 +558,7 @@ html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #
 .watch-heroes { flex: 1; min-height: 0; display: flex; gap: 12px; }
 .watch-hero {
   position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; border-radius: 18px; background: #02050f;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07), var(--shadow-lg); animation: tile-pop 420ms var(--ease-out) both;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .07), var(--shadow-lg); animation: tile-pop 420ms var(--ease-out) backwards;
 }
 .watch-hero video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .watch-hero-label {
@@ -612,3 +610,21 @@ html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #
 
 [data-perf="lite"] .watch-hero { animation: none; }
 [data-perf="lite"] .watch-strip, [data-perf="lite"] .watch-chrome-tab { transition: none; }
+
+/* Tela cheia do palco: o palco é "position: fixed"; nada acima dele pode prender esse posicionamento.
+   (Uma animação de entrada com preenchimento "both" deixa um transform no elemento e faz o fixed valer só
+   dentro dele, por isso as animações de entrada usam "backwards".) */
+.voice-stage:has(.watch-stage.native-fullscreen) { z-index: auto; }
+
+/* ---------- sinal de conexão com a chamada (painel do usuário) ---------- */
+.connection-signal { width: 28px; height: 30px; display: grid; place-items: center; flex: 0 0 auto; cursor: default; }
+.connection-signal rect { fill: var(--border-light); transition: fill var(--dur) var(--ease-out); }
+.connection-signal.level-good rect.on { fill: var(--success); }
+.connection-signal.level-fair rect.on { fill: var(--warning); }
+.connection-signal.level-bad rect.on { fill: var(--danger); }
+.connection-signal.level-bad { animation: signal-alert 1.4s ease-in-out infinite; }
+.connection-signal.level-pending rect { fill: var(--text-muted); animation: signal-scan 1.2s ease-in-out infinite; }
+.connection-signal.level-pending rect:nth-child(2) { animation-delay: .15s; }
+.connection-signal.level-pending rect:nth-child(3) { animation-delay: .3s; }
+@keyframes signal-scan { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
+@keyframes signal-alert { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }

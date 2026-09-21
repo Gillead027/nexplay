@@ -97,6 +97,8 @@ import { AboutPane } from './AboutPane';
 import type { UpdateCheckOutcome } from '../aboutInfo';
 import { AdminOverviewPane } from './AdminOverview';
 import { StatusNotices } from './StatusNotices';
+import { ConnectionSignal } from './ConnectionSignal';
+import { describeConnectionSignal } from '../connectionSignal';
 import { useConnectivity } from '../useConnectivity';
 import { inviteUrl, PENDING_INVITE_EVENT, takePendingInvite } from '../pendingInvite';
 import { AddServerModal, useActiveServerMember, useServersState } from './Servers';
@@ -2335,6 +2337,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   // enquanto há uma call em andamento; o cabeçalho da sala segue usando
   // connectionLabel puro, onde "Desconectado" descreve a voz de fato.
   const userStatusLabel = voice.connectionState === ConnectionState.Disconnected ? 'Online' : connectionLabel;
+  // Sinal de conexão com a chamada (verde/amarelo/vermelho), só enquanto há uma chamada.
+  const connectionSignal = describeConnectionSignal(voice.connectionState, voice.connectionQuality);
 
   // Quem tem a transmissão de tela aberta por este usuário: só o áudio dessas
   // transmissões toca (o resto continua em silêncio até "Ver transmissão").
@@ -2974,6 +2978,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
             <span>{userStatusLabel}</span>
           </div>
           <div className="sidebar-actions">
+            {connectionSignal && <ConnectionSignal info={connectionSignal} />}
             <button
               className={`icon-button ${voice.micMuted ? 'danger' : ''}`}
               type="button"
@@ -3069,7 +3074,6 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           </div>
           {!activeTextChannel && (
             <div className="room-header-actions">
-              <div className={`connection-state ${voice.connected ? 'online' : ''}`}><span />{connectionLabel}</div>
               {voice.connected && (
                 <>
                   <button
