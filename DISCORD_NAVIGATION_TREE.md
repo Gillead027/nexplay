@@ -332,7 +332,8 @@ APP
 │   ├── Foco e Tab em camadas                                                PARTIAL (só Configurações do app)
 │   ├── Duplo clique                                                         MISSING (barra de título: a confirmar)
 │   ├── Voltar / avançar, URL por canal, restaurar após F5                   MISSING (F5 volta ao canal padrão)
-│   ├── nexplay:// e convite clicável                                        MISSING
+│   ├── Convite clicável (https://site/convite/CÓDIGO, copiar link)          DONE
+│   ├── nexplay:// (abrir o app pelo protocolo)                              MISSING
 │   ├── Copiar link da mensagem                                              MISSING
 │   └── Modo desenvolvedor / Copiar ID de servidor, canal, usuário           MISSING
 │
@@ -344,10 +345,10 @@ APP
 │   │   ├── Conta sem servidor (Entrar com convite / Criar servidor)         DONE
 │   │   ├── Banimentos vazios                                                DONE
 │   │   └── Eventos vazios, itens de loja vazios                             MISSING (funcionalidades não existem)
-│   ├── Carregando (textos "Carregando…", sem spinner global)                PARTIAL (sem esqueletos)
+│   ├── Carregando (esqueletos em mensagens e membros; sem spinner global)   DONE (listas curtas seguem em texto)
 │   ├── Sem conexão
 │   │   ├── Faixa "Sem conexão com a internet" / "Reconectando…"             DONE (Tentar agora)
-│   │   ├── Enviar sem rede (erro claro, texto mantido)                      PARTIAL (sem mensagem pendente nem fila)
+│   │   ├── Enviar sem rede (bolha "Não enviada", Tentar de novo)            DONE
 │   │   └── Voz "Reconectando"                                               DONE
 │   ├── Permissões
 │   │   ├── Microfone negado (entra como ouvinte, abre configurações)        DONE
@@ -359,8 +360,8 @@ APP
 │   ├── Configurações > Sobre
 │   │   ├── Versão do app, versão da web, Chromium                           DONE
 │   │   ├── Copiar versão                                                    DONE
-│   │   ├── Verificar atualizações, abrir logs                               MISSING (exige nova versão do desktop)
-│   │   └── Licenças, privacidade, termos                                    MISSING (textos não existem)
+│   │   ├── Verificar atualizações, abrir pasta de logs                      DONE (desktop 0.2.12)
+│   │   └── Licenças, privacidade, termos                                    DONE (textos a revisar por quem administra)
 │   ├── Sons (10, só na call; osciladores do Web Audio)                      PARTIAL (sem som de texto, menção, amizade; sem interruptor)
 │   ├── Volume de saída e do soundboard                                      DONE
 │   └── Premium, loja, cosméticos                                            MISSING

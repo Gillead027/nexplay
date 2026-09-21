@@ -2860,6 +2860,8 @@ Cobre os roteiros 38 (Keyboard navigation), 39 (Esc), 40 (Hover, só o que é te
 
 ## 15.10 — DEEP_LINKS_PROTOCOL *(MISSING)*
 
+**ATUALIZAÇÃO PARCIAL (commit `0cd2bdb`, em produção, ver `INVITE_LINK_OPEN_AND_JOIN`, 18.5)**: o convite clicável em https (`/convite/CÓDIGO`) existe; o protocolo `nexplay://` continua `MISSING`. O texto abaixo é o estado anterior.
+
 **ID**: `DEEP_LINKS_PROTOCOL`
 **NOME**: Links que abrem o app (`nexplay://`) e convites clicáveis
 **STATUS**: **`MISSING` por completo.** Não há `setAsDefaultProtocolClient`, tratamento de `open-url` nem leitura de argumentos de protocolo na segunda instância (o `second-instance` só restaura e foca a janela, ver `APP_SECOND_INSTANCE`). Convites são **códigos**, sem link clicável (`INVITE_CODE_VIEW_COPY_REGENERATE`, Roteiro 9).
@@ -2973,6 +2975,8 @@ Auditado em 2026-09-21 contra o código e com o app rodando (Playwright, Chromiu
 
 ## 16.7 — LOADING_STATES
 
+**ATUALIZAÇÃO — ENTREGUE (commit `0cd2bdb`, em produção, ver `LOADING_SKELETONS`, 18.2)**: mensagens de canal, conversas diretas e painel de membros passaram a mostrar esqueletos. O texto abaixo é o estado anterior.
+
 **ID**: `LOADING_STATES`
 **NOME**: Estados de carregamento
 **STATUS**: `PARTIAL`
@@ -2995,6 +2999,8 @@ Auditado em 2026-09-21 contra o código e com o app rodando (Playwright, Chromiu
 ---
 
 ## 16.9 — OFFLINE_SEND_FAILED_RETRY
+
+**ATUALIZAÇÃO — ENTREGUE (commit `0cd2bdb`, em produção, ver `FAILED_SEND_RETRY`, 18.1)**: a mensagem que não saiu vira uma bolha "Não enviada" com "Tentar de novo" e "Descartar". O texto abaixo é o estado anterior.
 
 **ID**: `OFFLINE_SEND_FAILED_RETRY`
 **NOME**: Enviar mensagem sem conexão
@@ -3096,6 +3102,8 @@ Auditado em 2026-09-21 contra o código e com o app rodando. Cobre os itens 69 (
 
 ## 17.3 — ABOUT_CHECK_UPDATE *(MISSING, exige o cliente desktop)*
 
+**ATUALIZAÇÃO — ENTREGUE (commit `c3fc6cc`, desktop 0.2.12 publicado em https://github.com/Gillead027/nexplay/releases/tag/v0.2.12, ver `ABOUT_UPDATE_AND_LOGS`, 18.3)**. O texto abaixo é o estado anterior.
+
 **ID**: `ABOUT_CHECK_UPDATE`
 **NOME**: Verificar atualizações
 **STATUS**: **`MISSING`, `REQUIRES_DESKTOP_CLIENT`.** O desktop já verifica sozinho no início (`APP_AUTO_UPDATE_CHECK`), baixa (`APP_AUTO_UPDATE_DOWNLOAD`) e pergunta se quer reiniciar (`APP_AUTO_UPDATE_INSTALL_PROMPT`), mas não existe forma de pedir a verificação na hora. Fazer isso exige uma nova ponte no processo principal (IPC) e portanto uma nova versão do desktop publicada no GitHub. Não foi colocado um botão sem função.
@@ -3104,6 +3112,8 @@ Auditado em 2026-09-21 contra o código e com o app rodando. Cobre os itens 69 (
 
 ## 17.4 — ABOUT_OPEN_LOGS *(MISSING, exige o cliente desktop)*
 
+**ATUALIZAÇÃO — ENTREGUE (commit `c3fc6cc`, desktop 0.2.12 publicado em https://github.com/Gillead027/nexplay/releases/tag/v0.2.12, ver `ABOUT_UPDATE_AND_LOGS`, 18.3)**. O texto abaixo é o estado anterior.
+
 **ID**: `ABOUT_OPEN_LOGS`
 **NOME**: Abrir logs
 **STATUS**: **`MISSING`, `REQUIRES_DESKTOP_CLIENT`.** O desktop grava log de atualização e de depuração (`logUpdate`, `debugLog` no processo principal), mas nenhuma tela leva a eles. Depende da mesma nova ponte do 17.3.
@@ -3111,6 +3121,8 @@ Auditado em 2026-09-21 contra o código e com o app rodando. Cobre os itens 69 (
 ---
 
 ## 17.5 — ABOUT_LICENSES_PRIVACY_TERMS *(MISSING)*
+
+**ATUALIZAÇÃO — ENTREGUE (commit `0cd2bdb`, em produção, ver `LEGAL_TEXTS_AND_LICENSES`, 18.4)**. O texto abaixo é o estado anterior.
 
 **ID**: `ABOUT_LICENSES_PRIVACY_TERMS`
 **NOME**: Licenças, Política de privacidade e Termos
@@ -3153,6 +3165,97 @@ Auditado em 2026-09-21 contra o código e com o app rodando. Cobre os itens 69 (
 2. **Verificar atualização e abrir logs dependem de uma nova versão do desktop** (`REQUIRES_DESKTOP_CLIENT`); licenças, privacidade e termos dependem de conteúdo que só o dono do serviço define.
 3. **Os sons cobrem só a call**: nada toca para mensagem, menção, amizade ou chamada, e não há como desligar um som específico.
 4. **Premium, loja e cosméticos continuam inexistentes** e não têm nenhuma tela falsa.
+
+---
+
+# ROTEIRO 18 — FECHAMENTO DAS PENDÊNCIAS DOS ROTEIROS 15, 16 E 17
+
+Feito em 2026-09-21. Cada ficha abaixo atualiza o estado de uma ficha anterior (as fichas antigas ganharam uma linha de atualização no topo). Web no commit `0cd2bdb`, em produção; desktop no commit `c3fc6cc`, desktop 0.2.12 publicado em https://github.com/Gillead027/nexplay/releases/tag/v0.2.12. 28 verificações de ponta a ponta passaram (mensagem não enviada em canal e em conversa direta, esqueletos, link de convite em quatro situações, botões do desktop, textos legais e licenças).
+
+## 18.1 — FAILED_SEND_RETRY
+
+**ID**: `FAILED_SEND_RETRY`
+**NOME**: Mensagem que não saiu, com "Tentar de novo" e "Descartar"
+**ATUALIZA**: `OFFLINE_SEND_FAILED_RETRY` (16.9), que era `PARTIAL`
+**STATUS**: `DONE` (commit `0cd2bdb`, em produção)
+**COMPORTAMENTO**: quando o envio falha porque não chegou ao servidor (`NetworkError`), a mensagem sai do campo e aparece como uma bolha avermelhada no fim do canal ou da conversa direta: o texto, "Não enviada: sem conexão com o servidor." e os botões **Tentar de novo** e **Descartar**. Tentar de novo sem rede mantém a bolha e mostra o erro; com a rede de volta entrega a mensagem uma vez só (conferido no servidor) e a bolha some. Vale para mensagem de texto, resposta, anexos já enviados, publicação como servidor, comando de música e mensagem direta. As não enviadas ficam por canal (trocar de canal não as mistura) e só na memória: recarregar a página as perde.
+**DECISÃO**: nada é reenviado sozinho. Uma resposta perdida no caminho poderia fazer o servidor já ter recebido a mensagem, e reenviar duplicaria. Erros que não são de rede (por exemplo, timeout aplicado à conta) continuam como erro no campo e a mensagem fica para corrigir.
+
+---
+
+## 18.2 — LOADING_SKELETONS
+
+**ID**: `LOADING_SKELETONS`
+**NOME**: Esqueletos de carregamento
+**ATUALIZA**: `LOADING_STATES` (16.7), que era `PARTIAL`
+**STATUS**: `DONE` para mensagens de canal, conversas diretas e painel de membros; `PARTIAL` no restante (convites, bloqueados e administração seguem com "Carregando…", porque são listas curtas)
+**COMPORTAMENTO**: enquanto as mensagens carregam aparecem cinco blocos (avatar, nome e linha de texto) com brilho animado; no painel de membros, quatro linhas. O texto "Carregando mensagens…" ou "Carregando membros…" continua para leitores de tela (`role="status"`, `aria-busy`), e o brilho para quando o sistema pede menos movimento (`prefers-reduced-motion`).
+
+---
+
+## 18.3 — ABOUT_UPDATE_AND_LOGS
+
+**ID**: `ABOUT_UPDATE_AND_LOGS`
+**NOME**: "Verificar atualizações" e "Abrir pasta de logs"
+**ATUALIZA**: `ABOUT_CHECK_UPDATE` (17.3) e `ABOUT_OPEN_LOGS` (17.4), que eram `MISSING`
+**STATUS**: `DONE` (commit `c3fc6cc`, desktop 0.2.12 publicado em https://github.com/Gillead027/nexplay/releases/tag/v0.2.12)
+**COMPORTAMENTO**: duas novas pontes do processo principal (`app:check-updates` e `app:open-logs`, aceitas só da janela principal). **Verificar atualizações** chama o `electron-updater` na hora e responde "Você já está na versão mais recente (0.2.12).", "A versão X está sendo baixada. Quando terminar, o app pergunta se você quer reiniciar." (o download começa sozinho e o diálogo de reiniciar já existente aparece no fim), "A verificação só existe no aplicativo instalado." ou "Não foi possível verificar: motivo". **Abrir pasta de logs** abre a pasta de dados do app, onde fica o `updater.log`. Os dois botões só aparecem no app desktop que tem as funções (0.2.12 em diante); no navegador e nas versões antigas ficam escondidos, sem botão sem função.
+**LIMITE**: o log de depuração de inicialização fica em `%TEMP%\nexplay-startup-debug.log`, fora da pasta aberta.
+
+---
+
+## 18.4 — LEGAL_TEXTS_AND_LICENSES
+
+**ID**: `LEGAL_TEXTS_AND_LICENSES`
+**NOME**: Política de privacidade, Termos de uso e Licenças de código aberto
+**ATUALIZA**: `ABOUT_LICENSES_PRIVACY_TERMS` (17.5), que era `MISSING`
+**CAMINHO**: `Configurações > Sobre > Política de privacidade / Termos de uso / Licenças de código aberto`
+**STATUS**: `DONE` (commit `0cd2bdb`, em produção), com uma ressalva de conteúdo abaixo
+**PRIVACIDADE**: descreve o que o programa faz na versão atual, cada afirmação conferida no código: o que fica guardado (conta com senha em hash bcrypt, perfil, mensagens, anexos até 15 MB e 5 por mensagem, amizades, bloqueios, banimentos e timeouts); o que não fica (áudio e vídeo das calls não são gravados, presença só em memória); quem pode ver (não há criptografia de ponta a ponta, quem administra tem acesso técnico e um painel com contagens e a lista de contas); música (consulta ao YouTube e ao Spotify por proxy); cookie de sessão (só o servidor lê, não vai a outros sites, 12 horas) e preferências no aparelho; cópias de segurança; e que não existe exclusão de conta pela tela.
+**TERMOS**: serviço privado sem garantia; conta e senha; conduta; moderação; música; responsabilidade; mudanças.
+**LICENÇAS**: 18 pacotes de terceiros que entram no app web, gerados por `npm run licenses -w @nexplay/web` a partir do `package-lock.json` (dependências de produção e tudo que elas puxam), com nome, versão, licença e endereço do projeto: MIT (10), Apache-2.0 (4), 0BSD, BSD-3-Clause, "(Apache-2.0 AND BSD-3-Clause)" e a licença própria do LiveKit para o filtro de ruído Krisp ("SEE LICENSE IN https://livekit.io/legal/terms-of-service"). O texto completo de cada licença acompanha o pacote.
+**RESSALVA**: os textos de privacidade e termos foram redigidos a partir do que o código faz e de regras gerais para um servidor privado. **Não são aconselhamento jurídico** e quem administra deve revisá-los e ajustar as regras que quiser (as de conduta e de moderação, em especial). Ficam em `apps/web/src/legalTexts.ts`. Se o comportamento do programa mudar, o texto de privacidade precisa mudar junto.
+
+---
+
+## 18.5 — INVITE_LINK_OPEN_AND_JOIN
+
+**ID**: `INVITE_LINK_OPEN_AND_JOIN`
+**NOME**: Link de convite que abre o app e entra no servidor
+**ATUALIZA**: `DEEP_LINKS_PROTOCOL` (15.10) e `INVITE_CODE_VIEW_COPY_REGENERATE`, no que diz respeito ao convite clicável em https (o protocolo `nexplay://` continua `MISSING`)
+**CAMINHO**: `https://<site>/convite/<CÓDIGO>`
+**STATUS**: `DONE` (commit `0cd2bdb`, em produção)
+**COMPORTAMENTO**: o servidor web devolve o app para qualquer caminho, então o link abre normalmente. O app lê o código, guarda na sessão do navegador e volta o endereço para a raiz. (1) **Sem estar logada**: a tela de entrada mostra "Você recebeu um convite para um servidor. Entre na sua conta, ou crie uma com o código de cadastro, para aceitar."; depois de entrar ou criar a conta a pessoa entra no servidor do convite, ele abre e aparece "Você entrou em <servidor>." (2) **Já logada**: entra direto e vê o mesmo aviso. (3) **Código inválido**: aviso de erro "Convite não encontrado." (`Fechar`), sem tela quebrada. O código é usado uma vez por abertura do link (`takePendingInvite` limpa a sessão).
+**LIMITE**: criar a conta continua exigindo o **código de cadastro** da instância; o convite de servidor só leva ao servidor depois disso. Não foi transformado em cadastro livre de propósito: qualquer dono de servidor passaria a poder criar contas na instância.
+
+---
+
+## 18.6 — INVITE_LINK_COPY
+
+**ID**: `INVITE_LINK_COPY`
+**NOME**: Botão "Copiar link" nos Convites
+**CAMINHO**: `Configurações do servidor > Convites`
+**STATUS**: `DONE` (commit `0cd2bdb`, em produção)
+**COMPORTAMENTO**: ao lado de "Copiar" (só o código), "Copiar link" copia `<endereço do site>/convite/<CÓDIGO>` e mostra "Copiado!" por 2 s (ou o erro de cópia). "Gerar novo código" continua invalidando o link anterior. O texto da página passou a dizer "Compartilhe o link (ou o código)".
+
+---
+
+## 18.7 — ENTRY_DOWNLOAD_APP_LINK
+
+**ID**: `ENTRY_DOWNLOAD_APP_LINK`
+**NOME**: "Baixar o app para Windows" na tela de entrada
+**CAMINHO**: `Tela de entrada (login e cadastro), abaixo do formulário`
+**STATUS**: `DONE` (commit `0cd2bdb`, em produção)
+**COMPORTAMENTO**: no navegador, um link abre `https://github.com/Gillead027/nexplay/releases/latest/download/NexPlay-Setup.exe`, que o GitHub redireciona sempre para o instalador da versão mais recente (não precisa mudar a cada versão). No app desktop o link não aparece. O campo do cadastro passou a se chamar **"Código de cadastro"** (antes "Código de convite", o que confundia com o código do servidor).
+
+---
+
+**Achados do Roteiro 18** (por ordem de impacto):
+
+1. **As pendências dos Roteiros 16 e 17 que dependiam só de código do web foram fechadas**: mensagem não enviada com retry, esqueletos, textos legais e licenças, link e download do app.
+2. **O desktop 0.2.12 traz as pontes novas**; quem tem o app instalado recebe a versão pelo atualizador automático e a tela Sobre passa a mostrar os dois botões.
+3. **Decisão de segurança registrada**: o convite de servidor não cria conta (18.5).
+4. **Continua fora**: o protocolo `nexplay://` (só o link https existe), o log de inicialização na pasta aberta, o texto jurídico revisado por quem administra, e ilustrações e botões nos vazios de amigos.
 
 ---
 
