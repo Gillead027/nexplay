@@ -1,8 +1,20 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
+// A versão publicada é gravada em apps/web/build-info.json na hora do deploy (commit e data).
+// Sem o arquivo (desenvolvimento local) a tela Sobre diz que não é uma versão publicada.
+const buildInfoPath = fileURLToPath(new URL('./build-info.json', import.meta.url));
+const buildInfo = existsSync(buildInfoPath)
+  ? (JSON.parse(readFileSync(buildInfoPath, 'utf8')) as { commit: string; builtAt: string | null })
+  : { commit: 'desenvolvimento', builtAt: null };
+
 export default defineConfig({
   plugins: [react()],
+  define: {
+    __BUILD_INFO__: JSON.stringify(buildInfo),
+  },
   build: {
     chunkSizeWarningLimit: 600,
   },

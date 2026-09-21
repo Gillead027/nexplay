@@ -92,6 +92,7 @@ import { ProfilePopover, type ProfilePopoverTarget } from './ProfilePopover';
 import { RemoteAudioSink } from './RemoteAudioSink';
 import { ScreenStage } from './ScreenStage';
 import { ForwardMessageModal, type ForwardSource } from './ForwardMessage';
+import { AboutPane } from './AboutPane';
 import { AdminOverviewPane } from './AdminOverview';
 import { StatusNotices } from './StatusNotices';
 import { useConnectivity } from '../useConnectivity';
@@ -586,7 +587,7 @@ function RoomSkeleton() {
   );
 }
 
-type SettingsSection = 'profile' | 'security' | 'privacy' | 'voice' | 'appearance' | 'admin';
+type SettingsSection = 'profile' | 'security' | 'privacy' | 'voice' | 'appearance' | 'about' | 'admin';
 
 const MIC_METER_BARS = 20;
 
@@ -1036,6 +1037,9 @@ function SettingsModal({
           <button type="button" className={section === 'appearance' ? 'active' : ''} onClick={() => setSection('appearance')}>
             <PaletteIcon size={15} /> Aparência
           </button>
+          <button type="button" className={section === 'about' ? 'active' : ''} onClick={() => setSection('about')}>
+            <span className="nav-glyph">ⓘ</span> Sobre
+          </button>
           {isInstanceAdmin && (
             <>
               <span className="settings-nav-group">Administração</span>
@@ -1051,6 +1055,7 @@ function SettingsModal({
         </nav>
 
         <div className="settings-content">
+          {section === 'about' && <AboutPane />}
           {section === 'admin' && isInstanceAdmin && <AdminOverviewPane />}
           {section === 'profile' && (
             <div className="settings-pane two-column">

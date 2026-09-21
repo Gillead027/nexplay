@@ -17,3 +17,6 @@ docker-compose.override.yml
 /livekit.yaml
 
 .tools/
+
+# Gravado no deploy: commit e data da versão publicada (tela Configurações > Sobre)
+apps/web/build-info.json
