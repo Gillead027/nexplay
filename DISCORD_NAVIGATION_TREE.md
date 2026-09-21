@@ -336,6 +336,25 @@ APP
 │   ├── Copiar link da mensagem                                              MISSING
 │   └── Modo desenvolvedor / Copiar ID de servidor, canal, usuário           MISSING
 │
+├── ESTADOS DE TELA, CONEXÃO E PERMISSÕES                              [Roteiro 16]
+│   ├── Estados vazios
+│   │   ├── Amigos, conversas, pedidos, bloqueados                           DONE (só texto, sem botão)
+│   │   ├── Canal, DM e chat da call sem mensagens                           DONE
+│   │   ├── Busca, fixadas, emoji sem resultado                              DONE
+│   │   ├── Conta sem servidor (Entrar com convite / Criar servidor)         DONE
+│   │   ├── Banimentos vazios                                                DONE
+│   │   └── Eventos vazios, itens de loja vazios                             MISSING (funcionalidades não existem)
+│   ├── Carregando (textos "Carregando…", sem spinner global)                PARTIAL (sem esqueletos)
+│   ├── Sem conexão
+│   │   ├── Faixa "Sem conexão com a internet" / "Reconectando…"             DONE (Tentar agora)
+│   │   ├── Enviar sem rede (erro claro, texto mantido)                      PARTIAL (sem mensagem pendente nem fila)
+│   │   └── Voz "Reconectando"                                               DONE
+│   ├── Permissões
+│   │   ├── Microfone negado (entra como ouvinte, abre configurações)        DONE
+│   │   ├── Câmera negada                                                    DONE
+│   │   └── Captura de tela recusada (sem stream falso)                      DONE
+│   └── Aparelho removido ou conectado (volta ao padrão e avisa)             PARTIAL (monitor na transmissão não verificado)
+│
 ├── TEMPO REAL (infraestrutura)                                         [Roteiro 5]
 │   ├── WebSocket autenticado pelo cookie, heartbeat de 30 s                 CORE
 │   ├── Escopo: broadcast / por servidor / por usuário (multi-aba livre)     CORE
@@ -369,7 +388,8 @@ APP
 | Configurações do app | alterar username, sessões ativas, seções removidas (notificações, atalhos, idioma) |
 | Notificações e não lidas | rastreio de leitura, menções, notificação e flash do desktop (o Electron nega `notifications`), título com contador, inbox, silenciar servidor/canal/DM, som fora do chat da call; o modo de notificação da categoria grava e nada o lê |
 | Teclado, histórico, copiar e links | Esc sem pilha de camadas, atalhos, histórico e URL por canal, restaurar canal após F5, deep links, permalink de mensagem, modo desenvolvedor |
-| Tempo real | presença, "digitando", indicador de reconexão do WebSocket |
+| Tempo real | "digitando" (presença e indicador de reconexão foram entregues) |
+| Estados de tela, conexão e permissões | mensagem pendente com reenviar e fila automática, esqueletos de carregamento, botão e ilustração nos vazios de amigos, aviso de monitor desconectado durante a transmissão, eventos e loja |
 
 ## O que a árvore mostra
 

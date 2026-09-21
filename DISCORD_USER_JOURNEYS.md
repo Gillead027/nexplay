@@ -236,7 +236,7 @@ Jornada extra. Mostra o que sobrevive quando a conexão é interrompida.
 | 5 | Ensurdecer e transmissões assistidas | Resetam (`deafened` volta a `false` em cada `connect()`; a lista de transmissões assistidas zera). Os **volumes individuais deixaram de resetar** (commit `1fa99f4`). | VOICE_SELF_DEAFEN (6.4), VOICE_PARTICIPANT_VOLUME_CONTROL (7.4), SCREEN_SHARE_WATCH (8.2) | PARTIAL |
 | 6 | A rede cai sem F5 | O LiveKit tenta se recuperar sozinho. O rodapé mostra "Reconectando", depois "Conectado" de novo, **sem a pessoa fazer nada**. | VOICE_NETWORK_RECONNECT (6.9) | DONE |
 | 7 | A rede não volta | O Atlas marca o comportamento como **não confirmado**: precisaria simular perda real de rede para saber se cai para "Desconectado" ou se mostra erro. | VOICE_NETWORK_RECONNECT (6.9) | PARTIAL |
-| 8 | O WebSocket de dados cai | Reconecta com backoff exponencial de 1 s a 15 s. | REALTIME_RECONNECT (1.17) | DONE |
+| 8 | O WebSocket de dados cai | Reconecta com backoff exponencial de 1 s a 15 s. **Agora a tela avisa**: depois de 3 s aparece "Sem conexão com o servidor. Reconectando…" com "Tentar agora"; sem internet, "Sem conexão com a internet…". Escrever nessa hora mostra o erro claro e mantém o texto no campo (commit `f03e594`, em produção). | REALTIME_RECONNECT (1.17), OFFLINE_CONNECTION_NOTICE (16.8), OFFLINE_SEND_FAILED_RETRY (16.9) | DONE |
 
 **Veredito:** PARTIAL. A recuperação de rede funciona sozinha. O F5 derruba a call por escolha deliberada da configuração do `Room`, o que difere do Discord, onde recarregar não desconecta.
 
@@ -273,6 +273,21 @@ Jornada extra. Aparece porque o desktop tem auto-update e a call é o uso princi
 | 4 | Escolhe "Atualizar e reiniciar" | `quitAndInstall()` fecha o app e roda o instalador. **A call cai abruptamente**, sem checagem de "está numa call". | APP_AUTO_UPDATE_INSTALL_PROMPT (0.19) | PARTIAL |
 
 **Veredito:** PARTIAL. A pessoa escolhe entre atualizar ou não, então o app não decide por ela. Mas o diálogo aparece mesmo no pior momento e não avisa que a call vai cair.
+
+---
+
+## J10 — Entrar na call sem permissão de microfone
+
+Jornada extra do Roteiro 16.
+
+| # | O que a pessoa faz | O que o app faz (verificado) | Ficha | Status |
+|---|---|---|---|---|
+| 1 | Clica num canal de voz com o microfone bloqueado | Entra na call como **ouvinte**: ouve todo mundo, com o microfone desligado. | MIC_PERMISSION_DENIED (16.11) | DONE |
+| 2 | Olha o painel de baixo | O botão do microfone aparece mutado (o estado real) e o nome dela ganha o ícone de mutado na lista de canais. | VOICE_SELF_MUTE (6.3) | DONE |
+| 3 | Lê o aviso no topo | "Permissão do microfone negada… Você entrou com o microfone desligado." No desktop com o Windows bloqueando, há o botão "Abrir configurações do Windows"; no navegador, a instrução do cadeado. O aviso aparece em qualquer tela. | MIC_PERMISSION_DENIED (16.11) | DONE |
+| 4 | Libera a permissão e clica no microfone | O app tenta abrir o microfone de novo. Dando certo, o ícone volta ao normal e o mute some para os outros. | VOICE_SELF_MUTE (6.3) | DONE |
+
+**Veredito:** DONE. Câmera e captura de tela seguem o mesmo desenho (CAMERA_PERMISSION_DENIED, SCREEN_CAPTURE_DENIED); a captura de tela não tem botão para a configuração porque o Electron não expõe essa página.
 
 ---
 

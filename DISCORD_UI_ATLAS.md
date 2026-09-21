@@ -2905,6 +2905,169 @@ Cobre os roteiros 38 (Keyboard navigation), 39 (Esc), 40 (Hover, só o que é te
 
 ---
 
+# ROTEIRO 16 — ESTADOS VAZIOS, CARREGANDO, OFFLINE E PERMISSÕES DE DISPOSITIVO
+
+Auditado em 2026-09-21 contra o código e com o app rodando (Playwright, Chromium com dispositivos falsos de mídia; rede cortada com `context.setOffline`; WebSocket derrubado com `routeWebSocket`). Cobre os itens 61 a 67 do pedido original: estados vazios, estados de carregamento, offline, permissão de microfone, de câmera, de captura de tela e troca de dispositivos. As correções deste roteiro saíram no commit `f03e594`, em produção; a tela "sem servidor" saiu no commit `4e9708c`, em produção. 24 verificações de ponta a ponta passaram (offline, permissões, aparelhos, banimentos vazios).
+
+## 16.1 — EMPTY_STATE_FRIENDS_AND_DMS
+
+**ID**: `EMPTY_STATE_FRIENDS_AND_DMS`
+**NOME**: Estados vazios de amigos, conversas, pedidos e bloqueados
+**CAMINHO**: `Início (rail) > lista de conversas / abas de amigos`; `Configurações > Privacidade > Usuários bloqueados`
+**STATUS**: `DONE`
+**TEXTOS EXIBIDOS** (`Friends.tsx`): lista de conversas "Nenhuma conversa ainda."; amigos "Você ainda não tem amigos adicionados."; pedidos "Nenhum pedido de amizade pendente."; bloqueados "Nenhum usuário bloqueado."
+**ESPERADO A MAIS**: nenhum dos quatro tem ilustração nem botão de ação (o Discord oferece "Adicionar amigo" no vazio). Não é tela branca.
+
+---
+
+## 16.2 — EMPTY_STATE_CHANNEL_AND_DM_MESSAGES
+
+**ID**: `EMPTY_STATE_CHANNEL_AND_DM_MESSAGES`
+**NOME**: Canal de texto ou conversa direta sem mensagens
+**STATUS**: `DONE`
+**TEXTOS EXIBIDOS**: canal de texto, título "Boas-vindas a #nome" e "Este é o começo deste canal. Envie a primeira mensagem." (`TextChannels.tsx`); conversa direta, "Essa é a conversa com Nome" e "Diga oi!" (`DmChannelView.tsx`). Antes das mensagens chegarem, os dois mostram "Carregando mensagens…" (ver `LOADING_STATES`).
+**CHAT DA CALL**: sem mensagens mostra "Nenhuma mensagem" e "As mensagens pertencem ao canal atual." (`Workspace.tsx`).
+
+---
+
+## 16.3 — EMPTY_STATE_SEARCH_AND_PINS
+
+**ID**: `EMPTY_STATE_SEARCH_AND_PINS`
+**NOME**: Busca sem resultado, fixadas vazias e emoji sem resultado
+**STATUS**: `DONE`
+**TEXTOS EXIBIDOS**: busca do canal "Nenhuma mensagem encontrada." (só depois de buscar); mensagens fixadas "Nenhuma mensagem fixada neste canal ainda."; seletor de emoji "Nenhum emoji encontrado."; menu de mover canal e listas de cargos não têm vazio próprio porque nunca ficam sem itens.
+
+---
+
+## 16.4 — EMPTY_STATE_NO_SERVERS
+
+**ID**: `EMPTY_STATE_NO_SERVERS`
+**NOME**: Conta sem nenhum servidor
+**CAMINHO**: `Entrar no app com uma conta que ainda não entrou em servidor`
+**STATUS**: `DONE` (commit `4e9708c`, em produção)
+**ESTADO**: como a conta nova não entra em servidor nenhum sozinha, a área principal mostra "Você ainda não está em nenhum servidor" com os botões "Entrar com convite" (abre o diálogo já na aba do código) e "Criar servidor"; o cabeçalho lateral diz "Sem servidor" e a lista de canais fica invisível (mantendo o painel do usuário embaixo). Antes o cabeçalho ficava em "Carregando…" para sempre. O carregamento inicial usa uma flag `loaded` para o vazio não piscar antes da primeira resposta.
+
+---
+
+## 16.5 — EMPTY_STATE_BANS
+
+**ID**: `EMPTY_STATE_BANS`
+**NOME**: Lista de banidos sem ninguém
+**CAMINHO**: `Configurações do servidor > Membros > Membros banidos`
+**STATUS**: `DONE` (commit `f03e594`, em produção)
+**ANTES**: a seção só existia com pelo menos um banido; sem banidos não aparecia nada, o que parecia erro. **AGORA**: "Membros banidos — 0" e "Nenhum membro banido neste servidor.", só depois da lista carregar (flag `bansLoaded`), para não piscar. Só quem tem a permissão de banir vê a seção.
+
+---
+
+## 16.6 — EMPTY_STATE_UNSUPPORTED_AREAS *(referência)*
+
+**ID**: `EMPTY_STATE_UNSUPPORTED_AREAS`
+**STATUS**: referência para os vazios pedidos que não têm tela de origem:
+- **Convites vazios**: não se aplica. O servidor tem sempre um único código de convite (`INVITE_CODE_VIEW_COPY_REGENERATE`); não existe lista que possa ficar vazia.
+- **Reações vazias**: não se aplica. Sem reação, a mensagem simplesmente não mostra a faixa de reações, como no Discord.
+- **Eventos vazios**: `MISSING`, a funcionalidade de eventos não existe.
+- **Itens de loja vazios**: `MISSING`, a loja não existe (Roteiro de Premium e Shop).
+- **Sem membros**: não há vazio possível, porque quem está vendo o painel é membro. Enquanto carrega mostra "Carregando membros…"; se falhar, "Não foi possível carregar os membros." (`MemberList.tsx`).
+
+---
+
+## 16.7 — LOADING_STATES
+
+**ID**: `LOADING_STATES`
+**NOME**: Estados de carregamento
+**STATUS**: `PARTIAL`
+**O QUE EXISTE** (todos em texto, nenhum esqueleto com forma de conteúdo): mensagens de canal e de DM "Carregando mensagens…"; painel de membros "Carregando membros…"; convites em Configurações do servidor "Carregando…"; bloqueados "Carregando…"; Administração "Carregando…"; botão de busca "Buscando…"; botão de entrar em call com `aria-busy` e "..." no contador enquanto conecta.
+**O QUE JÁ ESTÁ CERTO**: trocar de canal, de servidor ou de tela não troca a aplicação inteira por um spinner: a moldura (rail, lista de canais, painel do usuário) continua e só a área de conteúdo mostra o carregamento.
+**LACUNA**: sem esqueletos (`skeleton`) nas listas; no boot, antes do primeiro fetch, a área principal fica vazia por instantes.
+
+---
+
+## 16.8 — OFFLINE_CONNECTION_NOTICE
+
+**ID**: `OFFLINE_CONNECTION_NOTICE`
+**NOME**: Aviso de conexão perdida
+**CAMINHO**: `Qualquer tela do app, faixa fixa no topo`
+**STATUS**: `DONE` (commit `f03e594`, em produção). Antes era `MISSING`: o WebSocket reconectava sozinho, mas a tela nunca dizia nada.
+**COMPORTAMENTO**: o socket de tempo real avisa quando abre ou fecha (`onRealtimeStatus`). Se o navegador reporta sem internet, aparece na hora "Sem conexão com a internet. O que você enviar só sai quando ela voltar." Se só o socket caiu, o aviso espera **3 s** de carência (`RECONNECT_GRACE_MS`, para reconexões rápidas não piscarem) e então mostra "Sem conexão com o servidor. Reconectando…" com o botão **"Tentar agora"**, que pula a espera do backoff (`reconnectRealtimeNow`). Quando a internet volta (evento `online` do navegador) a reconexão é imediata e o aviso some sozinho.
+**REALTIME**: reconecta com backoff de 1 s até 15 s; ao reconectar, cada tela refaz o fetch inicial e resincroniza o que perdeu.
+**PERSISTÊNCIA**: nenhuma; estado só em memória.
+
+---
+
+## 16.9 — OFFLINE_SEND_FAILED_RETRY
+
+**ID**: `OFFLINE_SEND_FAILED_RETRY`
+**NOME**: Enviar mensagem sem conexão
+**STATUS**: `PARTIAL`
+**COMPORTAMENTO**: a mensagem não sai; a tela mostra "Sem conexão com o servidor. Verifique sua internet e tente de novo." (antes o navegador mostrava "Failed to fetch", em inglês) e **o texto digitado continua no campo**, então nada some. Voltando a rede, apertar Enter de novo envia a mesma mensagem, uma vez só (verificado no servidor). O erro vale para toda chamada que não chega ao servidor (`fetch` rejeita com `TypeError`), inclusive envio de arquivo.
+**LACUNA**: não existe mensagem "pendente" no fim da lista com botão de reenviar, nem fila com reenvio automático; o "retry" é a própria pessoa enviar de novo.
+
+---
+
+## 16.10 — OFFLINE_VOICE_RECONNECT
+
+**ID**: `OFFLINE_VOICE_RECONNECT`
+**STATUS**: `DONE` (referência ao Roteiro 6: `VOICE_NETWORK_RECONNECT`)
+**COMPORTAMENTO**: com a rede caindo dentro de uma call, o cabeçalho passa a "Reconectando" (`ConnectionState.Reconnecting`) e volta a "Conectado" sozinho; o painel do usuário mostra o mesmo estado. Agora o aviso geral de conexão (16.8) aparece por cima, em qualquer tela.
+
+---
+
+## 16.11 — MIC_PERMISSION_DENIED
+
+**ID**: `MIC_PERMISSION_DENIED`
+**NOME**: Microfone sem permissão ao entrar na call
+**CAMINHO**: `Clicar num canal de voz com o microfone bloqueado`
+**STATUS**: `DONE` (commit `f03e594`, em produção). A entrada como ouvinte já existia; faltavam o atalho e a visibilidade.
+**COMPORTAMENTO**: a pessoa **entra na call como ouvinte** (ouve todo mundo), o microfone fica desligado e o botão dele aparece mutado (é o estado real, ver `VOICE_SELF_MUTE`), e um aviso vermelho explica: "Permissão do microfone negada. Confira as permissões de privacidade do Windows e tente novamente. Você entrou com o microfone desligado." No app desktop, se o Windows reporta `denied` ou `restricted`, o texto diz "O Windows bloqueou o acesso ao microfone…" e o aviso ganha o botão **"Abrir configurações do Windows"** (abre `ms-settings:privacy-microphone`). No navegador, o aviso ensina: "clique no cadeado ao lado do endereço, permita o microfone e recarregue a página". Clicar no botão do microfone depois de liberar tenta abrir de novo. O aviso agora fica no topo de **qualquer tela**; antes só aparecia na tela de voz.
+**ERRO**: outros erros de captura seguem com texto próprio (sem aparelho, em uso por outro programa, configuração não aceita).
+
+---
+
+## 16.12 — CAMERA_PERMISSION_DENIED
+
+**ID**: `CAMERA_PERMISSION_DENIED`
+**NOME**: Câmera sem permissão
+**CAMINHO**: `Painel de voz > Ligar câmera`
+**STATUS**: `DONE` (commit `f03e594`, em produção)
+**COMPORTAMENTO**: mesmo fluxo do microfone: "Permissão da câmera negada…" (ou "O Windows bloqueou o acesso à câmera…" no desktop), botão "Abrir configurações do Windows" (`ms-settings:privacy-webcam`) no desktop, instrução do cadeado no navegador. A câmera não liga e nenhum tile é criado. A correção também acertou a concordância do texto, que dizia "Permissão da microfone" e "acesso à microfone".
+
+---
+
+## 16.13 — SCREEN_CAPTURE_DENIED
+
+**ID**: `SCREEN_CAPTURE_DENIED`
+**NOME**: Sistema recusa a captura de tela
+**CAMINHO**: `Painel de voz > Compartilhar tela`
+**STATUS**: `DONE` (commit `f03e594`, em produção)
+**COMPORTAMENTO**: nenhuma transmissão é criada (sem tile "AO VIVO", sem stream fake). O aviso diz: "O sistema não deixou capturar a tela, então nenhuma transmissão foi iniciada. No Windows, confira em Configurações > Privacidade e segurança e tente de novo." Cancelar o seletor de fonte continua sendo silencioso (não é erro). Antes, a recusa mostrava só "Permissão de mídia negada.".
+**LIMITE**: não há botão que abra a configuração de captura de tela: o Electron não expõe uma página de configuração para isso, então só há o caminho escrito.
+
+---
+
+## 16.14 — DEVICE_CHANGES
+
+**ID**: `DEVICE_CHANGES`
+**NOME**: Aparelho conectado ou removido
+**STATUS**: `PARTIAL` (commit `f03e594`, em produção)
+**ANTES**: o evento `devicechange` só atualizava as listas dos menus, em silêncio. Se o microfone escolhido fosse desconectado no meio da call, a escolha ficava apontando para um aparelho que não existia.
+**AGORA**: (1) se o microfone, a saída de áudio ou a câmera **escolhidos** somem da lista, a escolha volta para "Padrão do sistema", o LiveKit troca o aparelho ativo e aparece um aviso azul por 10 s: "O microfone escolhido foi desconectado. Passamos a usar o microfone padrão." (ou "A saída de áudio escolhida…", "A câmera escolhida…"); (2) um aparelho **novo** só gera aviso ("“Nome” foi conectado (microfone). Para usá-lo, escolha em Configurações > Voz e vídeo."), sem trocar sozinho a escolha da pessoa; (3) os atalhos "default" e "communications" do navegador nunca contam como aparelho novo ou removido; (4) sem permissão de mídia a lista vem sem identificadores e nada é afirmado; (5) fora de uma call a escolha é acertada em silêncio, sem aviso.
+**NÃO COBERTO**: monitor desconectado durante uma transmissão (o track de tela termina e o LiveKit publica a saída, mas não há aviso específico; **não verificado** com monitor real) e o fone que reaparece não volta a ser escolhido sozinho.
+
+---
+
+**Achados mais importantes do Roteiro 16** (por ordem de impacto):
+
+1. **Não havia nenhum aviso de conexão perdida** (`OFFLINE_CONNECTION_NOTICE`): o app reconectava em silêncio e a pessoa digitava sem saber que nada saía. Corrigido.
+2. **O erro de voz só aparecia na tela de voz** (`MIC_PERMISSION_DENIED`): quem entrava na call e ia para um canal de texto nunca via que o microfone tinha falhado. Corrigido, e o aviso ganhou o caminho para a configuração do Windows.
+3. **Erros de rede apareciam em inglês** ("Failed to fetch") sem dizer o que fazer. Corrigido.
+4. **Aparelho removido deixava a escolha apontando para o vazio** (`DEVICE_CHANGES`). Corrigido para microfone, saída e câmera.
+5. **Banimentos vazios pareciam erro** (`EMPTY_STATE_BANS`). Corrigido.
+6. **A recusa da captura de tela dava só "Permissão de mídia negada."**. Corrigido.
+7. **Continua faltando**: mensagem pendente com botão de reenviar e fila automática (16.9), esqueletos de carregamento (16.7), ilustração e botão nos vazios de amigos (16.1), aviso de monitor desconectado durante a transmissão (16.14), eventos e loja (16.6).
+8. **Achado sem relação com o roteiro**: ao conectar, o cliente do LiveKit consulta `http://host/settings` (regiões da nuvem LiveKit). No servidor de desenvolvimento o Vite devolve HTML e o SDK registra "Unexpected token '<'" no console. Vem do SDK, não afeta a voz e não foi alterado.
+
+---
+
 # CONTINUAÇÃO
 
 Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente resumido de status para fichas inteiramente `MISSING`, conforme a própria convenção definida no topo deste arquivo), as **24 interações do Roteiro 0** (processo desktop), as **18 interações do Roteiro 1** (login e sessão) e as **11 interações do Roteiro 2** (navegação) — 53 fichas no total, cada uma verificada contra o código real, nunca assumida de memória ou copiada do comportamento genérico do Discord sem checar primeiro. Toda lacuna encontrada foi marcada `MISSING`/`PARTIAL` explicitamente, nunca simulada como se existisse — e tudo que já funciona (seleção de servidor, badge de pedidos de amizade, foco/retorno de foco do modal de adicionar servidor) foi documentado como `CORE`/funcional, não redescrito como se fosse novo trabalho a fazer.
