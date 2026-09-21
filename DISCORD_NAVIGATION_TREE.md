@@ -366,6 +366,9 @@ APP
 │   ├── Volume de saída e do soundboard                                      DONE
 │   └── Premium, loja, cosméticos                                            MISSING
 │
+├── ABERTURA DO APP                                                     [Roteiro 19]
+│   └── Tela de abertura com a logo animada e o passo atual                  DONE (desktop 0.2.14)
+│
 ├── TEMPO REAL (infraestrutura)                                         [Roteiro 5]
 │   ├── WebSocket autenticado pelo cookie, heartbeat de 30 s                 CORE
 │   ├── Escopo: broadcast / por servidor / por usuário (multi-aba livre)     CORE

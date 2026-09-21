@@ -3300,6 +3300,20 @@ Feito em 2026-09-21. Fecha as três últimas pendências dos Roteiros 15, 16 e 1
 
 ---
 
+## 19.4 — APP_SPLASH_SCREEN
+
+**ID**: `APP_SPLASH_SCREEN`
+**NOME**: Tela de abertura com a logo animada
+**CAMINHO**: `Abrir o NexPlay.exe`
+**STATUS**: `DONE` (commit `37c9cd2`, desktop 0.2.14 publicado em https://github.com/Gillead027/nexplay/releases/tag/v0.2.14). Antes o app abria sem nada na tela até a janela principal ficar pronta.
+**COMPORTAMENTO**: assim que o app está pronto para criar janelas, abre uma janela pequena sem moldura (380 x 460) com fundo azul-escuro, a **logo do NexPlay** (o "N" azul do ícone do app) e, ao redor dela: um arco de luz que orbita, um segundo arco mais fino que gira ao contrário, três faíscas em órbitas diferentes, um brilho que pulsa atrás da logo, a logo "respirando" e um reflexo que a atravessa de tempos em tempos. Embaixo, a marca "NEXPLAY", o passo atual com três pontos piscando ("Iniciando", "Conectando ao servidor", "Abrindo") e a versão do app. A janela pode ser arrastada.
+**QUANDO SOME**: quando a janela principal está pronta (`ready-to-show`). Se a página carregar mais rápido que a animação, a janela principal espera até a tela de abertura completar **1,8 s**, para a animação ser vista em vez de piscar. A troca é suave: a janela principal aparece e a tela de abertura esmaece em 0,26 s. Medido abrindo o app de verdade contra o site de produção: a tela aparece em 0,2 s e a janela principal assume por volta de 2,2 s.
+**FALHAS**: se o servidor não puder ser alcançado, a tela de abertura fecha na hora e o diálogo "Não foi possível abrir o servidor" já existente aparece. Se o app não conseguir nem começar (por exemplo, arquivo de configuração ausente), a tela fecha, aparece uma caixa de erro "NexPlay não conseguiu iniciar" e o app encerra, em vez de ficar invisível. Se a própria tela de abertura falhar ao abrir, o app abre normalmente.
+**SEGURANÇA**: página local (`splash.html`, dentro do pacote), sem acesso a Node, com sandbox, sem DevTools e com CSP que só permite a imagem local; o texto do passo é escrito pelo processo principal.
+**LIMITE**: não mostra "Verificando atualizações" nem barra de progresso: o app verifica atualização em segundo plano e avisa por diálogo quando a nova versão termina de baixar, como antes.
+
+---
+
 **Achados do Roteiro 19**:
 
 1. **Convite clicável fechado nos dois formatos**: https e `nexplay://`. O outro tipo de deep link (canal e mensagem) continua `MISSING`.
