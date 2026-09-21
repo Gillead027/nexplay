@@ -312,6 +312,51 @@ ensureColumns('servers', [
   ['assets_rev', 'INTEGER NOT NULL DEFAULT 0'],
 ]);
 
+// NexDex, o jogo de captura de Pokémon: jogadores (Pokébolas), coleção, time, Pokémon selvagem aberto de cada pessoa e as
+// mensagens do jogo nos canais de texto.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS pokemon_players (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    balls INTEGER NOT NULL,
+    last_daily TEXT NOT NULL DEFAULT '',
+    last_spawn_at INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS pokemon_caught (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    no INTEGER NOT NULL,
+    species_id INTEGER NOT NULL,
+    shiny INTEGER NOT NULL DEFAULT 0,
+    caught_at INTEGER NOT NULL,
+    UNIQUE (user_id, no)
+  );
+  CREATE TABLE IF NOT EXISTS pokemon_team (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    slot INTEGER NOT NULL,
+    caught_id TEXT NOT NULL UNIQUE REFERENCES pokemon_caught(id) ON DELETE CASCADE,
+    PRIMARY KEY (user_id, slot)
+  );
+  CREATE TABLE IF NOT EXISTS pokemon_spawns (
+    user_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    server_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    species_id INTEGER NOT NULL,
+    shiny INTEGER NOT NULL DEFAULT 0,
+    spawned_at INTEGER NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0
+  );
+  CREATE TABLE IF NOT EXISTS text_game_messages (
+    id TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL REFERENCES text_channels(id) ON DELETE CASCADE,
+    text TEXT NOT NULL,
+    card_json TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_text_game_messages_channel ON text_game_messages(channel_id, created_at);
+`);
+
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_text_messages_channel_pinned
     ON text_messages(channel_id, pinned_at DESC);

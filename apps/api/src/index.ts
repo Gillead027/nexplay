@@ -119,6 +119,8 @@ import {
 import { resolveForwardDestination } from './forwardDestination.js';
 import { addReaction, isValidReactionEmoji, removeReaction } from './reactions.js';
 import { authorizeMusicCommand } from './musicCommands.js';
+import { defaultRng, handlePokemonCommand, isPokemonCommand } from './pokemon.js';
+import { getPokemonSprite } from './pokemonSprites.js';
 import { fetchMusicThumbnail } from './musicThumbnails.js';
 import { authorizeVoiceDisconnect } from './voiceModeration.js';
 import { attachRealtime, broadcast, disconnectUser, presence, sendToServerMembers, sendToUser, sendToUsers } from './realtime.js';
@@ -1347,8 +1349,41 @@ app.post(
     );
     sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_CREATE', serverId, channelId: channelId as string, message });
     response.status(201).json({ message });
+
+    // NexDex: um comando do jogo ("!pokemon", "!capturar"...) ganha a resposta do bot logo depois da mensagem da pessoa.
+    if (isPokemonCommand(body.data.text) && !body.data.attachmentIds?.length) {
+      const replies = handlePokemonCommand({
+        user: { id: currentUser(response).id, username: currentUser(response).username },
+        serverId,
+        channelId: channelId as string,
+        text: body.data.text,
+        now: Date.now(),
+        rng: defaultRng,
+      });
+      for (const reply of replies) {
+        sendToServerMembers(serverId, {
+          type: reply.kind === 'create' ? 'TEXT_MESSAGE_CREATE' : 'TEXT_MESSAGE_UPSERT',
+          serverId,
+          channelId: channelId as string,
+          message: reply.message,
+        });
+      }
+    }
   },
 );
+
+// Imagem de um Pokémon (?shiny=1 para a versão brilhante): baixada uma vez da PokeAPI e guardada em disco.
+app.get('/api/pokemon/sprite/:id', requireSession, async (request, response) => {
+  const speciesId = Number(request.params.id);
+  const sprite = await getPokemonSprite(speciesId, request.query.shiny === '1');
+  if (!sprite) {
+    response.status(404).json({ error: 'Imagem não encontrada.' });
+    return;
+  }
+  response.setHeader('Content-Type', 'image/png');
+  response.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+  response.end(sprite);
+});
 
 app.patch(
   '/api/servers/:serverId/text-channels/:channelId/messages/:messageId',

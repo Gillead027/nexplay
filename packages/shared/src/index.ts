@@ -811,7 +811,40 @@ export interface ForwardedFromMeta {
 // PATCH .../messages/system, gated por MANAGE_MESSAGES) — nunca corresponde
 // a um participante de voz de verdade, por isso é um type à parte do
 // ParticipantType usado pelo LiveKit, não uma extensão dele.
-export type TextMessageSenderType = ParticipantType | 'SYSTEM';
+// 'GAME': as respostas do NexDex, o jogo de captura de Pokémon nos canais de texto (comandos que começam com "!").
+export type TextMessageSenderType = ParticipantType | 'SYSTEM' | 'GAME';
+
+export const POKEMON_BOT_IDENTITY = 'nexdex-bot';
+export const POKEMON_BOT_DISPLAY_NAME = 'NexDex';
+export const POKEMON_SPECIES_COUNT = 1025;
+export type PokemonRarity = 'comum' | 'incomum' | 'raro' | 'lendario';
+export const POKEMON_RARITY_LABELS: Record<PokemonRarity, string> = {
+  comum: 'Comum',
+  incomum: 'Incomum',
+  raro: 'Raro',
+  lendario: 'Lendário',
+};
+
+export interface PokemonCardEntry {
+  speciesId: number;
+  name: string;
+  rarity: PokemonRarity;
+  shiny: boolean;
+  // Número do Pokémon na coleção de quem o capturou (o que se usa em "!time adicionar 3").
+  no?: number;
+}
+
+// O cartão que o NexDex mostra numa mensagem: um Pokémon selvagem, o resultado de uma captura ou o time da pessoa.
+export interface PokemonCard {
+  kind: 'wild' | 'caught' | 'team';
+  // Só em 'wild': continua aberto ou já terminou (capturado, fugiu, expirou).
+  status?: 'wild' | 'caught' | 'fled' | 'expired';
+  ownerId: string;
+  ownerName: string;
+  title: string;
+  entries: PokemonCardEntry[];
+  balls?: number;
+}
 
 export interface TextMessage extends ForwardedFromFields {
   id: string;
@@ -826,6 +859,7 @@ export interface TextMessage extends ForwardedFromFields {
   sentAt: number;
   editedAt?: number;
   musicCard?: MusicNowPlayingCard;
+  pokemonCard?: PokemonCard;
   reactions?: MessageReactionGroup[];
   // Só o id — sem snapshot congelado do texto original. O cliente resolve o
   // preview olhando a mensagem já carregada na conversa (reflete edição ao

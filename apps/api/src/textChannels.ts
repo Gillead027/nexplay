@@ -11,6 +11,7 @@ import {
   type TextMessageSenderType,
 } from '@nexplay/shared';
 import { attachToMessage, getAttachmentsByChannel, getAttachmentsForMessage } from './attachments.js';
+import { listGameMessages } from './pokemon.js';
 import { db } from './db.js';
 import { getReactionsByChannel, getReactionsForMessage } from './reactions.js';
 import { slugify } from './slug.js';
@@ -308,7 +309,7 @@ export function listTextMessages(channelId: string, limit = 100): TextMessage[] 
     });
   const botMessages = (listBotMessagesStatement.all(channelId, limit) as unknown as TextBotMessageRow[])
     .map(toBotMessage);
-  return [...humanMessages, ...botMessages]
+  return [...humanMessages, ...botMessages, ...listGameMessages(channelId, limit)]
     .sort((left, right) => left.sentAt - right.sentAt)
     .slice(-limit);
 }

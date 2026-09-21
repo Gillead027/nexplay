@@ -120,6 +120,17 @@ O app inteiro (web, desktop, tela de abertura e seletor de compartilhamento) usa
 - Cor de destaque escolhida pela pessoa (Configurações > Aparência > Cores) troca o azul de toda a interface, inclusive o gradiente dos botões.
 - O seletor de compartilhamento de tela do app desktop tem CSS próprio (`apps/desktop/src/picker.css`) com a mesma paleta, porque roda numa janela separada.
 
+## NexDex (captura de Pokémon nos canais de texto)
+
+Qualquer pessoa de um servidor joga escrevendo comandos num canal de texto:
+
+- `!pokemon` procura um Pokémon selvagem, que aparece só para quem procurou (espera de 20 s entre uma procura e outra; ele vai embora depois de 5 minutos);
+- `!capturar` (ou o botão do cartão) joga uma Pokébola; quanto mais raro, mais difícil de capturar e mais fácil de fugir; `!fugir` deixa ele ir;
+- `!diario` resgata 10 Pokébolas por dia (a data vira à meia-noite de Brasília); quem começa tem 10; `!bolas` mostra quantas tem;
+- `!pokedex [página]` lista a coleção e `!time`, `!time adicionar <nº>`, `!time remover <nº>` e `!time limpar` montam um time de até 6.
+
+As raridades são comum, incomum, raro e lendário (1,5% dos encontros); há também a chance de 1 em 512 de vir brilhante. A lista das 1025 espécies está em `apps/api/src/pokemonData.ts` (gerada da PokeAPI) e as imagens são baixadas da PokeAPI na primeira vez que alguém as vê, guardadas em `pokemon-sprites/` ao lado do banco. Pokémon é marca de Nintendo, Creatures e Game Freak; o jogo é para uso entre amigos.
+
 ## Deploy na VPS
 
 Os comandos abaixo assumem Ubuntu 22.04, 24.04 ou 26.04 de 64 bits e um usuário com `sudo`.

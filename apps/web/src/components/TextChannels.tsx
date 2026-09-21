@@ -20,6 +20,7 @@ import {
 } from '@nexplay/shared';
 import { api, NetworkError } from '../api';
 import { AvatarRing } from './AvatarRing';
+import { PokemonCardView } from './PokemonCardView';
 import { FailedMessages } from './FailedMessages';
 import { MessageSkeleton } from './Skeleton';
 import { routeTextChannelInput } from '../musicCommandRouting';
@@ -118,6 +119,34 @@ function useTextAvatar(userId: string, session: UserSession): { avatarUrl: strin
   if (userId === session.id) return { avatarUrl: session.avatarUrl || undefined, frame: session.avatarFrame };
   const cached = textAvatarCache.get(userId);
   return { avatarUrl: cached?.avatarUrl || undefined, frame: cached?.frame ?? '' };
+}
+
+// As respostas do NexDex (o jogo de captura de Pokémon): o texto do bot e, quando tem, o cartão com o Pokémon.
+function GameTextMessageRow({
+  message,
+  viewerId,
+  onGameCommand,
+}: {
+  message: TextMessage;
+  viewerId: string;
+  onGameCommand: (command: string) => Promise<void>;
+}) {
+  return (
+    <article className="message text-message game-message">
+      <div className="game-bot-avatar" aria-hidden="true"><span /></div>
+      <div className="game-message-content">
+        <header className="nexmusic-message-header">
+          <strong className="game-bot-name">{message.senderName}</strong>
+          <span className="nexmusic-app-badge">APP</span>
+          <time dateTime={new Date(message.sentAt).toISOString()}>
+            {new Date(message.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          </time>
+        </header>
+        {message.text && <p><MarkdownText text={message.text} /></p>}
+        {message.pokemonCard && <PokemonCardView card={message.pokemonCard} viewerId={viewerId} onCommand={onGameCommand} />}
+      </div>
+    </article>
+  );
 }
 
 function BotTextMessageRow({
@@ -482,6 +511,7 @@ function TextMessageRow(props: {
   canManageMessages: boolean;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
   onMusicCommand: (command: string) => Promise<MusicCommandResponse>;
+  onGameCommand: (command: string) => Promise<void>;
   isEditing: boolean;
   onStartEdit: () => void;
   onCancelEdit: () => void;
@@ -496,6 +526,8 @@ function TextMessageRow(props: {
 }) {
   return props.message.senderType === 'BOT'
     ? <BotTextMessageRow message={props.message} onMusicCommand={props.onMusicCommand} />
+    : props.message.senderType === 'GAME'
+    ? <GameTextMessageRow message={props.message} viewerId={props.session.id} onGameCommand={props.onGameCommand} />
     : props.message.senderType === 'SYSTEM'
     ? <SystemTextMessageRow message={props.message} />
     : (
@@ -1025,6 +1057,11 @@ export function TextChannelView({
               replyTarget={message.replyToMessageId ? messages.find(({ id }) => id === message.replyToMessageId) : undefined}
               onJumpToMessage={jumpToMessage}
               onTogglePin={() => void togglePin(message)}
+              onGameCommand={async (commandText) => {
+                // Os botões do NexDex mandam o mesmo comando que a pessoa digitaria; o bot responde pelo tempo real.
+                const { message: sent } = await api.sendTextMessage(channel.serverId, channel.id, commandText);
+                setMessages((current) => applyIncomingMessage(current, sent));
+              }}
               onMusicCommand={async (commandText) => {
                 if (!voiceChannelId) {
                   throw new Error('Você precisa estar em um canal de voz para usar os controles do NexMusic.');
