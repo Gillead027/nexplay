@@ -1,4 +1,4 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { ACCENT_COLORS, type AccentColor, type UserSession } from '@nexplay/shared';
 import { api } from '../api';
 import { DESKTOP_DOWNLOAD_URL } from '../appLinks';
@@ -22,6 +22,15 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
   const pendingInvite = pendingInviteCode !== null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Cadastro aberto: sem o campo do código. Até o servidor responder (ou se falhar) o campo aparece;
+  // quem decide é sempre o servidor.
+  const [registrationOpen, setRegistrationOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    api.getRegistrationConfig().then(({ open }) => { if (active) setRegistrationOpen(open); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
 
   function switchMode(nextMode: Mode) {
     setMode(nextMode);
@@ -36,7 +45,7 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
       const { user } =
         mode === 'login'
           ? await api.login(username, password)
-          : await api.register(username, password, inviteToken, accentColor);
+          : await api.register(username, password, registrationOpen ? undefined : inviteToken, accentColor);
       await onAuthenticated(user);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível entrar.');
@@ -50,7 +59,9 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
       <section className="entry-window" aria-labelledby="entry-title">
         {pendingInvite && (
           <p className="entry-invite-banner" role="status">
-            Você recebeu um convite para um servidor. Entre na sua conta, ou crie uma com o código de cadastro, para aceitar.
+            {registrationOpen
+              ? 'Você recebeu um convite para um servidor. Entre na sua conta, ou crie uma, para aceitar.'
+              : 'Você recebeu um convite para um servidor. Entre na sua conta, ou crie uma com o código de cadastro, para aceitar.'}
             {!window.desktop && pendingInviteCode && (
               <>
                 {' '}
@@ -105,16 +116,20 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
 
           {mode === 'register' && (
             <>
-              <label htmlFor="inviteToken">Código de cadastro</label>
-              <input
-                id="inviteToken"
-                type="password"
-                autoComplete="off"
-                required
-                value={inviteToken}
-                onChange={(event) => setInviteToken(event.target.value)}
-                placeholder="Código para criar a conta"
-              />
+              {!registrationOpen && (
+                <>
+                  <label htmlFor="inviteToken">Código de cadastro</label>
+                  <input
+                    id="inviteToken"
+                    type="password"
+                    autoComplete="off"
+                    required
+                    value={inviteToken}
+                    onChange={(event) => setInviteToken(event.target.value)}
+                    placeholder="Código para criar a conta"
+                  />
+                </>
+              )}
 
               <label htmlFor="accent-color-picker">Cor do perfil</label>
               <div className="accent-picker" id="accent-color-picker" role="radiogroup" aria-label="Cor do perfil">

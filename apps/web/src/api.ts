@@ -100,7 +100,9 @@ const s = (serverId: string) => `/api/servers/${encodeURIComponent(serverId)}`;
 
 export const api = {
   getSession: () => request<{ user: UserSession }>('/api/session'),
-  register: (username: string, password: string, inviteToken: string, accentColor: AccentColor) =>
+  // O servidor diz se o cadastro é aberto (sem código) antes de a tela mostrar o campo do código.
+  getRegistrationConfig: () => request<{ open: boolean }>('/api/auth/registration'),
+  register: (username: string, password: string, inviteToken: string | undefined, accentColor: AccentColor) =>
     request<{ user: UserSession }>('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify({ username, password, inviteToken, accentColor }),

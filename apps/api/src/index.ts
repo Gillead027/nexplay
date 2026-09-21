@@ -314,7 +314,8 @@ const usernameSchema = z
 const registerSchema = z.object({
   username: usernameSchema,
   password: z.string().min(PASSWORD_MIN_LENGTH).max(PASSWORD_MAX_LENGTH),
-  inviteToken: z.string().min(1),
+  // Só é exigido quando o cadastro não é aberto (OPEN_REGISTRATION).
+  inviteToken: z.string().optional(),
   accentColor: z.enum(ACCENT_COLORS),
 });
 
@@ -642,15 +643,30 @@ app.get('/api/health', (_request, response) => {
   response.json({ status: 'ok' });
 });
 
-app.post('/api/auth/register', authLimiter, (request, response) => {
+// Com o cadastro aberto qualquer pessoa pode criar conta, então o limite por endereço é mais
+// apertado que o do login: 10 contas por hora.
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Muitas contas criadas por este endereço. Tente de novo mais tarde.' },
+});
+
+// A tela de entrada pergunta antes de cadastrar se precisa mostrar o campo do código de cadastro.
+app.get('/api/auth/registration', (_request, response) => {
+  response.json({ open: config.OPEN_REGISTRATION });
+});
+
+app.post('/api/auth/register', registerLimiter, authLimiter, (request, response) => {
   const body = registerSchema.safeParse(request.body);
   if (!body.success) {
     response.status(400).json({ error: 'Informe um nome de usuário e senha válidos.' });
     return;
   }
 
-  if (!inviteMatches(body.data.inviteToken)) {
-    response.status(401).json({ error: 'Convite inválido.' });
+  if (!config.OPEN_REGISTRATION && !inviteMatches(body.data.inviteToken ?? '')) {
+    response.status(401).json({ error: 'Código de cadastro inválido.' });
     return;
   }
 

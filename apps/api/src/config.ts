@@ -13,6 +13,12 @@ const envSchema = z.object({
     .default('false')
     .transform((value) => value === 'true'),
   INVITE_TOKEN: z.string().min(8, 'INVITE_TOKEN deve ter pelo menos 8 caracteres'),
+  // Cadastro aberto: qualquer pessoa cria conta sem o código de cadastro (INVITE_TOKEN). A conta
+  // nova não entra em servidor nenhum sozinha; só vê o que criar ou aquilo em que entrar por convite.
+  OPEN_REGISTRATION: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
   // Nomes de usuário (separados por vírgula) que veem o painel de administração da instância.
   ADMIN_USERNAMES: z.string().default(''),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET deve ter pelo menos 32 caracteres'),

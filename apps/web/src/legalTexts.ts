@@ -75,7 +75,7 @@ export const TERMS_OF_USE: LegalDocument = {
     {
       heading: 'O serviço',
       paragraphs: [
-        'O NexPlay é um servidor privado, mantido por quem o administra, para um grupo de pessoas que receberam o código de cadastro. É oferecido como está, sem garantia de que estará sempre no ar, e pode mudar ou ser desligado.',
+        'O NexPlay é mantido por quem o administra. Qualquer pessoa pode criar uma conta, mas cada pessoa só vê os servidores que criar ou em que entrar por convite. É oferecido como está, sem garantia de que estará sempre no ar, e pode mudar ou ser desligado.',
       ],
     },
     {

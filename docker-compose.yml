@@ -20,6 +20,7 @@ services:
       COOKIE_SECURE: "true"
       INVITE_TOKEN: "${INVITE_TOKEN:?Defina INVITE_TOKEN no arquivo .env}"
       ADMIN_USERNAMES: "${ADMIN_USERNAMES:-}"
+      OPEN_REGISTRATION: "${OPEN_REGISTRATION:-false}"
       SESSION_SECRET: "${SESSION_SECRET:?Defina SESSION_SECRET no arquivo .env}"
       LIVEKIT_API_KEY: "${LIVEKIT_API_KEY:?Defina LIVEKIT_API_KEY no arquivo .env}"
       LIVEKIT_API_SECRET: "${LIVEKIT_API_SECRET:?Defina LIVEKIT_API_SECRET no arquivo .env}"
