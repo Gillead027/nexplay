@@ -13,6 +13,8 @@ const envSchema = z.object({
     .default('false')
     .transform((value) => value === 'true'),
   INVITE_TOKEN: z.string().min(8, 'INVITE_TOKEN deve ter pelo menos 8 caracteres'),
+  // Nomes de usuário (separados por vírgula) que veem o painel de administração da instância.
+  ADMIN_USERNAMES: z.string().default(''),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET deve ter pelo menos 32 caracteres'),
   LIVEKIT_API_KEY: z.string().min(1),
   LIVEKIT_API_SECRET: z.string().min(32, 'LIVEKIT_API_SECRET deve ter pelo menos 32 caracteres'),

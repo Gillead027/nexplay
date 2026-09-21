@@ -92,6 +92,7 @@ import { ProfilePopover, type ProfilePopoverTarget } from './ProfilePopover';
 import { RemoteAudioSink } from './RemoteAudioSink';
 import { ScreenStage } from './ScreenStage';
 import { ForwardMessageModal, type ForwardSource } from './ForwardMessage';
+import { AdminOverviewPane } from './AdminOverview';
 import { AddServerModal, useActiveServerMember, useServersState } from './Servers';
 import { ServerSettings } from './ServerSettings';
 import { SoundboardPanel, SoundboardToast } from './Soundboard';
@@ -583,7 +584,7 @@ function RoomSkeleton() {
   );
 }
 
-type SettingsSection = 'profile' | 'security' | 'privacy' | 'voice' | 'appearance';
+type SettingsSection = 'profile' | 'security' | 'privacy' | 'voice' | 'appearance' | 'admin';
 
 const MIC_METER_BARS = 20;
 
@@ -938,6 +939,17 @@ function SettingsModal({
   }, [listeningForKey, setPttKeyBinding]);
 
   const [section, setSection] = useState<SettingsSection>('profile');
+  // O painel de administração só existe pra quem está em ADMIN_USERNAMES no servidor.
+  const [isInstanceAdmin, setIsInstanceAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    let active = true;
+    api.getAdminAccess()
+      .then(({ admin }) => { if (active) setIsInstanceAdmin(admin); })
+      .catch(() => { if (active) setIsInstanceAdmin(false); });
+    return () => { active = false; };
+  }, [open]);
 
   useEffect(() => {
     if (!open || section !== 'privacy') return;
@@ -1022,6 +1034,14 @@ function SettingsModal({
           <button type="button" className={section === 'appearance' ? 'active' : ''} onClick={() => setSection('appearance')}>
             <PaletteIcon size={15} /> Aparência
           </button>
+          {isInstanceAdmin && (
+            <>
+              <span className="settings-nav-group">Administração</span>
+              <button type="button" className={section === 'admin' ? 'active' : ''} onClick={() => setSection('admin')}>
+                <span className="nav-glyph">▤</span> Visão geral
+              </button>
+            </>
+          )}
           <span className="settings-nav-divider" />
           <button type="button" className="settings-nav-signout" onClick={onSignOut}>
             <LeaveIcon size={15} /> Sair da conta
@@ -1029,6 +1049,7 @@ function SettingsModal({
         </nav>
 
         <div className="settings-content">
+          {section === 'admin' && isInstanceAdmin && <AdminOverviewPane />}
           {section === 'profile' && (
             <div className="settings-pane two-column">
               <div className="settings-pane-main">

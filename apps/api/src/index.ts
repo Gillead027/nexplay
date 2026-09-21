@@ -1,4 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { dirname, resolve } from 'node:path';
+import { collectAdminOverview, isInstanceAdmin, type LiveVoiceStats } from './adminStats.js';
+import { db } from './db.js';
 import cors from 'cors';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -769,6 +772,44 @@ app.get('/api/users/:id/profile', requireSession, (request, response) => {
     return;
   }
   response.json({ user: toUserSession(user) });
+});
+
+// Painel de administração da instância: só os usuários de ADMIN_USERNAMES.
+app.get('/api/admin/access', requireSession, (_request, response) => {
+  response.json({ admin: isInstanceAdmin(currentUser(response).username, config.ADMIN_USERNAMES) });
+});
+
+app.get('/api/admin/overview', requireSession, async (_request, response) => {
+  if (!isInstanceAdmin(currentUser(response).username, config.ADMIN_USERNAMES)) {
+    response.status(403).json({ error: 'Você não tem permissão para fazer isso.' });
+    return;
+  }
+  // Quem está em call agora, direto do LiveKit (o bot de música não conta como pessoa).
+  let voice: LiveVoiceStats | null = null;
+  try {
+    let activeRooms = 0;
+    let participants = 0;
+    for (const room of await roomService.listRooms()) {
+      const humans = (await roomService.listParticipants(room.name)).filter(
+        (participant) => parseParticipantMetadata(participant.metadata)?.participantType !== 'BOT',
+      ).length;
+      if (humans > 0) activeRooms += 1;
+      participants += humans;
+    }
+    voice = { activeRooms, participants };
+  } catch (error) {
+    console.error('Painel de administração: LiveKit não respondeu:', error);
+  }
+  response.json({
+    overview: collectAdminOverview({
+      db,
+      dbPath: config.DB_PATH,
+      dataDir: dirname(resolve(config.DB_PATH)),
+      now: Date.now(),
+      isOnline: (userId) => presence.isOnline(userId),
+      voice,
+    }),
+  });
 });
 
 app.get('/api/config', requireSession, (_request, response) => {

@@ -1473,6 +1473,26 @@ body { letter-spacing: -.01em; }
 .friends-tabs button.active { color: #fff; background: var(--accent); }
 .friends-tab-add { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
 .friends-list { display: flex; flex-direction: column; gap: 6px; }
+/* Painel de administração da instância (Configurações > Administração) */
+.admin-heading { margin: 26px 0 12px; color: var(--text-primary); font-size: 14px; font-weight: 650; }
+.admin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.admin-stat { display: flex; flex-direction: column; gap: 3px; padding: 14px 16px; border: 1px solid #293244; border-radius: 12px; background: #111620; }
+.admin-stat strong { color: var(--text-primary); font-size: 22px; font-weight: 650; }
+.admin-stat span { color: #aab0c0; font-size: 12px; }
+.admin-stat small { color: #6f768a; font-size: 10px; }
+.admin-meters { display: grid; gap: 12px; margin-bottom: 12px; }
+.admin-meter-head { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; color: #aab0c0; font-size: 12px; }
+.admin-meter-track { height: 8px; overflow: hidden; border-radius: 4px; background: #1b2231; }
+.admin-meter-fill { height: 100%; border-radius: 4px; background: var(--accent); }
+.admin-meter-fill.warn { background: #e0a030; }
+.admin-meter-fill.high { background: #e05a5a; }
+.admin-table-wrap { overflow-x: auto; border: 1px solid #293244; border-radius: 12px; }
+.admin-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.admin-table th, .admin-table td { padding: 9px 12px; text-align: left; white-space: nowrap; }
+.admin-table th { border-bottom: 1px solid #293244; color: #7f8599; font-weight: 600; }
+.admin-table td { border-bottom: 1px solid #1b2231; color: var(--text-primary); }
+.admin-table tr:last-child td { border-bottom: 0; }
+.admin-table tr.test td { color: #6f768a; }
 /* sem servidor a lista some, mas continua ocupando o espaço pra manter o painel do usuário embaixo */
 .channels[hidden] { display: block; visibility: hidden; }
 .no-servers-actions { display: flex; gap: 8px; margin-top: 14px; }

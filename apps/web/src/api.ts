@@ -17,6 +17,7 @@ import type {
   MessageAttachment,
   MusicCommandResponse,
   NotificationMode,
+  AdminOverview,
   PublicConfig,
   Role,
   RoomSummary,
@@ -130,6 +131,8 @@ export const api = {
   regenerateServerInvite: (serverId: string) =>
     request<{ invite: Invite }>(`${s(serverId)}/invite/regenerate`, { method: 'POST' }),
   redeemInvite: (code: string) => request<{ server: Server }>(`/api/invites/${encodeURIComponent(code)}/redeem`, { method: 'POST' }),
+  getAdminAccess: () => request<{ admin: boolean }>('/api/admin/access'),
+  getAdminOverview: () => request<{ overview: AdminOverview }>('/api/admin/overview'),
 
   getRooms: (serverId: string) =>
     request<{ rooms: RoomSummary[]; livekitAvailable: boolean }>(`${s(serverId)}/rooms`),

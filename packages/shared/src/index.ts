@@ -608,6 +608,73 @@ export interface PublicConfig {
   livekitUrl: string;
 }
 
+// Visão geral da instância pro painel de administração (GET /api/admin/overview).
+export interface AdminOverview {
+  generatedAt: number;
+  people: {
+    total: number;
+    // "real" = total menos as contas cujo nome parece de teste (smoke, e2e...).
+    real: number;
+    testLooking: number;
+    online: number;
+    new7d: number;
+    new30d: number;
+    // Pessoas distintas que mandaram mensagem (canal ou direta) nos últimos 7 dias.
+    messaged7d: number;
+    withoutServer: number;
+    accounts: {
+      id: string;
+      username: string;
+      createdAt: number;
+      servers: number;
+      messages: number;
+      online: boolean;
+      testLooking: boolean;
+    }[];
+  };
+  servers: {
+    total: number;
+    list: {
+      id: string;
+      name: string;
+      owner: string | null;
+      createdAt: number;
+      members: number;
+      textChannels: number;
+      voiceChannels: number;
+      messages: number;
+    }[];
+  };
+  activity: {
+    channelMessages: number;
+    directMessages: number;
+    channelMessages24h: number;
+    channelMessages7d: number;
+    directMessages24h: number;
+    directMessages7d: number;
+  };
+  storage: {
+    databaseBytes: number;
+    attachmentCount: number;
+    attachmentBytes: number;
+    diskTotalBytes: number;
+    diskFreeBytes: number;
+  };
+  // null quando o LiveKit não respondeu.
+  voice: { activeRooms: number; participants: number } | null;
+  machine: {
+    cpuCores: number;
+    load1: number;
+    load5: number;
+    load15: number;
+    memoryTotalBytes: number;
+    memoryFreeBytes: number;
+    apiMemoryBytes: number;
+    apiUptimeSeconds: number;
+    hostUptimeSeconds: number;
+  };
+}
+
 export interface LiveKitTokenResponse {
   token: string;
   url: string;
