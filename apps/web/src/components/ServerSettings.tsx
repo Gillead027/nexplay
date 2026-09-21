@@ -344,7 +344,7 @@ function ServerProfilePane({
       <div className="server-profile-columns">
         <div className="server-profile-form">
           <section className="server-settings-card server-identity-card">
-            {iconSrc ? <ServerImage className="server-icon-large" src={iconSrc} animated={iconAnimated} playing /> : <div className="server-icon-large">{iconGlyph}</div>}
+            {iconSrc ? <ServerImage className="server-icon-large" src={iconSrc} animated={iconAnimated} /> : <div className="server-icon-large">{iconGlyph}</div>}
             <div className="server-name-fields">
               <label>
                 Nome do servidor
@@ -437,11 +437,11 @@ function ServerProfilePane({
           <div className="server-preview-card">
             <div className={`server-preview-banner ${bannerSrc ? 'has-image' : accentColor ? `avatar-color-${ACCENT_COLORS.indexOf(accentColor)}` : ''}`}>
               {bannerSrc
-                ? <ServerImage className="server-preview-banner-image" src={bannerSrc} animated={bannerAnimated} playing />
+                ? <ServerImage className="server-preview-banner-image" src={bannerSrc} animated={bannerAnimated} autoplay />
                 : !accentColor && <><i /><i /><i /></>}
             </div>
             <div className="server-preview-body">
-              {iconSrc ? <ServerImage className="server-icon-large" src={iconSrc} animated={iconAnimated} playing /> : <span className="server-icon-large">{iconGlyph}</span>}
+              {iconSrc ? <ServerImage className="server-icon-large" src={iconSrc} animated={iconAnimated} /> : <span className="server-icon-large">{iconGlyph}</span>}
               <h2>{name || server.name}</h2>
               <p>{description}</p>
             </div>

@@ -259,7 +259,7 @@ function ServerRailButton({ server, active, onSelect }: { server: { name: string
       onFocus={() => setHovered(true)}
       onBlur={() => setHovered(false)}
     >
-      {hasIcon ? <ServerImage src={server.iconUrl} animated={server.iconAnimated} playing={hovered} /> : server.name.charAt(0).toUpperCase()}
+      {hasIcon ? <ServerImage src={server.iconUrl} animated={server.iconAnimated} hovered={hovered} /> : server.name.charAt(0).toUpperCase()}
     </button>
   );
 }
@@ -2766,7 +2766,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         {view === 'server' ? (
           <>
             <header className={`sidebar-header ${activeServer?.bannerUrl ? 'has-banner' : ''}`}>
-              {activeServer?.bannerUrl && <ServerImage className="sidebar-banner" src={activeServer.bannerUrl} animated={activeServer.bannerAnimated} playing />}
+              {activeServer?.bannerUrl && <ServerImage className="sidebar-banner" src={activeServer.bannerUrl} animated={activeServer.bannerAnimated} autoplay />}
               <button type="button" className="server-menu-trigger" onClick={() => setServerSettingsOpen(true)} aria-label="Abrir configurações do servidor" disabled={noServers}>
                 <strong>{activeServer?.name ?? (noServers ? 'Sem servidor' : 'Carregando…')}</strong>
                 <ChevronIcon size={16} />

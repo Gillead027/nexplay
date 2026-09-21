@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 
 const stillFrames = new Map<string, string>();
 
-// Modo leve e "reduzir movimento" do sistema: nada de ícone se mexendo.
+// Modo leve e "reduzir movimento" do sistema: nada se mexe sozinho. (Passar o mouse por cima é uma ação da pessoa, então
+// isso sempre toca, mesmo com esses modos ligados.)
 function motionAllowed(): boolean {
   if (document.documentElement.getAttribute('data-perf') === 'lite') return false;
   return !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -44,12 +45,35 @@ function useStillFrame(src: string, enabled: boolean): string | undefined {
 }
 
 /**
- * O ícone ou o painel de um servidor: a imagem por inteiro (sem esticar). Se for animada, só se mexe quando `playing`
- * (o mouse está em cima, ou é uma tela onde ela deve animar); parada, mostra o primeiro quadro. `src` é a URL da
- * imagem (ou uma data: URL, ainda não enviada).
+ * O ícone ou o painel de um servidor: a imagem por inteiro (sem esticar). Se for animada, fica no primeiro quadro e toca
+ * quando o mouse passa por cima dela (ou de quem chama, via `hovered`, como o botão da barra de servidores). `autoplay`
+ * faz tocar sozinha, salvo no Modo leve e com "reduzir movimento". `src` é a URL da imagem (ou uma data: URL, ainda não enviada).
  */
-export function ServerImage({ src, animated, playing = false, className }: { src: string; animated: boolean; playing?: boolean; className?: string }) {
-  const shouldFreeze = animated && !(playing && motionAllowed());
+export function ServerImage({
+  src,
+  animated,
+  hovered = false,
+  autoplay = false,
+  className,
+}: {
+  src: string;
+  animated: boolean;
+  hovered?: boolean;
+  autoplay?: boolean;
+  className?: string;
+}) {
+  const [selfHovered, setSelfHovered] = useState(false);
+  const playing = hovered || selfHovered || (autoplay && motionAllowed());
+  const shouldFreeze = animated && !playing;
   const still = useStillFrame(src, shouldFreeze);
-  return <img className={className} src={shouldFreeze ? (still ?? src) : src} alt="" draggable={false} />;
+  return (
+    <img
+      className={className}
+      src={shouldFreeze ? (still ?? src) : src}
+      alt=""
+      draggable={false}
+      onMouseEnter={() => setSelfHovered(true)}
+      onMouseLeave={() => setSelfHovered(false)}
+    />
+  );
 }
