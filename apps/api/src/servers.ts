@@ -36,6 +36,7 @@ const updateServerStatement = db.prepare(
     assets_rev = ?, accent_color = ? WHERE id = ?`,
 );
 const deleteServerStatement = db.prepare('DELETE FROM servers WHERE id = ?');
+const countServersOwnedStatement = db.prepare('SELECT COUNT(*) AS count FROM servers WHERE owner_id = ?');
 
 export type ServerAssetKind = 'icon' | 'banner';
 
@@ -52,6 +53,11 @@ function toServer(row: ServerRow): Server {
     ownerId: row.owner_id,
     createdAt: row.created_at,
   };
+}
+
+// Quantos servidores esta conta tem como dona (os em que só entrou por convite não contam).
+export function countServersOwnedBy(ownerId: string): number {
+  return (countServersOwnedStatement.get(ownerId) as { count: number }).count;
 }
 
 export function getServerById(id: string): Server | undefined {

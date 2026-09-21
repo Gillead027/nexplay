@@ -155,7 +155,7 @@ import {
   updateRole,
 } from './roles.js';
 import { authorizeModerationAction, banUser, isBanned, listBans, unbanUser } from './moderation.js';
-import { createServer, deleteServer, getServerAsset, getServerById, listServersForUser, updateServer } from './servers.js';
+import { countServersOwnedBy, createServer, deleteServer, getServerAsset, getServerById, listServersForUser, updateServer } from './servers.js';
 import {
   getServerMember,
   isServerMember,
@@ -235,6 +235,16 @@ const reactionLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: { error: 'Muitas reações em pouco tempo.' },
+});
+
+// O NexMusic é um só para todos os servidores e cada comando pode buscar música na internet: limite por conta.
+const musicCommandLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 20,
+  keyGenerator: (_request, response) => currentUser(response).id,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Você está usando o NexMusic rápido demais. Espere um instante.' },
 });
 
 const channelCreateLimiter = rateLimit({
@@ -869,7 +879,13 @@ app.post('/api/servers', requireSession, channelCreateLimiter, (request, respons
     response.status(400).json({ error: 'Informe um nome de servidor válido.' });
     return;
   }
-  const server = createServer(body.data.name, body.data.description, currentUser(response));
+  const owner = currentUser(response);
+  const limit = config.MAX_SERVERS_PER_USER;
+  if (limit > 0 && !isInstanceAdmin(owner.username, config.ADMIN_USERNAMES) && countServersOwnedBy(owner.id) >= limit) {
+    response.status(403).json({ error: `Você já tem ${limit} servidores, que é o máximo por conta. Exclua um para criar outro.` });
+    return;
+  }
+  const server = createServer(body.data.name, body.data.description, owner);
   sendToServerMembers(server.id, { type: 'SERVER_CREATE', server });
   response.status(201).json({ server });
 });
@@ -2741,6 +2757,7 @@ app.post(
   '/api/servers/:serverId/music/command',
   requireSession,
   requireServerMembership,
+  musicCommandLimiter,
   async (request, response) => {
   const serverId = currentServerId(response);
   const body = musicCommandSchema.safeParse(request.body);

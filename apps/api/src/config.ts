@@ -21,6 +21,9 @@ const envSchema = z.object({
     .transform((value) => value === 'true'),
   // Nomes de usuário (separados por vírgula) que veem o painel de administração da instância.
   ADMIN_USERNAMES: z.string().default(''),
+  // Quantos servidores uma conta pode ter (como dona) ao mesmo tempo; 0 = sem limite. Quem está em ADMIN_USERNAMES não tem
+  // limite. Com o cadastro aberto isso impede uma conta de encher o banco de servidores (cada um pode ter ícone e painel).
+  MAX_SERVERS_PER_USER: z.coerce.number().int().min(0).default(5),
   SESSION_SECRET: z.string().min(32, 'SESSION_SECRET deve ter pelo menos 32 caracteres'),
   LIVEKIT_API_KEY: z.string().min(1),
   LIVEKIT_API_SECRET: z.string().min(32, 'LIVEKIT_API_SECRET deve ter pelo menos 32 caracteres'),
