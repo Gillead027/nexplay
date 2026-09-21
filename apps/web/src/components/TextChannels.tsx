@@ -1,4 +1,5 @@
 import { lazy, Suspense, type ChangeEvent, type FormEvent, type RefObject, useCallback, useEffect, useId, useRef, useState } from 'react';
+import type { AvatarFrame } from '@nexplay/shared';
 import {
   ATTACHMENT_INLINE_IMAGE_TYPES,
   ATTACHMENT_MAX_PER_MESSAGE,
@@ -18,6 +19,7 @@ import {
   type VoiceChannel,
 } from '@nexplay/shared';
 import { api, NetworkError } from '../api';
+import { AvatarRing } from './AvatarRing';
 import { FailedMessages } from './FailedMessages';
 import { MessageSkeleton } from './Skeleton';
 import { routeTextChannelInput } from '../musicCommandRouting';
@@ -95,25 +97,27 @@ function applyReactionChange(
   });
 }
 
-const textAvatarCache = new Map<string, string>();
+const textAvatarCache = new Map<string, { avatarUrl: string; frame: AvatarFrame | '' }>();
 
-function useTextAvatar(userId: string, session: UserSession): string | undefined {
+function useTextAvatar(userId: string, session: UserSession): { avatarUrl: string | undefined; frame: AvatarFrame | '' } {
   const [, forceRender] = useState(0);
   useEffect(() => {
     if (userId === session.id || textAvatarCache.has(userId)) return;
     let active = true;
-    void api.getUserAvatar(userId).then(({ avatarUrl }) => {
+    void api.getUserAvatar(userId).then(({ avatarUrl, avatarFrame }) => {
       if (!active) return;
-      textAvatarCache.set(userId, avatarUrl);
+      textAvatarCache.set(userId, { avatarUrl, frame: avatarFrame ?? '' });
       forceRender((value) => value + 1);
     }).catch(() => {
-      if (active) textAvatarCache.set(userId, '');
+      if (active) textAvatarCache.set(userId, { avatarUrl: '', frame: '' });
     });
     return () => {
       active = false;
     };
   }, [session.id, userId]);
-  return userId === session.id ? session.avatarUrl || undefined : textAvatarCache.get(userId) || undefined;
+  if (userId === session.id) return { avatarUrl: session.avatarUrl || undefined, frame: session.avatarFrame };
+  const cached = textAvatarCache.get(userId);
+  return { avatarUrl: cached?.avatarUrl || undefined, frame: cached?.frame ?? '' };
 }
 
 function BotTextMessageRow({
@@ -353,7 +357,7 @@ function HumanTextMessageRow({
   onJumpToMessage: (messageId: string) => void;
   onTogglePin: () => void;
 }) {
-  const avatarUrl = useTextAvatar(message.senderId, session);
+  const { avatarUrl, frame } = useTextAvatar(message.senderId, session);
   const initial = message.senderName.trim().charAt(0).toUpperCase() || '?';
   const isOwn = message.senderId === session.id;
   const [reactionPickerAnchor, setReactionPickerAnchor] = useState<DOMRect | null>(null);
@@ -367,9 +371,11 @@ function HumanTextMessageRow({
         onClick={(event) => onOpenProfile(message.senderId, event)}
         title={`Ver perfil de ${message.senderName}`}
       >
-        <span className="text-message-avatar" aria-hidden="true">
-          {avatarUrl ? <img src={avatarUrl} alt="" /> : initial}
-        </span>
+        <AvatarRing frame={frame}>
+          <span className="text-message-avatar" aria-hidden="true">
+            {avatarUrl ? <img src={avatarUrl} alt="" /> : initial}
+          </span>
+        </AvatarRing>
       </button>
       <div>
         {message.replyToMessageId && (

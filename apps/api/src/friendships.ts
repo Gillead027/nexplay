@@ -12,6 +12,7 @@ interface FriendRow {
   username: string;
   accent_color: AccentColor;
   avatar_data_url: string;
+  avatar_frame: string;
   status_text: string;
   responded_at: number;
 }
@@ -42,7 +43,7 @@ const acceptStatement = db.prepare(
 const deleteStatement = db.prepare('DELETE FROM friendships WHERE user_id_a = ? AND user_id_b = ?');
 
 const listAcceptedStatement = db.prepare(`
-  SELECT users.id, users.username, users.accent_color, users.avatar_data_url, users.status_text, friendships.responded_at
+  SELECT users.id, users.username, users.accent_color, users.avatar_data_url, users.avatar_frame, users.status_text, friendships.responded_at
   FROM friendships
   INNER JOIN users ON users.id = CASE WHEN friendships.user_id_a = ? THEN friendships.user_id_b ELSE friendships.user_id_a END
   WHERE (friendships.user_id_a = ? OR friendships.user_id_b = ?) AND friendships.status = 'ACCEPTED'
@@ -71,6 +72,7 @@ function toFriendSummary(row: FriendRow): FriendSummary {
     displayName: row.username,
     accentColor: row.accent_color,
     avatarUrl: row.avatar_data_url,
+    avatarFrame: row.avatar_frame as FriendSummary['avatarFrame'],
     statusText: row.status_text,
     since: row.responded_at,
   };

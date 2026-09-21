@@ -24,7 +24,7 @@ function MemberRow({
       title={`Ver perfil de ${member.displayName}`}
     >
       <span className="member-avatar">
-        <Avatar name={member.displayName} accentColor={member.accentColor} avatarUrl={member.avatarUrl || undefined} />
+        <Avatar name={member.displayName} accentColor={member.accentColor} avatarUrl={member.avatarUrl || undefined} frame={member.avatarFrame} />
         <span className="member-status-dot" aria-hidden="true" />
       </span>
       <span className="member-copy">

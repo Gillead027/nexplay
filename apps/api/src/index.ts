@@ -21,7 +21,8 @@ import {
   SERVER_BANNER_DATA_URL_MAX_LENGTH,
   SERVER_ICON_DATA_URL_MAX_LENGTH,
   BAN_REASON_MAX_LENGTH,
-  BANNER_DATA_URL_MAX_LENGTH,
+  AVATAR_FRAME_IDS,
+  USER_BANNER_DATA_URL_MAX_LENGTH,
   BIO_MAX_LENGTH,
   CATEGORY_NAME_MAX_LENGTH,
   CHANNEL_TOPIC_MAX_LENGTH,
@@ -204,10 +205,11 @@ app.use(
   }),
 );
 const smallJson = express.json({ limit: '2mb' });
-// Ícone e painel do servidor chegam em base64 dentro do JSON (uns 4 MB e 8 MB). Só essa rota aceita um corpo assim, e só
+// Ícone e painel do servidor e a capa do perfil chegam em base64 dentro do JSON (4 MB a 8 MB). Só essas rotas aceitam um corpo assim, e só
 // depois de conferir a sessão e a permissão (o leitor de JSON grande vem depois delas, na própria rota).
 const serverProfileJson = express.json({ limit: '16mb' });
-const isServerProfileUpdate = (request: express.Request) => request.method === 'PATCH' && /^\/api\/servers\/[^/]+$/.test(request.path);
+const isServerProfileUpdate = (request: express.Request) =>
+  request.method === 'PATCH' && (/^\/api\/servers\/[^/]+$/.test(request.path) || request.path === '/api/profile');
 app.use((request, response, next) => {
   if (isServerProfileUpdate(request)) next();
   else smallJson(request, response, next);
@@ -371,11 +373,14 @@ const profileSchema = z.object({
     .max(AVATAR_DATA_URL_MAX_LENGTH)
     .refine((value) => value === '' || dataUrlPattern.test(value), 'Avatar inválido.')
     .default(''),
-  bannerUrl: z
+  // Capa nova (data: URL); ausente = mantém a atual, '' = remove.
+  bannerDataUrl: z
     .string()
-    .max(BANNER_DATA_URL_MAX_LENGTH)
-    .refine((value) => value === '' || dataUrlPattern.test(value), 'Banner inválido.')
-    .default(''),
+    .max(USER_BANNER_DATA_URL_MAX_LENGTH)
+    .refine((value) => value === '' || (dataUrlPattern.test(value) && isRealImageDataUrl(value)), 'Capa inválida.')
+    .optional(),
+  // Borda animada do avatar; ausente = mantém, '' = sem borda.
+  avatarFrame: z.enum([...AVATAR_FRAME_IDS, '']).optional(),
 });
 
 const tokenSchema = z.object({ roomId: z.string().min(1).max(32) });
@@ -657,7 +662,9 @@ function toUserSession(user: UserRecord): UserSession {
     bio: user.bio,
     pronouns: user.pronouns,
     avatarUrl: user.avatarDataUrl,
-    bannerUrl: user.bannerDataUrl,
+    avatarFrame: user.avatarFrame,
+    bannerUrl: user.bannerDataUrl ? `/api/users/${user.id}/banner?v=${user.assetsRev}` : '',
+    bannerAnimated: user.bannerAnimated,
   };
 }
 
@@ -772,44 +779,53 @@ app.get('/api/profile', requireSession, (_request, response) => {
   response.json({ user: toUserSession(currentUser(response)) });
 });
 
-app.patch('/api/profile', requireSession, (request, response) => {
+app.patch('/api/profile', requireSession, serverProfileJson, (request, response) => {
   const body = profileSchema.safeParse(request.body);
   if (!body.success) {
     response.status(400).json({ error: 'Perfil inválido.' });
     return;
   }
 
-  const user = currentUser(response);
-  updateUserProfile(
-    user.id,
-    body.data.accentColor,
-    body.data.statusText,
-    body.data.bio,
-    body.data.pronouns,
-    body.data.avatarUrl,
-    body.data.bannerUrl,
-  );
-  response.json({
-    user: toUserSession({
-      ...user,
-      accentColor: body.data.accentColor,
-      statusText: body.data.statusText,
-      bio: body.data.bio,
-      pronouns: body.data.pronouns,
-      avatarDataUrl: body.data.avatarUrl,
-      bannerDataUrl: body.data.bannerUrl,
-    }),
+  const updated = updateUserProfile(currentUser(response).id, {
+    accentColor: body.data.accentColor,
+    statusText: body.data.statusText,
+    bio: body.data.bio,
+    pronouns: body.data.pronouns,
+    avatarDataUrl: body.data.avatarUrl,
+    bannerDataUrl: body.data.bannerDataUrl,
+    avatarFrame: body.data.avatarFrame,
   });
+  if (!updated) {
+    response.status(404).json({ error: 'Usuário não encontrado.' });
+    return;
+  }
+  response.json({ user: toUserSession(updated) });
 });
 
 app.get('/api/users/:id/avatar', requireSession, (request, response) => {
   const id = request.params.id;
   const user = typeof id === 'string' ? getUserById(id) : undefined;
-  if (!user?.avatarDataUrl) {
-    response.status(404).json({ error: 'Sem avatar.' });
+  if (!user) {
+    response.status(404).json({ error: 'Usuário não encontrado.' });
     return;
   }
-  response.json({ avatarUrl: user.avatarDataUrl });
+  // Mesmo sem foto, a borda animada precisa chegar: quem não tem foto recebe avatarUrl vazio.
+  response.json({ avatarUrl: user.avatarDataUrl, avatarFrame: user.avatarFrame });
+});
+
+// Capa do perfil como arquivo de imagem (o JSON só leva a URL, que traz a versão e por isso pode ficar em cache).
+app.get('/api/users/:id/banner', requireSession, (request, response) => {
+  const id = request.params.id;
+  const user = typeof id === 'string' ? getUserById(id) : undefined;
+  const parsed = user?.bannerDataUrl ? parseImageDataUrl(user.bannerDataUrl) : null;
+  if (!parsed?.actual) {
+    response.status(404).json({ error: 'Sem capa.' });
+    return;
+  }
+  response.setHeader('Content-Type', IMAGE_MIME[parsed.actual]);
+  response.setHeader('Cache-Control', 'private, max-age=31536000, immutable');
+  response.setHeader('Content-Length', String(parsed.bytes.length));
+  response.end(Buffer.from(parsed.bytes));
 });
 
 app.get('/api/users/:id/profile', requireSession, (request, response) => {

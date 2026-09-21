@@ -138,7 +138,7 @@ export function FriendsSidebar({
                   className={`text-channel-button dm-channel-button ${active ? 'active' : ''}`}
                   onClick={() => onSelectDm(channel.id)}
                 >
-                  <Avatar name={other.displayName} accentColor={other.accentColor} avatarUrl={other.avatarUrl} compact />
+                  <Avatar name={other.displayName} accentColor={other.accentColor} avatarUrl={other.avatarUrl} frame={other.avatarFrame} compact />
                   <span>{other.displayName}</span>
                 </button>
               );
@@ -216,7 +216,7 @@ function AddFriendTab({
           return (
             <div className="friend-row" key={member.id}>
               <button type="button" className="friend-row-identity" onClick={(event) => onOpenProfile(member.id, event)}>
-                <Avatar name={member.displayName} accentColor={member.accentColor} avatarUrl={member.avatarUrl} />
+                <Avatar name={member.displayName} accentColor={member.accentColor} avatarUrl={member.avatarUrl} frame={member.avatarFrame} />
                 <span>{member.displayName}</span>
               </button>
               <div className="friend-row-actions">
@@ -315,7 +315,7 @@ export function FriendsHome({
             state.friends.map((friend) => (
               <div className="friend-row" key={friend.id}>
                 <button type="button" className="friend-row-identity" onClick={(event) => onOpenProfile(friend.id, event)}>
-                  <Avatar name={friend.displayName} accentColor={friend.accentColor} avatarUrl={friend.avatarUrl} />
+                  <Avatar name={friend.displayName} accentColor={friend.accentColor} avatarUrl={friend.avatarUrl} frame={friend.avatarFrame} />
                   <span>{friend.displayName}</span>
                   {friend.statusText && <small>{friend.statusText}</small>}
                 </button>

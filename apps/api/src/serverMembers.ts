@@ -7,6 +7,7 @@ interface MemberRow {
   username: string;
   accent_color: AccentColor;
   avatar_data_url: string;
+  avatar_frame: string;
   status_text: string;
 }
 
@@ -25,7 +26,7 @@ const updateMemberTimeoutStatement = db.prepare(
 // membros de qualquer servidor, mesmo padrão que já existia antes de
 // múltiplos servidores existirem.
 const listMembersStatement = db.prepare(`
-  SELECT users.id, users.username, users.accent_color, users.avatar_data_url, users.status_text
+  SELECT users.id, users.username, users.accent_color, users.avatar_data_url, users.avatar_frame, users.status_text
   FROM server_members
   INNER JOIN users ON users.id = server_members.user_id
   LEFT JOIN bans ON bans.user_id = users.id
@@ -76,6 +77,7 @@ export function listServerMembers(serverId: string): MemberSummary[] {
     displayName: row.username,
     accentColor: row.accent_color,
     avatarUrl: row.avatar_data_url,
+    avatarFrame: row.avatar_frame as MemberSummary['avatarFrame'],
     statusText: row.status_text,
     roleIds: getUserRoleIds(row.id, serverId),
     timeoutUntil: (selectMemberStatement.get(serverId, row.id) as { timeout_until: number | null }).timeout_until,

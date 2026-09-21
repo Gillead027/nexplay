@@ -12,10 +12,12 @@ interface DmChannelRow {
   a_username: string;
   a_accent_color: AccentColor;
   a_avatar_data_url: string;
+  a_avatar_frame: string;
   b_id: string;
   b_username: string;
   b_accent_color: AccentColor;
   b_avatar_data_url: string;
+  b_avatar_frame: string;
 }
 
 interface DmMessageRow {
@@ -41,8 +43,8 @@ const DM_CHANNEL_SELECT_COLUMNS = `
   dm_channels.id,
   dm_channels.created_at,
   dm_channels.last_message_at,
-  a.id AS a_id, a.username AS a_username, a.accent_color AS a_accent_color, a.avatar_data_url AS a_avatar_data_url,
-  b.id AS b_id, b.username AS b_username, b.accent_color AS b_accent_color, b.avatar_data_url AS b_avatar_data_url
+  a.id AS a_id, a.username AS a_username, a.accent_color AS a_accent_color, a.avatar_data_url AS a_avatar_data_url, a.avatar_frame AS a_avatar_frame,
+  b.id AS b_id, b.username AS b_username, b.accent_color AS b_accent_color, b.avatar_data_url AS b_avatar_data_url, b.avatar_frame AS b_avatar_frame
 `;
 
 const selectChannelByPairStatement = db.prepare(`
@@ -103,16 +105,16 @@ const selectMessageByIdStatement = db.prepare(`
 const updateMessageStatement = db.prepare('UPDATE dm_messages SET text = ?, edited_at = ? WHERE id = ? AND sender_id = ?');
 const deleteMessageStatement = db.prepare('DELETE FROM dm_messages WHERE id = ?');
 
-function toParticipant(id: string, username: string, accentColor: AccentColor, avatarDataUrl: string): DmChannelParticipant {
-  return { id, displayName: username, accentColor, avatarUrl: avatarDataUrl };
+function toParticipant(id: string, username: string, accentColor: AccentColor, avatarDataUrl: string, avatarFrame: string): DmChannelParticipant {
+  return { id, displayName: username, accentColor, avatarUrl: avatarDataUrl, avatarFrame: avatarFrame as DmChannelParticipant['avatarFrame'] };
 }
 
 function toChannel(row: DmChannelRow): DmChannel {
   return {
     id: row.id,
     participants: [
-      toParticipant(row.a_id, row.a_username, row.a_accent_color, row.a_avatar_data_url),
-      toParticipant(row.b_id, row.b_username, row.b_accent_color, row.b_avatar_data_url),
+      toParticipant(row.a_id, row.a_username, row.a_accent_color, row.a_avatar_data_url, row.a_avatar_frame),
+      toParticipant(row.b_id, row.b_username, row.b_accent_color, row.b_avatar_data_url, row.b_avatar_frame),
     ],
     createdAt: row.created_at,
     lastMessageAt: row.last_message_at,

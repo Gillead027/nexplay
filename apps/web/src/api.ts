@@ -1,5 +1,6 @@
 import type {
   AccentColor,
+  AvatarFrame,
   BanRecord,
   BlockedUserSummary,
   Category,
@@ -118,19 +119,20 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ currentPassword, newPassword }),
     }),
+  // bannerDataUrl e avatarFrame ausentes mantêm o que já está salvo; '' remove a capa / a borda.
   updateProfile: (
     accentColor: AccentColor,
     statusText: string,
     bio: string,
     pronouns: string,
     avatarUrl: string,
-    bannerUrl: string,
+    extra: { bannerDataUrl?: string; avatarFrame?: AvatarFrame | '' } = {},
   ) =>
     request<{ user: UserSession }>('/api/profile', {
       method: 'PATCH',
-      body: JSON.stringify({ accentColor, statusText, bio, pronouns, avatarUrl, bannerUrl }),
+      body: JSON.stringify({ accentColor, statusText, bio, pronouns, avatarUrl, ...extra }),
     }),
-  getUserAvatar: (userId: string) => request<{ avatarUrl: string }>(`/api/users/${userId}/avatar`),
+  getUserAvatar: (userId: string) => request<{ avatarUrl: string; avatarFrame?: AvatarFrame | '' }>(`/api/users/${userId}/avatar`),
   getUserProfile: (userId: string) => request<{ user: UserSession }>(`/api/users/${userId}/profile`),
   getConfig: () => request<PublicConfig>('/api/config'),
 

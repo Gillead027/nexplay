@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import type { AccentColor } from '@nexplay/shared';
+import { parseImageDataUrl, type AccentColor, type AvatarFrame } from '@nexplay/shared';
 import { db } from './db.js';
 
 export interface UserRecord {
@@ -13,6 +13,9 @@ export interface UserRecord {
   pronouns: string;
   avatarDataUrl: string;
   bannerDataUrl: string;
+  bannerAnimated: boolean;
+  avatarFrame: AvatarFrame | '';
+  assetsRev: number;
   timeoutUntil: number | null;
 }
 
@@ -26,6 +29,9 @@ interface UserRow {
   pronouns: string;
   avatar_data_url: string;
   banner_data_url: string;
+  banner_animated: number;
+  avatar_frame: AvatarFrame | '';
+  assets_rev: number;
   timeout_until: number | null;
 }
 
@@ -40,6 +46,9 @@ function toRecord(row: UserRow): UserRecord {
     pronouns: row.pronouns,
     avatarDataUrl: row.avatar_data_url,
     bannerDataUrl: row.banner_data_url,
+    bannerAnimated: row.banner_animated === 1,
+    avatarFrame: row.avatar_frame,
+    assetsRev: row.assets_rev,
     timeoutUntil: row.timeout_until,
   };
 }
@@ -50,7 +59,8 @@ const insertUser = db.prepare(
 const selectByUsername = db.prepare('SELECT * FROM users WHERE username = ?');
 const selectById = db.prepare('SELECT * FROM users WHERE id = ?');
 const updateProfileStatement = db.prepare(
-  'UPDATE users SET accent_color = ?, status_text = ?, bio = ?, pronouns = ?, avatar_data_url = ?, banner_data_url = ? WHERE id = ?',
+  `UPDATE users SET accent_color = ?, status_text = ?, bio = ?, pronouns = ?, avatar_data_url = ?, avatar_frame = ?, banner_data_url = ?,
+    banner_animated = ?, assets_rev = ? WHERE id = ?`,
 );
 const updateTimeoutStatement = db.prepare('UPDATE users SET timeout_until = ? WHERE id = ?');
 const updatePasswordStatement = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
@@ -69,6 +79,9 @@ export function createUser(username: string, password: string, accentColor: Acce
     pronouns: '',
     avatarDataUrl: '',
     bannerDataUrl: '',
+    bannerAnimated: false,
+    avatarFrame: '',
+    assetsRev: 0,
     timeoutUntil: null,
   };
 }
@@ -95,14 +108,35 @@ export function updateUserPassword(id: string, newPassword: string): void {
   updatePasswordStatement.run(bcrypt.hashSync(newPassword, 10), id);
 }
 
+// Atualiza o perfil. `bannerDataUrl` e `avatarFrame` ausentes (undefined) mantêm o que já estava; '' remove a capa / a borda.
 export function updateUserProfile(
   id: string,
-  accentColor: AccentColor,
-  statusText: string,
-  bio: string,
-  pronouns: string,
-  avatarDataUrl: string,
-  bannerDataUrl: string,
-): void {
-  updateProfileStatement.run(accentColor, statusText, bio, pronouns, avatarDataUrl, bannerDataUrl, id);
+  fields: {
+    accentColor: AccentColor;
+    statusText: string;
+    bio: string;
+    pronouns: string;
+    avatarDataUrl: string;
+    bannerDataUrl?: string | undefined;
+    avatarFrame?: AvatarFrame | '' | undefined;
+  },
+): UserRecord | undefined {
+  const current = getUserById(id);
+  if (!current) return undefined;
+  const bannerChanged = fields.bannerDataUrl !== undefined && fields.bannerDataUrl !== current.bannerDataUrl;
+  const bannerDataUrl = fields.bannerDataUrl ?? current.bannerDataUrl;
+  const bannerAnimated = bannerChanged ? (parseImageDataUrl(bannerDataUrl)?.animated ?? false) : current.bannerAnimated;
+  updateProfileStatement.run(
+    fields.accentColor,
+    fields.statusText,
+    fields.bio,
+    fields.pronouns,
+    fields.avatarDataUrl,
+    fields.avatarFrame ?? current.avatarFrame,
+    bannerDataUrl,
+    Number(bannerAnimated),
+    bannerChanged ? current.assetsRev + 1 : current.assetsRev,
+    id,
+  );
+  return getUserById(id);
 }

@@ -31,10 +31,12 @@ import {
   Track,
   type TrackPublication,
 } from 'livekit-client';
-import { AVATAR_DATA_URL_MAX_LENGTH, BANNER_DATA_URL_MAX_LENGTH } from '@nexplay/shared';
+import { AVATAR_DATA_URL_MAX_LENGTH, AVATAR_FRAME_IDS, AVATAR_FRAME_LABELS, USER_BANNER_DATA_URL_MAX_LENGTH, USER_BANNER_MAX_BYTES, type AvatarFrame } from '@nexplay/shared';
 import { api } from '../api';
 import { useDelayedUnmount } from '../hooks/useDelayedUnmount';
-import { fileToResizedDataUrl } from '../imageResize';
+import { fileToResizedDataUrl, fileToServerImageDataUrl } from '../imageResize';
+import { dataUrlIsAnimated } from '../iconImage';
+import { AvatarRing } from './AvatarRing';
 import { type InputMode, type MicProfile, type ShareQuality, useVoiceRoom } from '../livekit/useVoiceRoom';
 import { describeMediaError } from '../mediaAccess';
 import { getPerfMode, type PerfMode, setPerfMode } from '../perfMode';
@@ -173,28 +175,38 @@ export function Avatar({
   name,
   accentColor,
   avatarUrl,
+  frame,
   speaking = false,
   compact = false,
 }: {
   name: string;
   accentColor?: AccentColor | undefined;
   avatarUrl?: string | undefined;
+  frame?: AvatarFrame | '' | undefined;
   speaking?: boolean;
   compact?: boolean;
 }) {
   const colorIndex = accentColor ? ACCENT_COLORS.indexOf(accentColor) : avatarColorIndex(name);
   const className = `avatar ${avatarUrl ? '' : `avatar-color-${colorIndex}`} ${speaking ? 'speaking' : ''} ${compact ? 'compact' : ''}`;
   return (
-    <span className={className}>
-      {avatarUrl ? <img src={avatarUrl} alt={name} /> : avatarLetter(name)}
-      <span className="presence-dot" />
-    </span>
+    <AvatarRing frame={frame}>
+      <span className={className}>
+        {avatarUrl ? <img src={avatarUrl} alt={name} /> : avatarLetter(name)}
+        <span className="presence-dot" />
+      </span>
+    </AvatarRing>
   );
 }
 
-const remoteAvatarCache = new Map<string, string>();
+// Foto e borda dos outros, pedidas ao servidor uma vez por pessoa.
+const remoteAvatarCache = new Map<string, { avatarUrl: string; frame: AvatarFrame | '' }>();
 
-function useAvatarByIdentity(identity: string, isOwn: boolean, ownAvatarUrl: string): string | undefined {
+function useAvatarByIdentity(
+  identity: string,
+  isOwn: boolean,
+  ownAvatarUrl: string,
+  ownFrame: AvatarFrame | '',
+): { avatarUrl: string | undefined; frame: AvatarFrame | '' } {
   const [, forceRender] = useState(0);
   useEffect(() => {
     if (isOwn) return;
@@ -202,21 +214,22 @@ function useAvatarByIdentity(identity: string, isOwn: boolean, ownAvatarUrl: str
     let active = true;
     void api
       .getUserAvatar(identity)
-      .then(({ avatarUrl }) => {
+      .then(({ avatarUrl, avatarFrame }) => {
         if (!active) return;
-        remoteAvatarCache.set(identity, avatarUrl);
+        remoteAvatarCache.set(identity, { avatarUrl, frame: avatarFrame ?? '' });
         forceRender((value) => value + 1);
       })
       .catch(() => {
-        if (active) remoteAvatarCache.set(identity, '');
+        if (active) remoteAvatarCache.set(identity, { avatarUrl: '', frame: '' });
       });
     return () => {
       active = false;
     };
   }, [identity, isOwn]);
 
-  if (isOwn) return ownAvatarUrl || undefined;
-  return remoteAvatarCache.get(identity) || undefined;
+  if (isOwn) return { avatarUrl: ownAvatarUrl || undefined, frame: ownFrame };
+  const cached = remoteAvatarCache.get(identity);
+  return { avatarUrl: cached?.avatarUrl || undefined, frame: cached?.frame ?? '' };
 }
 
 function ChannelUserAvatar({
@@ -224,6 +237,7 @@ function ChannelUserAvatar({
   name,
   ownIdentity,
   ownAvatarUrl,
+  ownAvatarFrame,
   speaking,
   accentColor,
 }: {
@@ -231,17 +245,18 @@ function ChannelUserAvatar({
   name: string;
   ownIdentity: string;
   ownAvatarUrl: string;
+  ownAvatarFrame: AvatarFrame | '';
   speaking: boolean;
   accentColor?: AccentColor | undefined;
 }) {
-  const avatarUrl = useAvatarByIdentity(identity, identity === ownIdentity, ownAvatarUrl);
-  return <Avatar name={name} accentColor={accentColor} avatarUrl={avatarUrl} speaking={speaking} compact />;
+  const { avatarUrl, frame } = useAvatarByIdentity(identity, identity === ownIdentity, ownAvatarUrl, ownAvatarFrame);
+  return <Avatar name={name} accentColor={accentColor} avatarUrl={avatarUrl} frame={frame} speaking={speaking} compact />;
 }
 
 // Avatar grande de um quadrado do palco de voz (foto do perfil ou a inicial sobre a cor do perfil).
-function StageAvatar({ entry, ownIdentity, ownAvatarUrl }: { entry: StageEntry; ownIdentity: string; ownAvatarUrl: string }) {
-  const avatarUrl = useAvatarByIdentity(entry.identity, entry.identity === ownIdentity, ownAvatarUrl);
-  return <Avatar name={entry.name} accentColor={ACCENT_COLORS[entry.colorIndex]} avatarUrl={entry.isBot ? undefined : avatarUrl} speaking={entry.speaking} />;
+function StageAvatar({ entry, ownIdentity, ownAvatarUrl, ownAvatarFrame }: { entry: StageEntry; ownIdentity: string; ownAvatarUrl: string; ownAvatarFrame: AvatarFrame | '' }) {
+  const { avatarUrl, frame } = useAvatarByIdentity(entry.identity, entry.identity === ownIdentity, ownAvatarUrl, ownAvatarFrame);
+  return <Avatar name={entry.name} accentColor={ACCENT_COLORS[entry.colorIndex]} avatarUrl={entry.isBot ? undefined : avatarUrl} frame={entry.isBot ? '' : frame} speaking={entry.speaking} />;
 }
 
 // Botão de um servidor na barra da esquerda. O ícone (imagem ou GIF) aparece inteiro; o animado só se mexe com o mouse em cima.
@@ -427,6 +442,7 @@ function ChannelButton({
   onToggleChat,
   ownIdentity,
   ownAvatarUrl,
+  ownAvatarFrame,
   onOpenProfile,
   speakingIds,
   onDisconnectParticipant,
@@ -448,6 +464,7 @@ function ChannelButton({
   onToggleChat: () => void;
   ownIdentity: string;
   ownAvatarUrl: string;
+  ownAvatarFrame: AvatarFrame | '';
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
   // Só existe atividade de fala em tempo real pro canal em que você está
   // conectado agora — o LiveKit não entrega "quem está falando" de salas que
@@ -541,6 +558,7 @@ function ChannelButton({
                 name={participant.name}
                 ownIdentity={ownIdentity}
                 ownAvatarUrl={ownAvatarUrl}
+                ownAvatarFrame={ownAvatarFrame}
                 speaking={active && speakingIds.has(participant.identity)}
                 accentColor={active ? accentByIdentity?.get(participant.identity) : undefined}
               />
@@ -797,6 +815,8 @@ function SettingsModal({
   setProfileAvatar,
   profileBanner,
   setProfileBanner,
+  profileFrame,
+  setProfileFrame,
   savingProfile,
   onSaveProfile,
   onCancelProfile,
@@ -868,6 +888,8 @@ function SettingsModal({
   setProfileAvatar: (value: string) => void;
   profileBanner: string;
   setProfileBanner: (value: string) => void;
+  profileFrame: AvatarFrame | '';
+  setProfileFrame: (value: AvatarFrame | '') => void;
   savingProfile: boolean;
   onSaveProfile: () => void;
   onCancelProfile: () => void;
@@ -963,11 +985,19 @@ function SettingsModal({
     if (!file) return;
     setBannerError('');
     try {
-      setProfileBanner(await fileToResizedDataUrl(file, 960, BANNER_DATA_URL_MAX_LENGTH));
-    } catch {
-      setBannerError('Não foi possível usar essa imagem. Tente um arquivo menor.');
+      setProfileBanner(await fileToServerImageDataUrl(file, {
+        maxLength: USER_BANNER_DATA_URL_MAX_LENGTH,
+        maxMegabytes: USER_BANNER_MAX_BYTES / (1024 * 1024),
+        keepDimension: 2560,
+        resizeDimension: 1920,
+      }));
+    } catch (error) {
+      setBannerError(error instanceof Error ? error.message : 'Não foi possível usar essa imagem. Tente um arquivo menor.');
     }
   }
+
+  // A capa em uso: a nova (ainda não salva) ou a que já está no perfil.
+  const bannerAnimated = profileBanner.startsWith('data:') ? dataUrlIsAnimated(profileBanner) : session.bannerAnimated;
 
   const matchesSearch = (label: string) => voiceSearch.trim() === '' || label.toLowerCase().includes(voiceSearch.trim().toLowerCase());
 
@@ -1107,25 +1137,28 @@ function SettingsModal({
               <div className="settings-pane-main">
                 <h2>Meu perfil</h2>
                 <p className="settings-page-description">Personalize como seu perfil aparece para outras pessoas.</p>
-                <label className="settings-label">Banner do perfil</label>
+                <label className="settings-label">Capa do perfil</label>
                 <div className="profile-banner-field">
-                  {profileBanner && <img src={profileBanner} alt="" />}
+                  {profileBanner && <ServerImage src={profileBanner} animated={bannerAnimated} autoplay />}
                   <input
                     ref={bannerInputRef}
                     type="file"
-                    accept="image/png,image/jpeg,image/webp"
+                    accept="image/png,image/jpeg,image/webp,image/gif"
                     hidden
                     onChange={(event) => void handleBannerFile(event.target.files?.[0])}
                   />
                   <button type="button" onClick={() => bannerInputRef.current?.click()}>
-                    <ImageIcon size={13} /> Alterar banner
+                    <ImageIcon size={13} /> Alterar capa
                   </button>
+                  {profileBanner && (
+                    <button type="button" className="profile-banner-remove" onClick={() => setProfileBanner('')}>Remover</button>
+                  )}
                 </div>
                 {bannerError && <p className="settings-hint">{bannerError}</p>}
-                <p className="settings-hint">Recomendado: 1920×480. Máximo 800KB (redimensionado automaticamente). Formatos: PNG, JPG ou WEBP.</p>
+                <p className="settings-hint">Recomendado: 1920×480. Aceita GIF animado de até {USER_BANNER_MAX_BYTES / (1024 * 1024)} MB. Formatos: PNG, JPG, WEBP ou GIF.</p>
 
                 <div className="profile-avatar-field">
-                  <Avatar name={session.displayName} accentColor={profileColor} avatarUrl={profileAvatar} />
+                  <Avatar name={session.displayName} accentColor={profileColor} avatarUrl={profileAvatar} frame={profileFrame} />
                   <div className="profile-avatar-actions">
                     <input
                       ref={avatarInputRef}
@@ -1146,6 +1179,20 @@ function SettingsModal({
                 </div>
                 {avatarError && <p className="settings-hint">{avatarError}</p>}
                 <p className="settings-hint">Recomendado: 512×512. Máximo 300KB (redimensionado automaticamente).</p>
+
+                <label className="settings-label">Borda do avatar</label>
+                <div className="frame-picker" role="radiogroup" aria-label="Borda animada do avatar">
+                  <button type="button" role="radio" aria-checked={profileFrame === ''} className={`frame-option ${profileFrame === '' ? 'selected' : ''}`} onClick={() => setProfileFrame('')}>
+                    <span className="frame-option-preview"><Avatar name={session.displayName} accentColor={profileColor} avatarUrl={profileAvatar} /></span>
+                    <span>Sem borda</span>
+                  </button>
+                  {AVATAR_FRAME_IDS.map((id) => (
+                    <button key={id} type="button" role="radio" aria-checked={profileFrame === id} className={`frame-option ${profileFrame === id ? 'selected' : ''}`} onClick={() => setProfileFrame(id)}>
+                      <span className="frame-option-preview"><Avatar name={session.displayName} accentColor={profileColor} avatarUrl={profileAvatar} frame={id} /></span>
+                      <span>{AVATAR_FRAME_LABELS[id]}</span>
+                    </button>
+                  ))}
+                </div>
 
                 <label htmlFor="profile-display-name">Nome de exibição</label>
                 <input id="profile-display-name" readOnly value={session.displayName} />
@@ -1204,11 +1251,11 @@ function SettingsModal({
                 <span className="settings-side-title">Pré-visualização</span>
                 <div className="profile-preview">
                   {profileBanner ? (
-                    <img className="profile-preview-banner has-image" src={profileBanner} alt="" />
+                    <ServerImage className="profile-preview-banner has-image" src={profileBanner} animated={bannerAnimated} autoplay />
                   ) : (
                     <div className={`profile-preview-banner avatar-color-${ACCENT_COLORS.indexOf(profileColor)}`} />
                   )}
-                  <Avatar name={session.displayName} accentColor={profileColor} avatarUrl={profileAvatar} />
+                  <Avatar name={session.displayName} accentColor={profileColor} avatarUrl={profileAvatar} frame={profileFrame} />
                   <strong>{session.displayName}</strong>
                   {profilePronouns && <em>{profilePronouns}</em>}
                   {profileStatus && <span>{profileStatus}</span>}
@@ -2082,6 +2129,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const [profilePronouns, setProfilePronouns] = useState(session.pronouns);
   const [profileAvatar, setProfileAvatar] = useState(session.avatarUrl);
   const [profileBanner, setProfileBanner] = useState(session.bannerUrl);
+  const [profileFrame, setProfileFrame] = useState<AvatarFrame | ''>(session.avatarFrame);
   const [savingProfile, setSavingProfile] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
   // Preenchido quando o "+" clicado é o de uma categoria específica (não o
@@ -2153,6 +2201,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     setProfilePronouns(session.pronouns);
     setProfileAvatar(session.avatarUrl);
     setProfileBanner(session.bannerUrl);
+    setProfileFrame(session.avatarFrame);
   }
 
   async function saveProfile() {
@@ -2164,7 +2213,11 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         profileBio,
         profilePronouns,
         profileAvatar,
-        profileBanner,
+        {
+          // A capa só vai quando mudou: uma nova (data: URL) ou a remoção; senão o servidor mantém a atual.
+          ...(profileBanner.startsWith('data:') ? { bannerDataUrl: profileBanner } : profileBanner === '' && session.bannerUrl ? { bannerDataUrl: '' } : {}),
+          avatarFrame: profileFrame,
+        },
       );
       onProfileUpdated(user);
     } catch {
@@ -2527,7 +2580,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       speakingIds={voice.speakers}
       liveMuted={liveMuted}
       channelName={voice.currentChannel?.name ?? 'este canal'}
-      renderAvatar={(entry) => <StageAvatar entry={entry} ownIdentity={session.id} ownAvatarUrl={session.avatarUrl} />}
+      renderAvatar={(entry) => <StageAvatar entry={entry} ownIdentity={session.id} ownAvatarUrl={session.avatarUrl} ownAvatarFrame={session.avatarFrame} />}
       onParticipantContextMenu={openParticipantVolumeMenu}
       onOpenProfile={openUserProfile}
       copyInvite={copyServerInvite}
@@ -2597,6 +2650,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         setProfileAvatar={setProfileAvatar}
         profileBanner={profileBanner}
         setProfileBanner={setProfileBanner}
+        profileFrame={profileFrame}
+        setProfileFrame={setProfileFrame}
         savingProfile={savingProfile}
         onSaveProfile={() => void saveProfile()}
         onCancelProfile={resetProfileDraft}
@@ -2833,6 +2888,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                     onToggleChat={() => setChatOpen((open) => !open)}
                     ownIdentity={session.id}
                     ownAvatarUrl={session.avatarUrl}
+                    ownAvatarFrame={session.avatarFrame}
                     onOpenProfile={openUserProfile}
                     speakingIds={voice.speakers}
                     onDisconnectParticipant={(identity, name) => void disconnectParticipantFromVoice(identity, name)}
@@ -2997,7 +3053,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         )}
 
         <footer className="sidebar-user">
-          <Avatar name={session.displayName} accentColor={session.accentColor} avatarUrl={session.avatarUrl} />
+          <Avatar name={session.displayName} accentColor={session.accentColor} avatarUrl={session.avatarUrl} frame={session.avatarFrame} />
           <div className="current-user-copy">
             <strong>{session.displayName}</strong>
             <span>{userStatusLabel}</span>
@@ -3254,7 +3310,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                   previous?.senderId === message.senderId &&
                   message.sentAt - previous.sentAt < 5 * 60 * 1000;
                 const senderAvatar =
-                  message.senderId === session.id ? session.avatarUrl : remoteAvatarCache.get(message.senderId);
+                  message.senderId === session.id ? session.avatarUrl : remoteAvatarCache.get(message.senderId)?.avatarUrl;
                 const isBotMessage = message.senderId === MUSIC_BOT_IDENTITY;
                 return (
                   <article className={`message ${continued ? 'continued' : ''}`} key={message.id}>

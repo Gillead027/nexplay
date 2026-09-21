@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { ACCENT_COLORS, type Activity, type FriendshipStatus, type UserSession } from '@nexplay/shared';
 import { api } from '../api';
 import { Avatar } from './Workspace';
+import { ServerImage } from './ServerImage';
 import { ActivityLine, ListeningActivityCard } from './ActivityDisplay';
 import { BlockIcon, CloseIcon, MessageIcon, UserPlusIcon } from './Icons';
 import { computePopoverPosition, POPOVER_WIDTH } from './profilePopoverPosition';
@@ -145,11 +146,11 @@ export function ProfilePopover({
       ) : (
         <div className="profile-preview">
           {profile.bannerUrl ? (
-            <img className="profile-preview-banner has-image" src={profile.bannerUrl} alt="" />
+            <ServerImage className="profile-preview-banner has-image" src={profile.bannerUrl} animated={profile.bannerAnimated} autoplay />
           ) : (
             <div className={`profile-preview-banner avatar-color-${ACCENT_COLORS.indexOf(profile.accentColor)}`} />
           )}
-          <Avatar name={profile.displayName} accentColor={profile.accentColor} avatarUrl={profile.avatarUrl} />
+          <Avatar name={profile.displayName} accentColor={profile.accentColor} avatarUrl={profile.avatarUrl} frame={profile.avatarFrame} />
           <strong>{profile.displayName}</strong>
           {profile.pronouns && <em>{profile.pronouns}</em>}
           {profile.statusText && <span>{profile.statusText}</span>}

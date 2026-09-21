@@ -15,6 +15,22 @@ export const BIO_MAX_LENGTH = 300;
 export const PRONOUNS_MAX_LENGTH = 30;
 export const AVATAR_DATA_URL_MAX_LENGTH = 400_000;
 export const BANNER_DATA_URL_MAX_LENGTH = 1_100_000;
+// Capa (banner) do perfil: imagem ou GIF animado de até 3 MB.
+export const USER_BANNER_MAX_BYTES = 3 * 1024 * 1024;
+export const USER_BANNER_DATA_URL_MAX_LENGTH = Math.ceil((USER_BANNER_MAX_BYTES * 4) / 3) + 64;
+// Bordas animadas do avatar (a pessoa escolhe uma no perfil; '' = sem borda). Desenhadas em CSS, sem imagem.
+export const AVATAR_FRAME_IDS = ['aurora', 'fogo', 'neon', 'ouro', 'arco-iris', 'gelo', 'pulso', 'eletrico'] as const;
+export type AvatarFrame = (typeof AVATAR_FRAME_IDS)[number];
+export const AVATAR_FRAME_LABELS: Record<AvatarFrame, string> = {
+  aurora: 'Aurora',
+  fogo: 'Fogo',
+  neon: 'Neon',
+  ouro: 'Ouro',
+  'arco-iris': 'Arco-íris',
+  gelo: 'Gelo',
+  pulso: 'Pulso',
+  eletrico: 'Elétrico',
+};
 // Ícone e painel (banner) do servidor: imagem ou GIF animado. A data: URL em base64 tem 4/3 do tamanho do arquivo.
 export const SERVER_ICON_MAX_BYTES = 3 * 1024 * 1024;
 export const SERVER_BANNER_MAX_BYTES = 6 * 1024 * 1024;
@@ -150,6 +166,7 @@ export interface MemberSummary {
   displayName: string;
   accentColor: AccentColor;
   avatarUrl: string;
+  avatarFrame: AvatarFrame | '';
   statusText: string;
   roleIds: string[];
   timeoutUntil: number | null;
@@ -227,7 +244,10 @@ export interface UserSession {
   bio: string;
   pronouns: string;
   avatarUrl: string;
+  avatarFrame: AvatarFrame | '';
+  // A capa vem de /api/users/:id/banner (a URL traz a versão); "animated" diz se é GIF/WebP/PNG animado.
   bannerUrl: string;
+  bannerAnimated: boolean;
 }
 
 // 'default' = normal; 'spoiler' e 'age_restricted' só guardam o selo visual e
@@ -830,6 +850,7 @@ export interface FriendSummary {
   displayName: string;
   accentColor: AccentColor;
   avatarUrl: string;
+  avatarFrame: AvatarFrame | '';
   statusText: string;
   since: number;
   dmChannelId?: string;
@@ -856,6 +877,7 @@ export interface DmChannelParticipant {
   displayName: string;
   accentColor: AccentColor;
   avatarUrl: string;
+  avatarFrame: AvatarFrame | '';
 }
 
 export interface DmChannel {

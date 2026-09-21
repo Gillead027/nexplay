@@ -660,3 +660,44 @@ img.server-settings-avatar { object-fit: contain; background: var(--panel-raised
 .floating-notice .notice-primary:hover { box-shadow: 0 6px 16px var(--accent-glow-strong); }
 /* Avisos flutuantes ficam por cima do cabeçalho: fundo opaco, senão o texto de trás atrapalha a leitura */
 .floating-notice.info { background: color-mix(in srgb, var(--accent) 16%, var(--panel-raised)); }
+
+/* ==========================================================================
+   Bordas animadas do avatar — o anel gira (ou pulsa) em volta da foto; a pessoa escolhe em Meu perfil.
+   O anel é um círculo com degradê, recortado por uma máscara para sobrar só a faixa de fora.
+   ========================================================================== */
+.avatar-ring { --ring: 3px; position: relative; isolation: isolate; display: inline-grid; place-items: center; flex: 0 0 auto; padding: var(--ring); margin: calc(var(--ring) * -1); border-radius: 50%; }
+.avatar-ring::before {
+  content: ''; position: absolute; inset: 0; z-index: -1; border-radius: 50%; background: var(--ring-fill, var(--accent)); animation: ring-spin var(--ring-speed, 3.2s) linear infinite;
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring) + 1px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring) + 1px));
+}
+.avatar-ring:has(.avatar.compact) { --ring: 2px; }
+.voice-tile-avatar .avatar-ring { --ring: clamp(4px, 1.6cqw, 8px); }
+.profile-preview .avatar-ring { --ring: 5px; }
+.frame-aurora { --ring-fill: conic-gradient(#2ee6f0, #2f7bff, #7b61ff, #2ee6f0); }
+.frame-fogo { --ring-fill: conic-gradient(#ff3d00, #ff9100, #ffe066, #ff9100, #ff3d00); --ring-speed: 2.4s; filter: drop-shadow(0 0 4px rgba(255, 120, 0, .65)); }
+.frame-neon { --ring-fill: conic-gradient(#ff2bd6, #00e5ff, #ff2bd6); --ring-speed: 1.8s; filter: drop-shadow(0 0 5px rgba(255, 43, 214, .7)); }
+.frame-ouro { --ring-fill: conic-gradient(#f9e28a, #b8860b, #fff6c2, #b8860b, #f9e28a); --ring-speed: 5s; }
+.frame-arco-iris { --ring-fill: conic-gradient(#ff3b30, #ff9500, #ffd60a, #34c759, #00c7ff, #5e5ce6, #bf5af2, #ff3b30); --ring-speed: 4s; }
+.frame-gelo { --ring-fill: conic-gradient(#ffffff, #8fd8ff, #d6f3ff, #5cc0ff, #ffffff); --ring-speed: 6s; filter: drop-shadow(0 0 4px rgba(143, 216, 255, .6)); }
+.frame-pulso::before { --ring-fill: var(--accent-2); animation: ring-breathe 1.6s ease-in-out infinite; }
+.frame-pulso { filter: drop-shadow(0 0 5px var(--accent-glow-strong)); }
+.frame-eletrico { --ring-fill: conic-gradient(#fff700 0 12%, transparent 12% 30%, #00e5ff 30% 42%, transparent 42% 60%, #fff700 60% 72%, transparent 72% 90%, #ffffff 90% 100%); --ring-speed: .9s; filter: drop-shadow(0 0 4px rgba(255, 247, 0, .6)); }
+@keyframes ring-spin { to { transform: rotate(360deg); } }
+@keyframes ring-breathe { 0%, 100% { opacity: .5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.07); } }
+
+/* Seletor de borda em Meu perfil */
+.frame-picker { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 10px; max-width: 520px; }
+.frame-option {
+  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 6px 8px; border: 1px solid var(--border-light); border-radius: 14px;
+  color: var(--text-secondary); background: var(--panel-raised); font-size: var(--fs-xs); font-weight: 650;
+}
+.frame-option:hover { transform: translateY(-2px); border-color: var(--accent); }
+.frame-option.selected { border-color: var(--accent); color: var(--text-primary); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
+.frame-option-preview { display: grid; place-items: center; padding: 8px; }
+.frame-option-preview .avatar { width: 44px; height: 44px; font-size: var(--fs-xl); }
+.frame-option-preview .avatar .presence-dot { display: none; }
+.profile-banner-field button.profile-banner-remove { right: auto; left: 10px; }
+/* No cartão de perfil o avatar sobe sobre a capa com margem negativa: quem sobe é o anel, não o avatar dentro dele */
+.profile-preview .avatar-ring { margin: calc(-28px - var(--ring)) 0 0 calc(var(--ring) * -1); font-size: inherit; color: inherit; }
+.profile-preview .avatar-ring .avatar { margin-top: 0; }

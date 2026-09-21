@@ -224,7 +224,7 @@ export function DmChannelView({
     <section className="text-channel-view dm-channel-view" aria-label={`Conversa com ${other.displayName}`}>
       <header className="room-header dm-channel-header">
         <button type="button" className="dm-header-identity" onClick={(event) => onOpenProfile(other.id, event)}>
-          <Avatar name={other.displayName} accentColor={other.accentColor} avatarUrl={other.avatarUrl} />
+          <Avatar name={other.displayName} accentColor={other.accentColor} avatarUrl={other.avatarUrl} frame={other.avatarFrame} />
           <strong>{other.displayName}</strong>
         </button>
       </header>
@@ -245,7 +245,7 @@ export function DmChannelView({
             return (
               <article className="message text-message" key={message.id}>
                 <button type="button" className="message-avatar-trigger" onClick={(event) => onOpenProfile(sender.id, event)}>
-                  <Avatar name={sender.displayName} accentColor={sender.accentColor} avatarUrl={sender.avatarUrl} compact />
+                  <Avatar name={sender.displayName} accentColor={sender.accentColor} avatarUrl={sender.avatarUrl} frame={sender.avatarFrame} compact />
                 </button>
                 <div>
                   <header>

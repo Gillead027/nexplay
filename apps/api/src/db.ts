@@ -275,6 +275,11 @@ ensureColumns('users', [
   ['bio', "TEXT NOT NULL DEFAULT ''"],
   ['pronouns', "TEXT NOT NULL DEFAULT ''"],
   ['avatar_data_url', "TEXT NOT NULL DEFAULT ''"],
+  // Borda animada do avatar (um id de AVATAR_FRAME_IDS; '' = sem borda) e, na capa do perfil, se ela é animada e a versão
+  // (sobe a cada troca) que vai na URL para o navegador não reaproveitar a imagem antiga.
+  ['avatar_frame', "TEXT NOT NULL DEFAULT ''"],
+  ['banner_animated', 'INTEGER NOT NULL DEFAULT 0'],
+  ['assets_rev', 'INTEGER NOT NULL DEFAULT 0'],
   ['banner_data_url', "TEXT NOT NULL DEFAULT ''"],
   ['timeout_until', 'INTEGER'],
 ]);

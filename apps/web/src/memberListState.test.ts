@@ -10,6 +10,7 @@ const member = (id: string, displayName: string, roleIds: string[] = []): Member
   displayName,
   accentColor: '#4e7960',
   avatarUrl: '',
+  avatarFrame: '',
   statusText: '',
   roleIds,
   timeoutUntil: null,
