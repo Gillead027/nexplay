@@ -1,6 +1,6 @@
 {
   "name": "@nexplay/desktop",
-  "version": "0.2.15",
+  "version": "0.2.16",
   "private": true,
   "description": "Cliente Windows do NexPlay",
   "main": "dist/main.js",
@@ -65,6 +65,10 @@
       {
         "from": "dist/desktop-config.json",
         "to": "desktop-config.json"
+      },
+      {
+        "from": "build/icon.ico",
+        "to": "tray.ico"
       }
     ],
     "win": {

@@ -26,6 +26,8 @@ export async function checkForUpdatesNow(): Promise<UpdateCheckOutcome> {
   if (!app.isPackaged) return { status: 'unavailable', message: 'A verificação só existe no aplicativo instalado.' };
   try {
     logUpdate('Verificação pedida pela pessoa (Configurações > Sobre).');
+    // Quem pede a verificação quer ver o aviso, mesmo que já tenha dito "Depois" para essa versão.
+    promptedVersion = null;
     const result = await autoUpdater.checkForUpdates();
     if (!result) return { status: 'unavailable', message: 'As atualizações estão desativadas nesta instalação.' };
     return result.isUpdateAvailable
@@ -35,6 +37,12 @@ export async function checkForUpdatesNow(): Promise<UpdateCheckOutcome> {
     return { status: 'error', message: error instanceof Error ? error.message : String(error) };
   }
 }
+
+// Com o app escondido na bandeja ele quase nunca reinicia, então a verificação de atualização se repete sozinha.
+const RECHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
+// A versão para a qual o aviso "Atualizar e reiniciar" já foi mostrado nesta execução: a verificação repetida
+// baixa/reconhece a mesma versão de novo e não deve perguntar de quatro em quatro horas.
+let promptedVersion: string | null = null;
 
 export function initAutoUpdater(): void {
   if (!app.isPackaged) return;
@@ -54,6 +62,8 @@ export function initAutoUpdater(): void {
   });
 
   autoUpdater.on('update-downloaded', (info) => {
+    if (promptedVersion === info.version) return;
+    promptedVersion = info.version;
     void dialog
       .showMessageBox({
         type: 'info',
@@ -71,4 +81,7 @@ export function initAutoUpdater(): void {
   });
 
   void autoUpdater.checkForUpdates();
+  setInterval(() => {
+    autoUpdater.checkForUpdates().catch((error: unknown) => logUpdate(`ERRO na verificação periódica: ${String(error)}`));
+  }, RECHECK_INTERVAL_MS).unref();
 }

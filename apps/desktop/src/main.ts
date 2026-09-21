@@ -5,12 +5,14 @@ import {
   dialog,
   ipcMain,
   Menu,
+  nativeImage,
   session,
   shell,
   systemPreferences,
+  Tray,
   type DesktopCapturerSource,
 } from 'electron';
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Activity } from '@nexplay/shared';
 import { checkForUpdatesNow, initAutoUpdater } from './updater.js';
@@ -97,6 +99,13 @@ interface PendingCapture {
 }
 
 let mainWindow: BrowserWindow | null = null;
+// Ícone na bandeja do sistema: com ele o X da janela só esconde o app (ele segue rodando, com a call e as
+// notificações), e é por ele que se abre a janela de novo ou se encerra de vez. Enquanto for null (a bandeja
+// não pôde ser criada) o X fecha o app normalmente, para nunca deixar o app rodando sem jeito de reabrir.
+let tray: Tray | null = null;
+// Ligado assim que o app começa a encerrar (menu da bandeja, atualização, desligar o Windows): daí em diante
+// o X deixa de esconder e as janelas fecham de verdade.
+let isQuitting = false;
 let pendingCapture: PendingCapture | null = null;
 let stopActivityMonitor: (() => void) | null = null;
 // A detecção roda e já pode publicar a primeira atividade (ex.: alguém que
@@ -465,6 +474,63 @@ function installSessionSecurity(appUrl: URL): void {
   });
 }
 
+// ---- Bandeja do sistema ----
+function showMainWindow(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.focus();
+}
+
+// No app instalado o ícone é copiado para a pasta de recursos (extraResources); no desenvolvimento vem da pasta build.
+function trayIconPath(): string {
+  return app.isPackaged ? path.join(process.resourcesPath, 'tray.ico') : path.join(__dirname, '../build/icon.ico');
+}
+
+function createTray(): void {
+  if (tray) return;
+  try {
+    const icon = nativeImage.createFromPath(trayIconPath());
+    if (icon.isEmpty()) {
+      debugLog(`bandeja: ícone não encontrado em ${trayIconPath()}; o X vai fechar o app`);
+      return;
+    }
+    const created = new Tray(icon);
+    created.setToolTip('NexPlay');
+    created.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: 'Abrir NexPlay', click: showMainWindow },
+        { type: 'separator' },
+        { label: 'Sair do NexPlay', click: () => app.quit() },
+      ]),
+    );
+    created.on('click', showMainWindow);
+    tray = created;
+    debugLog('bandeja criada');
+  } catch (error) {
+    debugLog(`bandeja falhou: ${error instanceof Error ? error.message : String(error)}; o X vai fechar o app`);
+    tray = null;
+  }
+}
+
+// Na primeira vez que o X esconde o app avisa que ele continua rodando (como o Discord), para ninguém achar que
+// travou ou ficar sem saber como sair de vez. O aviso aparece uma única vez por instalação.
+function hintRunningInBackground(): void {
+  if (process.platform !== 'win32' || !tray) return;
+  try {
+    const flag = path.join(app.getPath('userData'), 'background-hint-shown');
+    if (existsSync(flag)) return;
+    writeFileSync(flag, new Date().toISOString(), 'utf8');
+    tray.displayBalloon({
+      iconType: 'info',
+      title: 'O NexPlay continua rodando',
+      content: 'Clique no ícone da bandeja para abrir de novo. Para sair de vez, use "Sair do NexPlay" no menu dele.',
+    });
+  } catch (error) {
+    debugLog(`aviso da bandeja falhou: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 // ---- Tela de abertura ----
 // Aparece assim que o app começa, com a logo animada e o passo atual, e some quando a janela
 // principal está pronta. Fica no mínimo SPLASH_MIN_MS na tela para a animação ser vista mesmo
@@ -575,6 +641,9 @@ function createMainWindow(appUrl: URL): BrowserWindow {
       experimentalFeatures: false,
       webviewTag: false,
       devTools: !app.isPackaged,
+      // Escondido na bandeja o app precisa continuar ao vivo (call, conexão em tempo real, mensagens): sem isso o
+      // Chromium desacelera os timers da janela escondida e a conexão pode cair.
+      backgroundThrottling: false,
     },
   });
 
@@ -664,7 +733,18 @@ function createMainWindow(appUrl: URL): BrowserWindow {
     debugLog('window show event');
     closeSplash();
   });
-  window.on('close', () => debugLog('window close event'));
+  window.on('close', (event) => {
+    debugLog(`window close event (quitting=${isQuitting}, tray=${Boolean(tray)})`);
+    if (isQuitting || !tray) return;
+    // O X (ou Alt+F4) só esconde a janela; o app segue rodando na bandeja.
+    event.preventDefault();
+    window.hide();
+    hintRunningInBackground();
+  });
+  // Desligar ou sair da sessão do Windows não pode ser barrado pelo "esconder na bandeja".
+  window.on('session-end', () => {
+    isQuitting = true;
+  });
   window.on('closed', () => debugLog('window closed event'));
   // ready-to-show normalmente dispara no primeiro paint; se por algum motivo
   // não disparar (perda do evento, hang de carregamento sem did-fail-load),
@@ -688,9 +768,8 @@ if (hasSingleInstanceLock) {
     // entrega o link a esta e fecha.
     const link = findDeepLink(argv);
     if (link) deliverDeepLink(link);
-    if (!mainWindow) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.focus();
+    // Com o app escondido na bandeja, abrir o atalho de novo traz a janela de volta.
+    showMainWindow();
   });
   app.whenReady().then(async () => {
     debugLog('whenReady resolved');
@@ -714,6 +793,7 @@ if (hasSingleInstanceLock) {
       mainWindow.once('closed', () => {
         mainWindow = null;
       });
+      createTray();
       const { startActivityMonitor } = await import('./activity.js');
       stopActivityMonitor = startActivityMonitor((activity) => {
         currentActivity = activity;
@@ -742,6 +822,10 @@ app.on('window-all-closed', () => {
 });
 app.on('before-quit', () => {
   debugLog('before-quit');
+  isQuitting = true;
+  // Tira o ícone da bandeja já, senão ele fica "fantasma" até o mouse passar por cima.
+  tray?.destroy();
+  tray = null;
   stopActivityMonitor?.();
   stopActivityMonitor = null;
 });
