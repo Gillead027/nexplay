@@ -1105,6 +1105,8 @@ Arquitetura real (verificada lendo `apps/web/src/App.tsx`, `apps/web/src/compone
 
 ## 1.5 — REGISTER_INVITE_TOKEN_FIELD
 
+**ATUALIZAÇÃO — CADASTRO ABERTO (commit `6ef7387`, em produção)**: com `OPEN_REGISTRATION=true` (ligado nesta instância) a aba "Criar conta" **não mostra mais este campo** e o servidor não exige o código de cadastro; a tela pergunta ao servidor (`GET /api/auth/registration`) e, se a resposta falhar, mostra o campo (quem decide é sempre o servidor). Com o cadastro fechado (o padrão) o campo continua obrigatório e um código errado responde "Código de cadastro inválido.". A conta nova não entra em servidor nenhum: só vê o que criar ou aquilo em que entrar por convite. Criar contas é limitado a 10 por hora por endereço. O texto abaixo é o estado anterior.
+
 **ID**: `REGISTER_INVITE_TOKEN_FIELD`
 **NOME**: Campo de código de convite (só no cadastro)
 **PLATAFORMA**: `DESKTOP_WINDOWS`, `WEB`
@@ -3230,7 +3232,7 @@ Feito em 2026-09-21. Cada ficha abaixo atualiza o estado de uma ficha anterior (
 **CAMINHO**: `https://<site>/convite/<CÓDIGO>`
 **STATUS**: `DONE` (commit `0cd2bdb`, em produção)
 **COMPORTAMENTO**: o servidor web devolve o app para qualquer caminho, então o link abre normalmente. O app lê o código, guarda na sessão do navegador e volta o endereço para a raiz. (1) **Sem estar logada**: a tela de entrada mostra "Você recebeu um convite para um servidor. Entre na sua conta, ou crie uma com o código de cadastro, para aceitar."; depois de entrar ou criar a conta a pessoa entra no servidor do convite, ele abre e aparece "Você entrou em <servidor>." (2) **Já logada**: entra direto e vê o mesmo aviso. (3) **Código inválido**: aviso de erro "Convite não encontrado." (`Fechar`), sem tela quebrada. O código é usado uma vez por abertura do link (`takePendingInvite` limpa a sessão).
-**LIMITE**: criar a conta continua exigindo o **código de cadastro** da instância; o convite de servidor só leva ao servidor depois disso. Não foi transformado em cadastro livre de propósito: qualquer dono de servidor passaria a poder criar contas na instância.
+**LIMITE** (atualizado): em uma instância com cadastro fechado, criar a conta exige o **código de cadastro**; nesta instância o cadastro é aberto (commit `6ef7387`, em produção), então a pessoa cria a conta sem código e usa o convite de servidor para entrar em um servidor. Como qualquer pessoa pode criar conta, cada uma só enxerga os servidores que criar ou em que entrar por convite (isolamento verificado em `EMPTY_STATE_NO_SERVERS`).
 
 ---
 
