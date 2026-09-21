@@ -1,4 +1,4 @@
-export type MediaAccessKind = 'camera' | 'microphone';
+export type MediaAccessKind = 'camera' | 'microphone' | 'screen';
 
 function baseMediaError(error: unknown): string {
   if (error instanceof DOMException) {
@@ -10,27 +10,35 @@ function baseMediaError(error: unknown): string {
   return error instanceof Error ? error.message : 'Não foi possível acessar a mídia.';
 }
 
-export async function describeMediaError(error: unknown, mediaType?: MediaAccessKind): Promise<string> {
+export function isPermissionDenied(error: unknown): boolean {
   const errorName = error instanceof Error ? error.name : '';
   const errorMessage = error instanceof Error ? error.message : '';
-  const permissionDenied =
+  return (
     errorName === 'NotAllowedError' ||
     errorName === 'PermissionDeniedError' ||
-    /permission denied|notallowederror/i.test(errorMessage);
-  if (!permissionDenied || !mediaType) {
+    /permission denied|notallowederror/i.test(errorMessage)
+  );
+}
+
+export async function describeMediaError(error: unknown, mediaType?: MediaAccessKind): Promise<string> {
+  if (!isPermissionDenied(error) || !mediaType) {
     return baseMediaError(error);
   }
 
+  // Sem permissão pra capturar a tela nenhuma transmissão é criada: só o aviso e o caminho.
+  if (mediaType === 'screen') {
+    return 'O sistema não deixou capturar a tela, então nenhuma transmissão foi iniciada. No Windows, confira em Configurações > Privacidade e segurança e tente de novo.';
+  }
+
+  const target = mediaType === 'camera' ? { to: 'à câmera', of: 'da câmera' } : { to: 'ao microfone', of: 'do microfone' };
   try {
     const status = await window.desktop?.getMediaAccessStatus?.(mediaType);
     if (status === 'denied' || status === 'restricted') {
-      const label = mediaType === 'camera' ? 'câmera' : 'microfone';
-      return `O Windows bloqueou o acesso à ${label}. Abra Privacidade e permita o acesso para aplicativos da área de trabalho.`;
+      return `O Windows bloqueou o acesso ${target.to}. Abra Privacidade e permita o acesso para aplicativos da área de trabalho.`;
     }
   } catch {
     // Se o diagnóstico nativo falhar, preserva a mensagem do navegador.
   }
 
-  const label = mediaType === 'camera' ? 'câmera' : 'microfone';
-  return `Permissão da ${label} negada. Confira as permissões de privacidade do Windows e tente novamente.`;
+  return `Permissão ${target.of} negada. Confira as permissões de privacidade do Windows e tente novamente.`;
 }

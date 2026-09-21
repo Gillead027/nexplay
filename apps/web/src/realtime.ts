@@ -6,6 +6,9 @@ type ConnectHandler = () => void;
 
 const eventHandlers = new Set<EventHandler>();
 const connectHandlers = new Set<ConnectHandler>();
+const statusHandlers = new Set<(connected: boolean) => void>();
+// Estado atual do socket, pra a tela poder avisar quando a conexão com o servidor cai.
+let connected = false;
 
 const INITIAL_RECONNECT_DELAY_MS = 1_000;
 const MAX_RECONNECT_DELAY_MS = 15_000;
@@ -18,6 +21,12 @@ let started = false;
 // e qualquer callback de uma conexão antiga (onclose, ou a checagem de sessão
 // que ainda estava no ar) vê que ficou pra trás e não agenda mais nada.
 let generation = 0;
+
+function setConnected(next: boolean): void {
+  if (connected === next) return;
+  connected = next;
+  for (const handler of statusHandlers) handler(next);
+}
 
 function realtimeUrl(): string {
   const scheme = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -56,6 +65,7 @@ function open(): void {
   ws.onopen = () => {
     opened = true;
     reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
+    setConnected(true);
     for (const handler of connectHandlers) handler();
   };
   ws.onmessage = (message) => {
@@ -69,6 +79,7 @@ function open(): void {
   ws.onclose = () => {
     if (socket === ws) socket = null;
     if (attempt !== generation) return;
+    setConnected(false);
     if (opened) {
       scheduleReconnect();
       return;
@@ -101,6 +112,7 @@ export function connectRealtime(): void {
 export function disconnectRealtime(): void {
   generation += 1;
   started = false;
+  setConnected(false);
   reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
   if (reconnectTimer !== null) {
     clearTimeout(reconnectTimer);
@@ -123,6 +135,27 @@ export function disconnectRealtime(): void {
 export function onRealtimeEvent(handler: EventHandler): () => void {
   eventHandlers.add(handler);
   return () => eventHandlers.delete(handler);
+}
+
+export function isRealtimeConnected(): boolean {
+  return connected;
+}
+
+// Avisa quando o socket abre ou fecha (true = conectado).
+export function onRealtimeStatus(handler: (connected: boolean) => void): () => void {
+  statusHandlers.add(handler);
+  return () => statusHandlers.delete(handler);
+}
+
+// "Tentar agora": pula a espera do próximo ciclo de reconexão (e volta ao atraso curto).
+export function reconnectRealtimeNow(): void {
+  if (!started || socket !== null) return;
+  if (reconnectTimer !== null) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  reconnectDelayMs = INITIAL_RECONNECT_DELAY_MS;
+  open();
 }
 
 // Disparado sempre que uma conexão nova é estabelecida (a primeira vez e

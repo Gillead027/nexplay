@@ -45,8 +45,21 @@ function reportIfSessionRejected(path: string, status: number): void {
   if (status === 401 && !path.startsWith('/api/auth/')) reportSessionExpired();
 }
 
+// fetch só rejeita (TypeError) quando não chegou ao servidor: sem internet, servidor fora do ar.
+// A mensagem original do navegador é em inglês e não diz o que fazer.
+export const NETWORK_ERROR_MESSAGE = 'Sem conexão com o servidor. Verifique sua internet e tente de novo.';
+
+async function networkFetch(input: string, init?: RequestInit): Promise<Response> {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error(NETWORK_ERROR_MESSAGE);
+    throw error;
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(path, {
+  const response = await networkFetch(path, {
     credentials: 'include',
     ...options,
     headers: {
@@ -71,7 +84,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 async function uploadFile<T>(path: string, file: File): Promise<T> {
   const body = new FormData();
   body.append('file', file);
-  const response = await fetch(path, { method: 'POST', credentials: 'include', body });
+  const response = await networkFetch(path, { method: 'POST', credentials: 'include', body });
   if (!response.ok) {
     reportIfSessionRejected(path, response.status);
     const responseBody = (await response.json().catch(() => ({}))) as ApiErrorBody;

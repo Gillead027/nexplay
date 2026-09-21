@@ -93,6 +93,8 @@ import { RemoteAudioSink } from './RemoteAudioSink';
 import { ScreenStage } from './ScreenStage';
 import { ForwardMessageModal, type ForwardSource } from './ForwardMessage';
 import { AdminOverviewPane } from './AdminOverview';
+import { StatusNotices } from './StatusNotices';
+import { useConnectivity } from '../useConnectivity';
 import { AddServerModal, useActiveServerMember, useServersState } from './Servers';
 import { ServerSettings } from './ServerSettings';
 import { SoundboardPanel, SoundboardToast } from './Soundboard';
@@ -1665,6 +1667,7 @@ function SettingsModal({
 
 export function Workspace({ session, config, onSignOut, onProfileUpdated }: WorkspaceProps) {
   const voice = useVoiceRoom();
+  const connectivity = useConnectivity();
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [livekitAvailable, setLivekitAvailable] = useState(true);
   const [joiningId, setJoiningId] = useState<string | null>(null);
@@ -2402,6 +2405,15 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
 
   return (
     <main className="workspace">
+      <StatusNotices
+        connectivity={connectivity.state}
+        onRetryConnection={connectivity.retryNow}
+        error={voice.error}
+        errorAction={voice.errorAction}
+        onDismissError={voice.clearError}
+        notice={voice.notice}
+        onDismissNotice={voice.clearNotice}
+      />
       {friendActionError && (
         <div className="friend-action-toast" role="alert">
           <span>{friendActionError}</span>
@@ -2981,12 +2993,6 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           />
         ) : (
         <>
-        {voice.error && (
-          <div className="error-banner" role="alert">
-            <span><strong>Erro:</strong> {voice.error}</span>
-            <button type="button" onClick={voice.clearError}>Fechar</button>
-          </div>
-        )}
         {!voice.canPlaybackAudio && voice.connected && (
           <button className="audio-permission" type="button" onClick={() => void voice.startAudio()}>Liberar reprodução de áudio</button>
         )}

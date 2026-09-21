@@ -36,7 +36,8 @@ import {
 } from '@nexplay/shared';
 import { api } from '../api';
 import { getOutputVolume } from '../appearancePrefs';
-import { describeMediaError } from '../mediaAccess';
+import { deviceAddedMessage, deviceLostMessage, diffDevices, selectionLost, type DeviceKind, type DeviceLite } from '../deviceChanges';
+import { describeMediaError, isPermissionDenied, type MediaAccessKind } from '../mediaAccess';
 import { isMicShownMuted } from '../micState';
 import { routeVoiceChatInput } from '../musicCommandRouting';
 import {
@@ -308,7 +309,20 @@ export function useVoiceRoom() {
     (SoundboardAnnouncement & { id: number; fromName: string }) | null
   >(null);
   const soundboardEventCounter = useRef(0);
-  const [error, setError] = useState('');
+  const [error, setErrorMessage] = useState('');
+  // Quando o erro é uma permissão negada, o aviso ganha o atalho pras configurações do sistema.
+  const [errorAction, setErrorAction] = useState<'microphone' | 'camera' | null>(null);
+  const setError = useCallback((message: string) => {
+    setErrorMessage(message);
+    setErrorAction(null);
+  }, []);
+  const reportMediaError = useCallback(async (mediaError: unknown, kind: MediaAccessKind, suffix = '') => {
+    const message = await describeMediaError(mediaError, kind);
+    setErrorMessage(suffix ? `${message} ${suffix}` : message);
+    setErrorAction(kind !== 'screen' && isPermissionDenied(mediaError) ? kind : null);
+  }, []);
+  // Aviso que não é erro: um aparelho foi conectado ou o escolhido sumiu.
+  const [notice, setNotice] = useState('');
   const [deafened, setDeafened] = useState(false);
   // Mute de verdade: só muda quando a pessoa clica no microfone (ou ensurdece).
   // O track do microfone liga e desliga sozinho no push-to-talk e na
@@ -611,6 +625,38 @@ export function useVoiceRoom() {
     return window.desktop?.onActivityChanged?.(applyActivity);
   }, [applyActivity]);
 
+  // Aparelho escolhido que sumiu (fone desconectado, câmera removida): volta pro padrão do
+  // sistema e avisa. Aparelho novo: só avisa, sem trocar a escolha da pessoa por conta própria.
+  const knownDevicesRef = useRef<Record<DeviceKind, DeviceLite[] | null>>({ audioinput: null, audiooutput: null, videoinput: null });
+  const selectedDeviceRef = useRef<Record<DeviceKind, string>>({ audioinput: 'default', audiooutput: 'default', videoinput: 'default' });
+  selectedDeviceRef.current = { audioinput: selectedMicId, audiooutput: selectedSpeakerId, videoinput: selectedCameraId };
+  const reactToDeviceChange = useCallback(
+    (kind: DeviceKind, devices: MediaDeviceInfo[]) => {
+      const list = devices.map(({ deviceId, label }) => ({ deviceId, label }));
+      const { added } = diffDevices(knownDevicesRef.current[kind], list);
+      knownDevicesRef.current[kind] = list;
+      let message = '';
+      if (selectionLost(selectedDeviceRef.current[kind], list)) {
+        if (kind === 'audioinput') setSelectedMicId('default');
+        else if (kind === 'audiooutput') setSelectedSpeakerId('default');
+        else setSelectedCameraId('default');
+        void room.switchActiveDevice(kind, 'default').catch(() => {});
+        message = deviceLostMessage(kind);
+      } else if (added[0]) {
+        message = deviceAddedMessage(kind, added[0]);
+      }
+      // Fora de uma call ninguém está usando o aparelho: a escolha é acertada em silêncio.
+      if (message && room.state === ConnectionState.Connected) setNotice(message);
+    },
+    [room],
+  );
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(''), 10_000);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
   const refreshDevices = useCallback(async () => {
     const [inputs, outputs, cameras] = await Promise.allSettled([
       Room.getLocalDevices('audioinput'),
@@ -620,10 +666,19 @@ export function useVoiceRoom() {
     // Cada dispositivo é buscado de forma independente: se a câmera falhar
     // (sem webcam, ou em uso por outro app), microfone e saída de áudio
     // continuam sendo preenchidos normalmente.
-    if (inputs.status === 'fulfilled') setAudioInputs(inputs.value);
-    if (outputs.status === 'fulfilled') setAudioOutputs(outputs.value);
-    if (cameras.status === 'fulfilled') setVideoInputs(cameras.value);
-  }, []);
+    if (inputs.status === 'fulfilled') {
+      setAudioInputs(inputs.value);
+      reactToDeviceChange('audioinput', inputs.value);
+    }
+    if (outputs.status === 'fulfilled') {
+      setAudioOutputs(outputs.value);
+      reactToDeviceChange('audiooutput', outputs.value);
+    }
+    if (cameras.status === 'fulfilled') {
+      setVideoInputs(cameras.value);
+      reactToDeviceChange('videoinput', cameras.value);
+    }
+  }, [room, reactToDeviceChange]);
 
   useEffect(() => {
     void refreshDevices();
@@ -795,7 +850,7 @@ export function useVoiceRoom() {
         } catch (mediaError) {
           // O microfone não abriu de verdade: o ícone precisa mostrar isso, e clicar nele tenta de novo.
           updateUserMuted(true);
-          setError(`${await describeMediaError(mediaError, 'microphone')} Você entrou com o microfone desligado.`);
+          await reportMediaError(mediaError, 'microphone', 'Você entrou com o microfone desligado.');
         }
         syncRoom();
         // O token sempre chega com activity: null (o servidor não sabe o que
@@ -854,7 +909,7 @@ export function useVoiceRoom() {
       (nextMuted ? playMicMuteSound : playMicUnmuteSound)(getOutputVolume());
       syncRoom();
     } catch (mediaError) {
-      setError(await describeMediaError(mediaError, 'microphone'));
+      await reportMediaError(mediaError, 'microphone');
     }
   }, [deafened, room, syncRoom, updateUserMuted]);
 
@@ -873,7 +928,7 @@ export function useVoiceRoom() {
       setDeafened(next);
       syncRoom();
     } catch (mediaError) {
-      setError(await describeMediaError(mediaError, 'microphone'));
+      await reportMediaError(mediaError, 'microphone');
     }
   }, [deafened, room, syncRoom]);
 
@@ -912,7 +967,7 @@ export function useVoiceRoom() {
         await microphone.applyConstraints(captureOptions);
         setError('');
       } catch (mediaError) {
-        setError(await describeMediaError(mediaError, 'microphone'));
+        await reportMediaError(mediaError, 'microphone');
       }
     }
   }, [room, currentMicCaptureOptions]);
@@ -1006,7 +1061,7 @@ export function useVoiceRoom() {
       });
       syncRoom();
     } catch (mediaError) {
-      setError(await describeMediaError(mediaError, 'camera'));
+      await reportMediaError(mediaError, 'camera');
     }
   }, [room, syncRoom]);
 
@@ -1041,7 +1096,7 @@ export function useVoiceRoom() {
         syncRoom();
       } catch (mediaError) {
         if (!isScreenShareCancelled(mediaError)) {
-          setError(await describeMediaError(mediaError));
+          await reportMediaError(mediaError, 'screen');
         }
         syncRoom();
       }
@@ -1164,6 +1219,9 @@ export function useVoiceRoom() {
       messages,
       error,
       clearError: () => setError(''),
+      errorAction,
+      notice,
+      clearNotice: () => setNotice(''),
       deafened,
       micMuted,
       screenEnabled,
@@ -1219,6 +1277,8 @@ export function useVoiceRoom() {
       screenTracks,
       messages,
       error,
+      errorAction,
+      notice,
       deafened,
       micMuted,
       screenEnabled,

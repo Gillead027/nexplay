@@ -779,6 +779,7 @@ function MembersPane({ serverId, member }: { serverId: string; member: ServerMem
   const [members, setMembers] = useState<MemberSummary[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [bans, setBans] = useState<BanRecord[]>([]);
+  const [bansLoaded, setBansLoaded] = useState(false);
   const [search, setSearch] = useState('');
   const [menu, setMenu] = useState<ModerationMenuState>(null);
   const [banReason, setBanReason] = useState('');
@@ -796,7 +797,13 @@ function MembersPane({ serverId, member }: { serverId: string; member: ServerMem
       setMembers(membersResult.members);
       setRoles(rolesResult.roles);
     });
-    if (canBan) void api.getBans(serverId).then((result) => active && setBans(result.bans));
+    if (canBan) {
+      void api.getBans(serverId).then((result) => {
+        if (!active) return;
+        setBans(result.bans);
+        setBansLoaded(true);
+      }).catch(() => {});
+    }
     const unsubscribe = onRealtimeEvent((event) => {
       if (event.type === 'MEMBER_ROLES_UPDATE' && event.serverId === serverId) {
         setMembers((current) => current.map((candidate) => (candidate.id === event.userId ? { ...candidate, roleIds: event.roleIds } : candidate)));
@@ -948,6 +955,12 @@ function MembersPane({ serverId, member }: { serverId: string; member: ServerMem
         })}
       </div>
 
+      {canBan && bansLoaded && bans.length === 0 && (
+        <div className="banned-members-section">
+          <span className="field-eyebrow">Membros banidos — 0</span>
+          <p className="member-roster-empty">Nenhum membro banido neste servidor.</p>
+        </div>
+      )}
       {canBan && bans.length > 0 && (
         <div className="banned-members-section">
           <span className="field-eyebrow">Membros banidos — {bans.length}</span>
