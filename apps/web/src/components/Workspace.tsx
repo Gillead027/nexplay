@@ -114,11 +114,11 @@ function loadMessageStyle(): MessageStyle {
 }
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; swatch: string }[] = [
-  { value: 'claro', label: 'Claro', swatch: '#ffffff' },
-  { value: 'ash', label: 'Ash', swatch: '#3c3f44' },
-  { value: 'escuro', label: 'Escuro', swatch: '#313338' },
-  { value: 'onyx', label: 'Onyx', swatch: '#000000' },
-  { value: 'sistema', label: 'Sistema', swatch: 'linear-gradient(135deg, #ffffff 50%, #1e1f22 50%)' },
+  { value: 'claro', label: 'Claro', swatch: '#f4f7ff' },
+  { value: 'ash', label: 'Ash', swatch: '#2a355a' },
+  { value: 'escuro', label: 'Escuro', swatch: '#0d1429' },
+  { value: 'onyx', label: 'Onyx', swatch: '#03060f' },
+  { value: 'sistema', label: 'Sistema', swatch: 'linear-gradient(135deg, #f4f7ff 50%, #0d1429 50%)' },
 ];
 
 interface WorkspaceProps {
@@ -1629,7 +1629,7 @@ function SettingsModal({
                         aria-checked={uiAccent.enabled && uiAccent.color === color}
                         aria-label={`Cor ${color}`}
                         className={`accent-swatch ${uiAccent.enabled && uiAccent.color === color ? 'selected' : ''}`}
-                        data-color={color}
+                        style={{ background: color }}
                         onClick={() => chooseUiAccent(color, true)}
                       />
                     ))}
@@ -2637,7 +2637,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           aria-label="Início"
           onClick={() => setView('friends')}
         >
-          <span className="brand-mark compact" aria-hidden="true"><i /><i /></span>
+          <img className="brand-logo rail" src="/apple-touch-icon.png" alt="" width="46" height="46" draggable={false} />
           {friendsState.incoming.length > 0 && <span className="dm-pending-badge rail-badge">{friendsState.incoming.length}</span>}
         </button>
         <span className="rail-divider" />

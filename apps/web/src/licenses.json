@@ -9,13 +9,13 @@
     "name": "@livekit/krisp-noise-filter",
     "version": "0.4.4",
     "license": "SEE LICENSE IN https://livekit.io/legal/terms-of-service",
-    "url": ""
+    "url": "https://livekit.io/legal/terms-of-service"
   },
   {
     "name": "@livekit/mutex",
     "version": "1.1.1",
     "license": "Apache-2.0",
-    "url": "git@github.com:livekit/ts-mutex"
+    "url": "https://github.com/livekit/ts-mutex"
   },
   {
     "name": "@livekit/protocol",
@@ -30,16 +30,22 @@
     "url": "https://github.com/Gozala/events"
   },
   {
+    "name": "Inter (fonte, @fontsource-variable/inter)",
+    "version": "5.3.0",
+    "license": "OFL-1.1",
+    "url": "https://rsms.me/inter/"
+  },
+  {
     "name": "jose",
     "version": "6.2.12",
     "license": "MIT",
-    "url": "panva/jose"
+    "url": "https://github.com/panva/jose"
   },
   {
     "name": "livekit-client",
     "version": "2.22.2",
     "license": "Apache-2.0",
-    "url": "git@github.com:livekit/client-sdk-js"
+    "url": "https://github.com/livekit/client-sdk-js"
   },
   {
     "name": "loglevel",
@@ -87,7 +93,7 @@
     "name": "sdp-transform",
     "version": "2.15.0",
     "license": "MIT",
-    "url": "clux/sdp-transform"
+    "url": "https://github.com/clux/sdp-transform"
   },
   {
     "name": "tslib",
@@ -99,7 +105,7 @@
     "name": "typed-emitter",
     "version": "2.1.0",
     "license": "MIT",
-    "url": "github:andywer/typed-emitter"
+    "url": "https://github.com/andywer/typed-emitter"
   },
   {
     "name": "webrtc-adapter",

@@ -68,6 +68,9 @@ for (const path of seen) {
     url: normalizeUrl(repository, String(license)),
   });
 }
+// Arquivos de terceiros que vão em public/ (não são pacotes que o Vite empacota, então a busca acima não os vê).
+const inter = packages['node_modules/@fontsource-variable/inter'];
+if (inter) result.push({ name: 'Inter (fonte, @fontsource-variable/inter)', version: inter.version, license: inter.license ?? 'OFL-1.1', url: 'https://rsms.me/inter/' });
 result.sort((a, b) => a.name.localeCompare(b.name) || a.version.localeCompare(b.version));
 
 const output = join(root, 'apps', 'web', 'src', 'licenses.json');

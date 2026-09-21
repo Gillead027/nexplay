@@ -71,7 +71,7 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
           </p>
         )}
         <header className="entry-heading">
-          <span className="entry-mark" aria-hidden="true">G</span>
+          <img className="brand-logo entry-logo" src="/logo-320.png" alt="" width="84" height="84" draggable={false} />
           <div>
             <h1 id="entry-title">NexPlay</h1>
             <p>Servidor privado</p>

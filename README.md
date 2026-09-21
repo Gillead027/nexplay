@@ -109,6 +109,17 @@ exige Node.js, Docker ou navegador externo no computador de destino. Nesta etapa
 os executáveis não possuem assinatura de código; por isso, o Windows pode exibir
 um aviso do SmartScreen.
 
+## Identidade visual
+
+O app inteiro (web, desktop, tela de abertura e seletor de compartilhamento) usa a paleta da logo: azul-marinho nos fundos e o gradiente ciano → azul (`#2ee6f0` → `#2f7bff`) como cor de marca.
+
+- `apps/web/src/styles.css` começa com os tokens (`--app`, `--sidebar`, `--accent`, `--fs-*`, `--radius-*`, `--dur`...) e os cinco temas (Escuro, Ash, Onyx, Claro e Sistema). Toda cor da interface sai desses tokens, então trocar um tema troca tudo de uma vez.
+- `apps/web/src/design.css` é a camada de componentes e movimento: botões com brilho, tela de entrada com fundo animado, barra de servidores e canais que respondem ao mouse, janelas que entram com transição, sliders e interruptores. Fica depois de `styles.css` e vale para todas as telas.
+- A tipografia é a Inter (arquivo em `apps/web/public/fonts/`, licença OFL ao lado), numa escala única de 11 a 28 px (`--fs-2xs` a `--fs-3xl`).
+- O **Modo leve** (Configurações > Aparência) e a opção "reduzir movimento" do Windows zeram todas as animações e transições.
+- Cor de destaque escolhida pela pessoa (Configurações > Aparência > Cores) troca o azul de toda a interface, inclusive o gradiente dos botões.
+- O seletor de compartilhamento de tela do app desktop tem CSS próprio (`apps/desktop/src/picker.css`) com a mesma paleta, porque roda numa janela separada.
+
 ## Deploy na VPS
 
 Os comandos abaixo assumem Ubuntu 22.04, 24.04 ou 26.04 de 64 bits e um usuário com `sudo`.

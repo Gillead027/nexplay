@@ -6,8 +6,10 @@ import { bootTheme } from './theme';
 import { bootDensity } from './density';
 import { bootAppearancePrefs } from './appearancePrefs';
 import { migrateLegacyStorageKeys } from './legacyStorageMigration';
+import { installRangeFill } from './rangeFill';
 import { extractDeepLinkInvite, extractInviteCode, PENDING_INVITE_EVENT, savePendingInvite } from './pendingInvite';
 import './styles.css';
+import './design.css';
 
 // Link de convite (/convite/CÓDIGO): guarda o código e volta para o endereço normal. Depois de
 // entrar (ou criar a conta) a pessoa é levada ao servidor.
@@ -30,6 +32,7 @@ bootPerfMode();
 bootTheme();
 bootDensity();
 bootAppearancePrefs();
+installRangeFill();
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

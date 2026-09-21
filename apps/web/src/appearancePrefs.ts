@@ -3,15 +3,28 @@ export const MESSAGE_SPACING_SCALES = [75, 100, 125, 150, 175] as const;
 export const UI_ZOOM_SCALES = [90, 100, 110, 125, 150] as const;
 
 export const UI_ACCENT_SWATCHES = [
-  '#4e7960',
-  '#5c526b',
-  '#566747',
-  '#6b5548',
-  '#45645f',
-  '#684d52',
-  '#4a6b8a',
-  '#8a5a4a',
+  '#2f7bff',
+  '#6a6cf0',
+  '#1fb1d6',
+  '#e58a3a',
+  '#1f9d8f',
+  '#e0577f',
+  '#7b61ff',
+  '#e2634d',
 ] as const;
+
+// Quem escolheu uma cor antes da paleta azul tem o valor antigo salvo; ele passa para a cor
+// equivalente da paleta nova na hora de ler.
+const LEGACY_UI_ACCENT: Record<string, string> = {
+  '#4e7960': '#2f7bff',
+  '#5c526b': '#6a6cf0',
+  '#566747': '#1fb1d6',
+  '#6b5548': '#e58a3a',
+  '#45645f': '#1f9d8f',
+  '#684d52': '#e0577f',
+  '#4a6b8a': '#7b61ff',
+  '#8a5a4a': '#e2634d',
+};
 
 const CHAT_FONT_KEY = 'np:chat-font-step';
 const MESSAGE_SPACING_KEY = 'np:message-spacing-step';
@@ -103,17 +116,28 @@ export function setUiZoomStep(step: number): void {
 }
 
 export function getUiAccent(): { color: string; enabled: boolean } {
-  const color = localStorage.getItem(UI_ACCENT_KEY) || UI_ACCENT_SWATCHES[0];
+  const stored = localStorage.getItem(UI_ACCENT_KEY);
+  const color = stored ? (LEGACY_UI_ACCENT[stored.toLowerCase()] ?? stored) : UI_ACCENT_SWATCHES[0];
   const enabled = localStorage.getItem(UI_ACCENT_ENABLED_KEY) === 'true';
   return { color, enabled };
 }
 
+// A cor escolhida troca a cor de destaque inteira: sólida, hover, gradiente dos botões, brilho e fundo suave.
+const UI_ACCENT_PROPERTIES = ['--accent', '--accent-hover', '--accent-2', '--accent-gradient', '--accent-glow', '--accent-glow-strong', '--accent-soft'] as const;
+
 export function applyUiAccent(color: string, enabled: boolean): void {
-  if (enabled) {
-    document.documentElement.style.setProperty('--accent', color);
-  } else {
-    document.documentElement.style.removeProperty('--accent');
+  const style = document.documentElement.style;
+  if (!enabled) {
+    UI_ACCENT_PROPERTIES.forEach((property) => style.removeProperty(property));
+    return;
   }
+  style.setProperty('--accent', color);
+  style.setProperty('--accent-hover', `color-mix(in srgb, ${color} 80%, #fff)`);
+  style.setProperty('--accent-2', `color-mix(in srgb, ${color} 55%, #fff)`);
+  style.setProperty('--accent-gradient', `linear-gradient(135deg, color-mix(in srgb, ${color} 55%, #fff) 0%, ${color} 58%, color-mix(in srgb, ${color} 85%, #000) 100%)`);
+  style.setProperty('--accent-glow', `color-mix(in srgb, ${color} 38%, transparent)`);
+  style.setProperty('--accent-glow-strong', `color-mix(in srgb, ${color} 60%, transparent)`);
+  style.setProperty('--accent-soft', `color-mix(in srgb, ${color} 14%, transparent)`);
 }
 
 export function setUiAccent(color: string, enabled: boolean): void {
