@@ -207,9 +207,10 @@ app.use(
   }),
 );
 const smallJson = express.json({ limit: '2mb' });
-// Ícone e painel do servidor e a capa do perfil chegam em base64 dentro do JSON (4 MB a 8 MB). Só essas rotas aceitam um corpo assim, e só
+// Ícone e painel do servidor e a capa do perfil chegam em base64 dentro do JSON (até uns 20 MB juntos: ícone de 3 MB + painel de 11 MB).
+// Só essas rotas aceitam um corpo assim, e só
 // depois de conferir a sessão e a permissão (o leitor de JSON grande vem depois delas, na própria rota).
-const serverProfileJson = express.json({ limit: '16mb' });
+const serverProfileJson = express.json({ limit: '24mb' });
 const isServerProfileUpdate = (request: express.Request) =>
   request.method === 'PATCH' && (/^\/api\/servers\/[^/]+$/.test(request.path) || request.path === '/api/profile');
 app.use((request, response, next) => {

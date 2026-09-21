@@ -15,8 +15,8 @@ export const BIO_MAX_LENGTH = 300;
 export const PRONOUNS_MAX_LENGTH = 30;
 export const AVATAR_DATA_URL_MAX_LENGTH = 400_000;
 export const BANNER_DATA_URL_MAX_LENGTH = 1_100_000;
-// Capa (banner) do perfil: imagem ou GIF animado de até 3 MB.
-export const USER_BANNER_MAX_BYTES = 3 * 1024 * 1024;
+// Capa (banner) do perfil: imagem ou GIF animado de até 11 MB.
+export const USER_BANNER_MAX_BYTES = 11 * 1024 * 1024;
 export const USER_BANNER_DATA_URL_MAX_LENGTH = Math.ceil((USER_BANNER_MAX_BYTES * 4) / 3) + 64;
 // Bordas animadas do avatar (a pessoa escolhe uma no perfil; '' = sem borda). Desenhadas em CSS, sem imagem.
 export const AVATAR_FRAME_IDS = ['aurora', 'fogo', 'neon', 'ouro', 'arco-iris', 'gelo', 'pulso', 'eletrico'] as const;
@@ -33,7 +33,7 @@ export const AVATAR_FRAME_LABELS: Record<AvatarFrame, string> = {
 };
 // Ícone e painel (banner) do servidor: imagem ou GIF animado. A data: URL em base64 tem 4/3 do tamanho do arquivo.
 export const SERVER_ICON_MAX_BYTES = 3 * 1024 * 1024;
-export const SERVER_BANNER_MAX_BYTES = 6 * 1024 * 1024;
+export const SERVER_BANNER_MAX_BYTES = 11 * 1024 * 1024;
 export const SERVER_ICON_DATA_URL_MAX_LENGTH = Math.ceil((SERVER_ICON_MAX_BYTES * 4) / 3) + 64;
 export const SERVER_BANNER_DATA_URL_MAX_LENGTH = Math.ceil((SERVER_BANNER_MAX_BYTES * 4) / 3) + 64;
 export const VOICE_CHAT_TOPIC = 'nexplay-chat';
