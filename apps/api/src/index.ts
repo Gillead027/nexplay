@@ -16,6 +16,7 @@ import {
   ATTACHMENT_MAX_PER_MESSAGE,
   ATTACHMENT_MAX_SIZE_BYTES,
   AVATAR_DATA_URL_MAX_LENGTH,
+  SERVER_ICON_DATA_URL_MAX_LENGTH,
   BAN_REASON_MAX_LENGTH,
   BANNER_DATA_URL_MAX_LENGTH,
   BIO_MAX_LENGTH,
@@ -373,7 +374,7 @@ const serverUpdateSchema = z.object({
   description: z.string().trim().max(SERVER_DESCRIPTION_MAX_LENGTH).optional(),
   iconDataUrl: z
     .string()
-    .max(AVATAR_DATA_URL_MAX_LENGTH)
+    .max(SERVER_ICON_DATA_URL_MAX_LENGTH)
     .refine((value) => value === '' || dataUrlPattern.test(value), 'Ícone inválido.')
     .optional(),
   accentColor: z.enum(ACCENT_COLORS).nullable().optional(),

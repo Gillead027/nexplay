@@ -1,3 +1,5 @@
+import { ICON_MIME, isAnimatedImage, sniffIconFormat } from './iconImage';
+
 /**
  * Redimensiona e recomprime uma imagem localmente até caber no limite de bytes, sem subir nenhum
  * arquivo pro servidor separado — o resultado vira uma data: URL persistida junto do perfil/servidor.
@@ -29,4 +31,63 @@ export async function fileToResizedDataUrl(file: File, maxDimension: number, max
   }
   if (dataUrl.length > maxLength) throw new Error('Imagem muito grande mesmo após compressão.');
   return dataUrl;
+}
+
+const ICON_MAX_DIMENSION = 1024;
+const ICON_RESIZED_DIMENSION = 512;
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error ?? new Error('Não foi possível ler a imagem.'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Ícone de servidor: a imagem inteira, sem recorte. Quando já cabe no limite ela é guardada exatamente como veio (o GIF ou
+ * WebP animado continua animado, o PNG mantém a transparência, nada é recomprimido). Só uma imagem parada grande demais é
+ * reduzida, mantendo a proporção. Um GIF/WebP animado grande demais não dá para reduzir aqui, então a pessoa é avisada.
+ */
+export async function fileToServerIconDataUrl(file: File, maxLength: number): Promise<string> {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  const format = sniffIconFormat(bytes);
+  if (!format) throw new Error('Use uma imagem PNG, JPG, WebP ou GIF.');
+  const animated = isAnimatedImage(bytes, format);
+  const mime = ICON_MIME[format];
+  const original = await blobToDataUrl(new Blob([bytes], { type: mime }));
+
+  const bitmap = await createImageBitmap(file);
+  const fitsAsIs = original.length <= maxLength && (animated || Math.max(bitmap.width, bitmap.height) <= ICON_MAX_DIMENSION);
+  if (fitsAsIs) {
+    bitmap.close();
+    return original;
+  }
+  if (animated) {
+    bitmap.close();
+    throw new Error('Esse GIF animado passa de 1 MB. Escolha um menor ou reduza o GIF antes de enviar.');
+  }
+
+  let dimension = Math.min(ICON_RESIZED_DIMENSION, Math.max(bitmap.width, bitmap.height));
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const scale = Math.min(1, dimension / Math.max(bitmap.width, bitmap.height));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+    canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+    const context = canvas.getContext('2d');
+    if (!context) break;
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    // WebP guarda transparência e pesa menos que PNG; a qualidade alta evita perder detalhe no ícone.
+    for (const quality of [0.95, 0.85, 0.72]) {
+      const dataUrl = canvas.toDataURL('image/webp', quality);
+      if (dataUrl.startsWith('data:image/webp') && dataUrl.length <= maxLength) {
+        bitmap.close();
+        return dataUrl;
+      }
+    }
+    dimension = Math.round(dimension * 0.75);
+  }
+  bitmap.close();
+  throw new Error('Não foi possível usar essa imagem. Tente um arquivo menor.');
 }

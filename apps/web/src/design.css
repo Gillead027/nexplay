@@ -632,3 +632,14 @@ html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #
 .connection-signal.level-pending rect:nth-child(3) { animation-delay: .3s; }
 @keyframes signal-scan { 0%, 100% { opacity: .3; } 50% { opacity: 1; } }
 @keyframes signal-alert { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+/* ---------- ícone do servidor ----------
+   A imagem aparece inteira dentro do quadrado (sem cortar nem esticar) e sem moldura colorida: nada de fundo em
+   gradiente nem brilho azul em volta quando o servidor tem ícone. */
+.server-button.server-current.has-icon { padding: 0; border: 0; background: transparent; box-shadow: 0 4px 14px rgba(2, 6, 20, .4); }
+.server-button.has-icon:hover:not(:disabled), .server-button.server-current.has-icon.active { background: transparent; box-shadow: 0 10px 22px rgba(2, 6, 20, .55); }
+.server-button.has-icon img { object-fit: contain; background: var(--panel-raised); }
+.server-button.has-icon.active img { border-radius: 30%; }
+img.server-icon-large { object-fit: contain; background: var(--panel-raised); }
+.server-settings-avatar { color: #fff; background: var(--accent-gradient); }
+img.server-settings-avatar { object-fit: contain; background: var(--panel-raised); }

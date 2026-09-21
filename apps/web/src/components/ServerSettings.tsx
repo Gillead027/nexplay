@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ACCENT_COLORS,
-  AVATAR_DATA_URL_MAX_LENGTH,
+  SERVER_ICON_DATA_URL_MAX_LENGTH,
   hasPermission,
   PERMISSION_DEFINITIONS,
   Permission,
@@ -19,7 +19,8 @@ import {
 import { api } from '../api';
 import { copyText } from '../clipboard';
 import { inviteUrl } from '../pendingInvite';
-import { fileToResizedDataUrl } from '../imageResize';
+import { fileToServerIconDataUrl } from '../imageResize';
+import { ServerIcon } from './ServerIcon';
 import { onRealtimeEvent } from '../realtime';
 import { CloseIcon, CopyIcon, ImageIcon, PlusIcon, SearchIcon, SettingsIcon, TrashIcon, UserIcon } from './Icons';
 
@@ -82,7 +83,9 @@ export function ServerSettings({
     <section className="server-settings-shell" aria-label="Configurações do servidor">
       <nav className="server-settings-nav">
         <div className="server-settings-heading">
-          <span className="server-settings-avatar">{server.name.charAt(0).toUpperCase()}</span>
+          {server.iconDataUrl
+            ? <ServerIcon className="server-settings-avatar" dataUrl={server.iconDataUrl} />
+            : <span className="server-settings-avatar">{server.name.charAt(0).toUpperCase()}</span>}
           <div><strong>{server.name}</strong><span>Configurações do servidor</span></div>
         </div>
         <span className="settings-nav-group">Servidor</span>
@@ -281,9 +284,9 @@ function ServerProfilePane({
     if (!file) return;
     setIconError('');
     try {
-      setIconDataUrl(await fileToResizedDataUrl(file, 256, AVATAR_DATA_URL_MAX_LENGTH, true));
-    } catch {
-      setIconError('Não foi possível usar essa imagem. Tente um arquivo menor.');
+      setIconDataUrl(await fileToServerIconDataUrl(file, SERVER_ICON_DATA_URL_MAX_LENGTH));
+    } catch (error) {
+      setIconError(error instanceof Error ? error.message : 'Não foi possível usar essa imagem. Tente um arquivo menor.');
     }
   }
 
@@ -297,7 +300,7 @@ function ServerProfilePane({
       <div className="server-profile-columns">
         <div className="server-profile-form">
           <section className="server-settings-card server-identity-card">
-            {iconDataUrl ? <img className="server-icon-large" src={iconDataUrl} alt="" draggable={false} /> : <div className="server-icon-large">{iconGlyph}</div>}
+            {iconDataUrl ? <ServerIcon className="server-icon-large" dataUrl={iconDataUrl} playing /> : <div className="server-icon-large">{iconGlyph}</div>}
             <div className="server-name-fields">
               <label>
                 Nome do servidor
@@ -323,8 +326,8 @@ function ServerProfilePane({
           {canManageServer && (
             <section className="server-settings-card">
               <span className="field-eyebrow">Ícone</span>
-              <p className="settings-hint">Recomendado: pelo menos 512×512.</p>
-              <input ref={iconInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden
+              <p className="settings-hint">A imagem aparece inteira dentro do quadrado, sem cortes. PNG ou GIF com fundo transparente fica melhor. Aceita GIF animado de até 1 MB.</p>
+              <input ref={iconInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden
                 onChange={(event) => void handleIconFile(event.target.files?.[0])} />
               <div className="server-form-actions" style={{ marginTop: 10 }}>
                 <button type="button" className="secondary-pill" onClick={() => iconInputRef.current?.click()}>
@@ -372,7 +375,7 @@ function ServerProfilePane({
               {!accentColor && <><i /><i /><i /></>}
             </div>
             <div className="server-preview-body">
-              {iconDataUrl ? <img className="server-icon-large" src={iconDataUrl} alt="" draggable={false} /> : <span className="server-icon-large">{iconGlyph}</span>}
+              {iconDataUrl ? <ServerIcon className="server-icon-large" dataUrl={iconDataUrl} playing /> : <span className="server-icon-large">{iconGlyph}</span>}
               <h2>{name || server.name}</h2>
               <p>{description}</p>
             </div>

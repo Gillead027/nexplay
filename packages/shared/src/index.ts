@@ -14,6 +14,8 @@ export const BIO_MAX_LENGTH = 300;
 export const PRONOUNS_MAX_LENGTH = 30;
 export const AVATAR_DATA_URL_MAX_LENGTH = 400_000;
 export const BANNER_DATA_URL_MAX_LENGTH = 1_100_000;
+// Ícone de servidor: cabe uma imagem ou GIF animado de até ~1 MB (a data: URL tem 4/3 do tamanho do arquivo).
+export const SERVER_ICON_DATA_URL_MAX_LENGTH = 1_400_000;
 export const VOICE_CHAT_TOPIC = 'nexplay-chat';
 export const SOUNDBOARD_ANNOUNCE_TOPIC = 'nexplay-soundboard';
 export const MUSIC_BOT_IDENTITY = 'music-bot';

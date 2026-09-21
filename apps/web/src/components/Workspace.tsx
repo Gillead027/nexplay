@@ -98,6 +98,7 @@ import type { UpdateCheckOutcome } from '../aboutInfo';
 import { AdminOverviewPane } from './AdminOverview';
 import { StatusNotices } from './StatusNotices';
 import { ConnectionSignal } from './ConnectionSignal';
+import { ServerIcon } from './ServerIcon';
 import { describeConnectionSignal } from '../connectionSignal';
 import { useConnectivity } from '../useConnectivity';
 import { inviteUrl, PENDING_INVITE_EVENT, takePendingInvite } from '../pendingInvite';
@@ -240,6 +241,27 @@ function ChannelUserAvatar({
 function StageAvatar({ entry, ownIdentity, ownAvatarUrl }: { entry: StageEntry; ownIdentity: string; ownAvatarUrl: string }) {
   const avatarUrl = useAvatarByIdentity(entry.identity, entry.identity === ownIdentity, ownAvatarUrl);
   return <Avatar name={entry.name} accentColor={ACCENT_COLORS[entry.colorIndex]} avatarUrl={entry.isBot ? undefined : avatarUrl} speaking={entry.speaking} />;
+}
+
+// Botão de um servidor na barra da esquerda. O ícone (imagem ou GIF) aparece inteiro; o animado só se mexe com o mouse em cima.
+function ServerRailButton({ server, active, onSelect }: { server: { name: string; iconDataUrl: string }; active: boolean; onSelect: () => void }) {
+  const [hovered, setHovered] = useState(false);
+  const hasIcon = Boolean(server.iconDataUrl);
+  return (
+    <button
+      className={`server-button server-current ${hasIcon ? 'has-icon' : ''} ${active ? 'active' : ''}`}
+      type="button"
+      title={server.name}
+      aria-label={server.name}
+      onClick={onSelect}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
+      onBlur={() => setHovered(false)}
+    >
+      {hasIcon ? <ServerIcon dataUrl={server.iconDataUrl} playing={hovered} /> : server.name.charAt(0).toUpperCase()}
+    </button>
+  );
 }
 
 function DeviceMenu({
@@ -2715,19 +2737,15 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         </button>
         <span className="rail-divider" />
         {serversState.servers.map((server) => (
-          <button
+          <ServerRailButton
             key={server.id}
-            className={`server-button server-current ${view === 'server' && activeServerId === server.id ? 'active' : ''}`}
-            type="button"
-            title={server.name}
-            aria-label={server.name}
-            onClick={() => {
+            server={server}
+            active={view === 'server' && activeServerId === server.id}
+            onSelect={() => {
               setActiveServerId(server.id);
               setView('server');
             }}
-          >
-            {server.iconDataUrl ? <img src={server.iconDataUrl} alt="" draggable={false} /> : server.name.charAt(0).toUpperCase()}
-          </button>
+          />
         ))}
         <button
           ref={addServerButtonRef}
