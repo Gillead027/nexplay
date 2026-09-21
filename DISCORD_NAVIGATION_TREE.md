@@ -355,6 +355,16 @@ APP
 │   │   └── Captura de tela recusada (sem stream falso)                      DONE
 │   └── Aparelho removido ou conectado (volta ao padrão e avisa)             PARTIAL (monitor na transmissão não verificado)
 │
+├── SOBRE, SONS E ÁREAS AUSENTES                                        [Roteiro 17]
+│   ├── Configurações > Sobre
+│   │   ├── Versão do app, versão da web, Chromium                           DONE
+│   │   ├── Copiar versão                                                    DONE
+│   │   ├── Verificar atualizações, abrir logs                               MISSING (exige nova versão do desktop)
+│   │   └── Licenças, privacidade, termos                                    MISSING (textos não existem)
+│   ├── Sons (10, só na call; osciladores do Web Audio)                      PARTIAL (sem som de texto, menção, amizade; sem interruptor)
+│   ├── Volume de saída e do soundboard                                      DONE
+│   └── Premium, loja, cosméticos                                            MISSING
+│
 ├── TEMPO REAL (infraestrutura)                                         [Roteiro 5]
 │   ├── WebSocket autenticado pelo cookie, heartbeat de 30 s                 CORE
 │   ├── Escopo: broadcast / por servidor / por usuário (multi-aba livre)     CORE

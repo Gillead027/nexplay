@@ -3068,6 +3068,94 @@ Auditado em 2026-09-21 contra o código e com o app rodando (Playwright, Chromiu
 
 ---
 
+# ROTEIRO 17 — SOBRE, SISTEMA DE SONS E ÁREAS AINDA AUSENTES (PREMIUM E LOJA)
+
+Auditado em 2026-09-21 contra o código e com o app rodando. Cobre os itens 69 (Sobre), 50 (Sistema de sons), 41 a 43 (Premium, loja e personalização de perfil com cosméticos) do pedido original. Os itens 68 (login e logout) e 51 a 53 (comportamento em segundo plano, notificações e barra de tarefas do desktop) já estão nos Roteiros 1, 0 e 14. A tela Sobre saiu no commit `2f3c6b3`, em produção.
+
+## 17.1 — ABOUT_SECTION
+
+**ID**: `ABOUT_SECTION`
+**NOME**: Configurações > Sobre
+**CAMINHO**: `Engrenagem do painel do usuário > Configurações > Configurações do app > Sobre`
+**STATUS**: `DONE` (commit `2f3c6b3`, em produção). Antes era `MISSING`: não existia nenhuma tela que dissesse a versão.
+**CONTEÚDO**: três linhas, todas verdadeiras e nenhuma decorativa. (1) **Aplicativo**: "Aplicativo para Windows 0.2.11" quando a ponte `window.desktop` existe, lendo a versão do user agent (o desktop se identifica como `NexPlay/<versão>`; confirmado abrindo o app e lendo `session.getUserAgent()`); no navegador, "Navegador (sem o aplicativo instalado)". (2) **Versão da web**: commit e data da publicação, gravados em `apps/web/build-info.json` no momento do deploy; no desenvolvimento local diz "desenvolvimento (não é uma versão publicada)" em vez de inventar uma versão. (3) **Motor do navegador**: "Chromium 152", quando o user agent traz o número.
+**RESULTADO**: o texto do resumo é uma linha só, por exemplo "NexPlay — Aplicativo para Windows 0.2.11 · web 2f3c6b3 (2026-09-21T04:42:43.000Z) · Chromium 152".
+**PERSISTÊNCIA**: nenhuma; é só leitura.
+**RISCO**: a versão da web só é exata se o deploy gravar o arquivo; o processo de publicação passou a fazer isso.
+
+---
+
+## 17.2 — ABOUT_COPY_VERSION
+
+**ID**: `ABOUT_COPY_VERSION`
+**NOME**: Botão "Copiar versão"
+**STATUS**: `DONE` (commit `2f3c6b3`, em produção)
+**COMPORTAMENTO**: copia o resumo da versão para a área de transferência com a mesma função de copiar que já funciona no desktop (`CLIPBOARD_COPY_DESKTOP`), e o botão mostra "Copiado!" por 2 s (ou "Não foi possível copiar"). Verificado no navegador e simulando o user agent do desktop.
+
+---
+
+## 17.3 — ABOUT_CHECK_UPDATE *(MISSING, exige o cliente desktop)*
+
+**ID**: `ABOUT_CHECK_UPDATE`
+**NOME**: Verificar atualizações
+**STATUS**: **`MISSING`, `REQUIRES_DESKTOP_CLIENT`.** O desktop já verifica sozinho no início (`APP_AUTO_UPDATE_CHECK`), baixa (`APP_AUTO_UPDATE_DOWNLOAD`) e pergunta se quer reiniciar (`APP_AUTO_UPDATE_INSTALL_PROMPT`), mas não existe forma de pedir a verificação na hora. Fazer isso exige uma nova ponte no processo principal (IPC) e portanto uma nova versão do desktop publicada no GitHub. Não foi colocado um botão sem função.
+
+---
+
+## 17.4 — ABOUT_OPEN_LOGS *(MISSING, exige o cliente desktop)*
+
+**ID**: `ABOUT_OPEN_LOGS`
+**NOME**: Abrir logs
+**STATUS**: **`MISSING`, `REQUIRES_DESKTOP_CLIENT`.** O desktop grava log de atualização e de depuração (`logUpdate`, `debugLog` no processo principal), mas nenhuma tela leva a eles. Depende da mesma nova ponte do 17.3.
+
+---
+
+## 17.5 — ABOUT_LICENSES_PRIVACY_TERMS *(MISSING)*
+
+**ID**: `ABOUT_LICENSES_PRIVACY_TERMS`
+**NOME**: Licenças, Política de privacidade e Termos
+**STATUS**: **`MISSING`.** Não existe nenhum desses textos no projeto. Criar uma tela com texto inventado seria pior do que não ter: a política e os termos precisam de conteúdo que só o dono do serviço pode definir, e a lista de licenças de código aberto deve ser gerada a partir das dependências reais. Fica registrado como decisão pendente, não como tela vazia.
+
+---
+
+## 17.6 — SOUND_SYSTEM_INVENTORY
+
+**ID**: `SOUND_SYSTEM_INVENTORY`
+**NOME**: Todos os sons do app
+**STATUS**: `PARTIAL`
+**COMO SÃO PRODUZIDOS**: por código, com osciladores de onda senoidal do Web Audio (`sounds.ts`, sequências curtas de tons), sem arquivos de áudio. O ganho vai de 0 a 16% da amplitude máxima, escalado pelo "Volume de saída"; com o volume em 0 nenhum som toca.
+**QUAIS EXISTEM** (todos só no cliente de quem age ou de quem está na call): (1) entrar numa call, para você; (2) alguém entrar na sua call (suprimido nos primeiros 1,5 s depois que você entra, para não tocar um bipe por pessoa já presente); (3) sair da call, para você; (4) alguém sair da sua call; (5) mensagem nova no chat da call; (6) mutar; (7) desmutar; (8) começar a transmitir tela; (9) parar de transmitir tela; (10) sons do soundboard enviados por outras pessoas, com volume próprio.
+**QUAIS NÃO EXISTEM**: ensurdecer e desensurdecer, ligar e desligar câmera, mensagem em canal de texto ou em conversa direta, menção, pedido de amizade, chamada recebida, notificação do desktop (`NOTIFICATION_DESKTOP`, Roteiro 14) e erro.
+**LACUNA**: não há interruptor por som nem "silenciar todos os sons do app"; só o volume.
+
+---
+
+## 17.7 — SOUND_VOLUME_CONTROLS
+
+**ID**: `SOUND_VOLUME_CONTROLS`
+**NOME**: Controles de volume dos sons
+**CAMINHO**: `Configurações > Voz e vídeo`
+**STATUS**: `DONE`
+**CONTROLES**: "Volume de saída" (0 a 100%, padrão 100%) e "Volume do soundboard" (0 a 100%). O volume de saída vale para os sons do app e também para o áudio das pessoas na call. **PERSISTÊNCIA**: `localStorage` do aparelho, lido a cada som (`getOutputVolume`); um valor guardado inválido volta para 100%. Os volumes individuais por pessoa e o da transmissão são outra coisa (`VOICE_PARTICIPANT_VOLUME`) e também persistem.
+
+---
+
+## 17.8 — PREMIUM_SHOP_COSMETICS_REFERENCE *(MISSING)*
+
+**ID**: `PREMIUM_SHOP_COSMETICS_REFERENCE`
+**STATUS**: referência. **Premium, loja, moeda interna, inventário, decorações de avatar, efeitos de perfil, molduras, plaquetas de nome, estilos de nome e selos não existem** e ficam como `MISSING`, já enumerados na FASE 7 do plano (`DISCORD_PARITY_PLAN.md`). Não são simulados na interface: nenhuma tela, botão ou menu de Premium ou loja aparece. O perfil tem hoje avatar, banner, cor de destaque, status, bio e pronomes (`PROFILE_EDIT`, Roteiro 12).
+
+---
+
+**Achados do Roteiro 17** (por ordem de impacto):
+
+1. **Ninguém conseguia dizer qual versão estava rodando**, o que atrapalha qualquer conversa de suporte. Corrigido com a tela Sobre e o botão "Copiar versão".
+2. **Verificar atualização e abrir logs dependem de uma nova versão do desktop** (`REQUIRES_DESKTOP_CLIENT`); licenças, privacidade e termos dependem de conteúdo que só o dono do serviço define.
+3. **Os sons cobrem só a call**: nada toca para mensagem, menção, amizade ou chamada, e não há como desligar um som específico.
+4. **Premium, loja e cosméticos continuam inexistentes** e não têm nenhuma tela falsa.
+
+---
+
 # CONTINUAÇÃO
 
 Este documento cobriu, com todos os 36 campos exigidos (ou o equivalente resumido de status para fichas inteiramente `MISSING`, conforme a própria convenção definida no topo deste arquivo), as **24 interações do Roteiro 0** (processo desktop), as **18 interações do Roteiro 1** (login e sessão) e as **11 interações do Roteiro 2** (navegação) — 53 fichas no total, cada uma verificada contra o código real, nunca assumida de memória ou copiada do comportamento genérico do Discord sem checar primeiro. Toda lacuna encontrada foi marcada `MISSING`/`PARTIAL` explicitamente, nunca simulada como se existisse — e tudo que já funciona (seleção de servidor, badge de pedidos de amizade, foco/retorno de foco do modal de adicionar servidor) foi documentado como `CORE`/funcional, não redescrito como se fosse novo trabalho a fazer.

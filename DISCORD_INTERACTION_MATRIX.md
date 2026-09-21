@@ -1,6 +1,6 @@
 # DISCORD_INTERACTION_MATRIX.md
 
-Matriz mestra das interações do NexPlay: uma linha por ficha de `DISCORD_UI_ATLAS.md` (roteiros 0 a 16, 231 interações; uma ficha de referência que repete um ID já existente, como FRIEND_REQUEST_BADGE no Roteiro 14, não gera linha nova). O detalhe campo a campo de cada linha está na ficha de mesmo ID no Atlas; a hierarquia de telas está em `DISCORD_NAVIGATION_TREE.md`.
+Matriz mestra das interações do NexPlay: uma linha por ficha de `DISCORD_UI_ATLAS.md` (roteiros 0 a 17, 239 interações; uma ficha de referência que repete um ID já existente, como FRIEND_REQUEST_BADGE no Roteiro 14, não gera linha nova). O detalhe campo a campo de cada linha está na ficha de mesmo ID no Atlas; a hierarquia de telas está em `DISCORD_NAVIGATION_TREE.md`.
 
 **Como ler**
 - Colunas: ID, Tela, Caminho, Elemento, Trigger, Estado inicial, Ação, Feedback visual, Feedback sonoro, Resultado, Realtime, Persistência, Permissão, Shortcut, Erros.
@@ -348,9 +348,24 @@ Matriz mestra das interações do NexPlay: uma linha por ficha de `DISCORD_UI_AT
 
 ---
 
+## P. Sobre, sistema de sons e áreas ausentes (Roteiro 17)
+
+| ID | Tela | Caminho | Elemento | Trigger | Estado inicial | Ação | Feedback visual | Feedback sonoro | Resultado | Realtime | Persistência | Permissão | Atalho | Restrições |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| ABOUT_SECTION | Configurações > Sobre | Engrenagem > Configurações do app > Sobre | Lista Aplicativo, Versão da web, Motor do navegador | Clique em Sobre | Sem tela de versão | Mostra o que a pessoa está rodando | Três linhas de texto | — | Diz "Aplicativo para Windows 0.2.11" ou "Navegador", commit e data da web e Chromium | — | Nenhuma (só leitura) | Sessão | Nenhum | Versão da web vem de build-info.json gravado no deploy (commit `2f3c6b3`, em produção) |
+| ABOUT_COPY_VERSION | Configurações > Sobre | Botão Copiar versão | Botão | Clique | Botão "Copiar versão" | Copia o resumo numa linha | Botão vira "Copiado!" por 2 s | — | Resumo na área de transferência | — | Nenhuma | Sessão | Nenhum | Mostra "Não foi possível copiar" se a cópia falhar (commit `2f3c6b3`, em produção) |
+| ABOUT_CHECK_UPDATE | Configurações > Sobre | — | — | — | Não existe | Esperado: verificar atualização na hora | Nenhum | — | Nada | — | — | — | Nenhum | `MISSING`, `REQUIRES_DESKTOP_CLIENT`: exige nova ponte no processo principal e nova versão do desktop |
+| ABOUT_OPEN_LOGS | Configurações > Sobre | — | — | — | Não existe | Esperado: abrir a pasta de logs | Nenhum | — | Nada | — | — | — | Nenhum | `MISSING`, `REQUIRES_DESKTOP_CLIENT`: o desktop grava logs, sem tela que leve a eles |
+| ABOUT_LICENSES_PRIVACY_TERMS | Configurações > Sobre | — | — | — | Não existe | Esperado: licenças, política de privacidade e termos | Nenhum | — | Nada | — | — | — | Nenhum | `MISSING`: os textos não existem e não foram inventados |
+| SOUND_SYSTEM_INVENTORY | Toda a call | Automático | Sons de osciladores do Web Audio | Eventos da call | Volume de saída em 100% | Toca entrar, sair, alguém entrar, alguém sair, mensagem no chat da call, mutar, desmutar, começar e parar transmissão | Nenhum | 10 sons (incluindo o soundboard dos outros) | Bipe curto | Eventos do LiveKit | Volume em localStorage | Membro da call | Nenhum | Sem som para ensurdecer, câmera, mensagem de texto, menção, amizade e chamada; sem interruptor por som |
+| SOUND_VOLUME_CONTROLS | Configurações > Voz e vídeo | Voz e vídeo | Sliders "Volume de saída" e "Volume do soundboard" | Arrastar | 100% | Muda o volume dos sons (e do áudio das pessoas, no volume de saída) | Valor em % ao lado | O som seguinte já sai no novo volume | Salvo no aparelho | — | localStorage | Sessão | Nenhum | Valor inválido guardado volta para 100% |
+| PREMIUM_SHOP_COSMETICS_REFERENCE | Vários | — | — | — | Não existe | Esperado: Premium, loja, inventário e cosméticos | Nenhum | — | Nada | — | — | — | Nenhum | `MISSING` por completo; nenhuma tela simulada |
+
+---
+
 ## Totais e leitura rápida
 
-- **231 linhas**, uma por ID de interação, em 15 tabelas (A a O).
+- **239 linhas**, uma por ID de interação, em 16 tabelas (A a P).
 - **`MISSING` no Atlas** (linhas que descrevem o esperado, não o real): SYSTEM_TRAY, AUTO_LAUNCH_ON_BOOT, START_MINIMIZED, WINDOW_FOCUS_BLUR, SERVER_CONTEXT_MENU, RAIL_UNREAD_MENTION_INDICATOR, QUICK_SWITCHER, KEYBOARD_SERVER_NAVIGATION, SERVER_LEAVE, MESSAGE_CONTEXT_MENU, MESSAGE_ATTACH_DRAGDROP, MESSAGE_ATTACH_PASTE, TYPING_INDICATOR, SCREEN_SHARE_QUALITY_CHANGE, MEMBER_SERVER_KICK, DM_VOICE_VIDEO_CALL, DM_GROUP, NOTIFICATION_SETTINGS_SERVER_AND_CHANNEL, NOTIFICATION_SETTINGS_SECTION, MENTION_SYSTEM, UNREAD_TRACKING_AND_BADGES, INBOX, DESKTOP_NOTIFICATION, TASKBAR_FLASH_BADGE, DOCUMENT_TITLE_UNREAD, INCOMING_CALL_RING, KEYBOARD_SHORTCUTS_GLOBAL, DOUBLE_CLICK, BACK_FORWARD_HISTORY, STATE_RESTORE_ON_RELOAD, DEEP_LINKS_PROTOCOL, MESSAGE_PERMALINK_COPY_LINK, DEVELOPER_MODE_COPY_ID. **Quebrados (`BROKEN`) achados no Roteiro 15 e já corrigidos**: CLIPBOARD_COPY_DESKTOP, MESSAGE_LINK_OPEN (desktop `0.2.11`) e PTT_KEY_CAPTURE_ESCAPE. Com **efeito visível ausente** (a configuração existe e salva): ROLE_COLOR_ON_NAMES, ROLE_HOIST_MEMBER_GROUPING, CATEGORY_NOTIFICATION_MODE e CATEGORY_MUTE_TOGGLE (o modo de notificação da categoria é gravado por usuário e nada o lê; os itens de menu que o alteravam foram escondidos).
 - **Entregues depois desta auditoria**: MEMBER_LIST_SERVER_WIDE e PRESENCE_STATUS (online e offline) saíram de `MISSING` na tela de voz; o volume por pessoa e o da transmissão passaram a persistir; o áudio da transmissão só toca para quem clicou em assistir.
 - **Controle decorativo vivo**: ROLE_LIST_SEARCH_FAKE. MEMBER_LIST_TOGGLE_BUTTON e VOICE_HEADER_PINS_BUTTON, achados no Roteiro 13, foram removidos (commit `73e40f8`, em produção). O item de menu sem função "Marcar como lida" (MARK_AS_READ) foi removido (commit `6aea3a4`, em produção).
