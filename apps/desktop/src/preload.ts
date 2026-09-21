@@ -35,6 +35,8 @@ contextBridge.exposeInMainWorld('desktop', {
     ipcRenderer.invoke('media:get-access-status', mediaType),
   openMediaSettings: (mediaType: 'camera' | 'microphone'): Promise<boolean> =>
     ipcRenderer.invoke('media:open-settings', mediaType),
+  checkForUpdates: (): Promise<unknown> => ipcRenderer.invoke('app:check-updates'),
+  openLogs: (): Promise<boolean> => ipcRenderer.invoke('app:open-logs'),
   onActivityChanged: (listener: (activity: Activity | null) => void): (() => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, activity: unknown) => listener(activity as Activity | null);
     ipcRenderer.on('activity:changed', wrapped);

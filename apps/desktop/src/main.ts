@@ -13,7 +13,7 @@ import {
 import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Activity } from '@nexplay/shared';
-import { initAutoUpdater } from './updater.js';
+import { checkForUpdatesNow, initAutoUpdater } from './updater.js';
 import { externalWebUrl, isAllowedPermission } from './policy.js';
 
 // windows-media-sessions calcula o caminho do próprio backend nativo relativo
@@ -240,6 +240,18 @@ function installPickerIpc(): void {
       : 'ms-settings:privacy-microphone';
     await shell.openExternal(settingsUrl);
     return true;
+  });
+
+  // Configurações > Sobre: verificar atualização na hora e abrir a pasta que guarda o log dela.
+  ipcMain.handle('app:check-updates', (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return { status: 'unavailable', message: 'Não foi possível verificar agora.' };
+    return checkForUpdatesNow();
+  });
+
+  ipcMain.handle('app:open-logs', async (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+    // shell.openPath devolve '' quando abriu e a mensagem de erro quando não abriu.
+    return (await shell.openPath(app.getPath('userData'))) === '';
   });
 
   ipcMain.handle('activity:get-current', (event) => {

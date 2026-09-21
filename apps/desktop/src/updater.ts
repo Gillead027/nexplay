@@ -13,6 +13,29 @@ function logUpdate(line: string): void {
   }
 }
 
+// Resposta da verificação pedida pela pessoa na tela Configurações > Sobre.
+export type UpdateCheckOutcome =
+  | { status: 'unavailable'; message: string }
+  | { status: 'up-to-date'; version: string }
+  | { status: 'available'; version: string }
+  | { status: 'error'; message: string };
+
+// Verifica agora, sem esperar o próximo boot. Se houver versão nova o download começa sozinho
+// (autoDownload) e, quando termina, o diálogo de "Atualizar e reiniciar" de initAutoUpdater aparece.
+export async function checkForUpdatesNow(): Promise<UpdateCheckOutcome> {
+  if (!app.isPackaged) return { status: 'unavailable', message: 'A verificação só existe no aplicativo instalado.' };
+  try {
+    logUpdate('Verificação pedida pela pessoa (Configurações > Sobre).');
+    const result = await autoUpdater.checkForUpdates();
+    if (!result) return { status: 'unavailable', message: 'As atualizações estão desativadas nesta instalação.' };
+    return result.isUpdateAvailable
+      ? { status: 'available', version: result.updateInfo.version }
+      : { status: 'up-to-date', version: app.getVersion() };
+  } catch (error) {
+    return { status: 'error', message: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 export function initAutoUpdater(): void {
   if (!app.isPackaged) return;
 
