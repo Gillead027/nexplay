@@ -280,7 +280,6 @@ input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus, text
 .main-panel > *, .room-content, .friends-home { animation: view-in 340ms var(--ease-out) both; }
 .connection-state { border-color: color-mix(in srgb, var(--success) 45%, transparent); color: var(--success); background: color-mix(in srgb, var(--success) 12%, transparent); }
 .connection-state span { background: var(--success); box-shadow: 0 0 10px var(--success); }
-.idle-voice-orb { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent-2); background: radial-gradient(circle at 35% 30%, color-mix(in srgb, var(--accent) 28%, var(--panel-raised)), var(--sidebar-footer)); box-shadow: 0 0 46px var(--accent-soft); animation: float-soft 5s ease-in-out infinite; }
 
 /* ---------- chat ---------- */
 .message { padding: 6px 12px; margin-left: -12px; margin-right: -12px; border-radius: 12px; transition: background-color var(--dur); }
@@ -365,11 +364,11 @@ button:hover > .avatar, .avatar:hover { box-shadow: 0 0 0 2px color-mix(in srgb,
 
 /* O modo leve e "reduzir movimento" (styles.css) já zeram as durações; aqui só tiramos o que é decorativo */
 [data-perf="lite"] .entry-ghost, [data-perf="lite"] .entry-sparkle { display: none; }
-[data-perf="lite"] .entry-side-logo, [data-perf="lite"] .idle-voice-orb { animation: none; }
+[data-perf="lite"] .entry-side-logo { animation: none; }
 [data-perf="lite"] .entry-window { backdrop-filter: none; }
 @media (prefers-reduced-motion: reduce) {
   .entry-ghost, .entry-sparkle { display: none; }
-  .entry-side-logo, .idle-voice-orb { animation: none; }
+  .entry-side-logo { animation: none; }
   button:not(:disabled):active { transform: none; }
 }
 
@@ -447,3 +446,105 @@ input[type="range"]::-moz-range-thumb { width: 10px; height: 10px; border: 3px s
 
 /* O app inteiro pede 1080 px de largura, mas a tela de entrada (o que um convite abre no celular) cabe em qualquer uma */
 html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #root { min-width: 0; }
+
+/* ==========================================================================
+   Sala de voz — o palco mostra quem está na chamada, no formato da chamada do Discord:
+   um quadrado 16:9 por pessoa (foto ou inicial no centro, nome embaixo à esquerda, contorno
+   azul pulsando quando fala) e, sozinho, um convite para chamar os amigos.
+   ========================================================================== */
+.room-content.voice-live { grid-template-columns: minmax(0, 1fr); }
+.room-content.voice-live.with-chat { grid-template-columns: minmax(0, 1fr) 340px; }
+.room-content.voice-live.with-members { grid-template-columns: minmax(0, 1fr) 298px; }
+.room-content.voice-live.with-chat.with-members { grid-template-columns: minmax(0, 1fr) 340px 298px; }
+.room-content.voice-live .stage-content { padding: 20px 20px 104px; }
+.room-content.voice-live .stage-content::before { opacity: .35; }
+
+.stage-with-strip { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 12px; position: relative; z-index: 1; }
+.stage-share { flex: 1; min-height: 0; display: flex; }
+.stage-share .screen-stage { border-radius: 16px; overflow: hidden; border-color: var(--border-light); }
+
+.voice-stage { position: relative; z-index: 1; flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.voice-tiles { flex: 1; min-height: 0; display: flex; flex-wrap: wrap; align-content: center; justify-content: center; gap: 12px; overflow: hidden; }
+.voice-tile {
+  --tile-color: #2f7bff;
+  position: relative; flex: 0 0 auto; width: var(--tile-w, 420px); aspect-ratio: 16 / 9; container-type: inline-size; overflow: hidden;
+  display: grid; place-items: center; border-radius: 18px; color: #fff;
+  background:
+    radial-gradient(90% 90% at 50% 0%, color-mix(in srgb, var(--tile-color) 34%, transparent), transparent 70%),
+    linear-gradient(160deg, color-mix(in srgb, var(--tile-color) 22%, #0b1230), color-mix(in srgb, var(--tile-color) 8%, #060a1a));
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .06), var(--shadow-md);
+  animation: tile-pop 420ms var(--ease-out) both;
+  transition: box-shadow var(--dur) var(--ease-out), transform var(--dur) var(--ease-out);
+}
+.voice-tile:hover { transform: translateY(-2px); }
+.voice-tile.speaking { box-shadow: 0 0 0 3px var(--accent-2), 0 0 32px var(--accent-glow-strong), var(--shadow-md); }
+.voice-tile.tile-color-0 { --tile-color: #2f7bff; }
+.voice-tile.tile-color-1 { --tile-color: #6a6cf0; }
+.voice-tile.tile-color-2 { --tile-color: #1fb1d6; }
+.voice-tile.tile-color-3 { --tile-color: #e58a3a; }
+.voice-tile.tile-color-4 { --tile-color: #1f9d8f; }
+.voice-tile.tile-color-5 { --tile-color: #e0577f; }
+.voice-tile.tile-color-6 { --tile-color: #7b61ff; }
+.voice-tile.tile-color-7 { --tile-color: #e2634d; }
+.voice-tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.voice-tile-avatar { display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; background: none; cursor: pointer; }
+.voice-tile-avatar:disabled { cursor: default; }
+.voice-tile-avatar .avatar {
+  color: #fff; width: clamp(52px, 24cqw, 132px); height: clamp(52px, 24cqw, 132px); font-size: clamp(20px, 10cqw, 54px); cursor: inherit;
+  box-shadow: 0 8px 28px rgba(2, 6, 20, .45); transition: transform var(--dur) var(--ease-out);
+}
+.voice-tile-avatar:hover:not(:disabled) .avatar { transform: scale(1.05); }
+.voice-tile-avatar .avatar .presence-dot { display: none; }
+.voice-tile.speaking .voice-tile-avatar .avatar { animation: voice-pulse 1.4s ease-out infinite; }
+.voice-tile-label {
+  position: absolute; left: 12px; bottom: 12px; max-width: calc(100% - 24px); display: flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 9px;
+  background: rgba(3, 7, 20, .62); backdrop-filter: blur(8px); font-size: var(--fs-sm); font-weight: 650;
+}
+.voice-tile-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.voice-tile-muted { flex: 0 0 auto; color: var(--danger); }
+@keyframes tile-pop { from { opacity: 0; transform: scale(.94); } to { opacity: 1; transform: none; } }
+@keyframes voice-pulse {
+  0% { box-shadow: 0 8px 28px rgba(2, 6, 20, .45), 0 0 0 0 rgba(46, 230, 240, .6); }
+  100% { box-shadow: 0 8px 28px rgba(2, 6, 20, .45), 0 0 0 clamp(10px, 3.4cqw, 26px) rgba(46, 230, 240, 0); }
+}
+
+/* Faixa de quadrados pequenos sob uma transmissão de tela */
+.voice-stage.compact { flex: 0 0 auto; }
+.voice-stage.compact .voice-tiles { flex: 0 0 auto; flex-wrap: nowrap; justify-content: flex-start; align-content: flex-start; overflow-x: auto; padding-bottom: 2px; }
+.voice-stage.compact .voice-tile { --tile-w: 196px; border-radius: 14px; }
+.voice-stage.compact .voice-tile-label { left: 8px; bottom: 8px; padding: 3px 8px; font-size: var(--fs-xs); }
+
+/* Sozinho na sala: convite logo abaixo do quadrado */
+.voice-invite {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 28px; margin: 12px auto 0; padding: 16px 24px;
+  border: 1px solid var(--border-light); border-radius: 18px; background: color-mix(in srgb, var(--panel-raised) 92%, transparent);
+  backdrop-filter: blur(12px); box-shadow: var(--shadow-md); animation: view-in 420ms var(--ease-out) 120ms both;
+}
+.voice-invite-text { display: grid; gap: 3px; text-align: left; }
+.voice-invite-text strong { color: var(--text-primary); font-size: var(--fs-lg); font-weight: 700; }
+.voice-invite-text span { color: var(--text-secondary); font-size: var(--fs-sm); }
+.voice-invite-button { flex: 0 0 auto; gap: 8px; }
+.voice-invite-button.copied { background: linear-gradient(135deg, #1fbf8a, #17a877); }
+.voice-invite-button.failed { background: var(--danger); }
+
+/* Com mais gente, o convite vira um botão redondo no canto, como no Discord */
+.voice-invite-fab {
+  position: absolute; z-index: 6; left: 4px; bottom: -74px; width: 44px; height: 44px; display: grid; place-items: center;
+  border: 1px solid var(--border-light); border-radius: 50%; color: var(--text-secondary); background: var(--panel-raised); box-shadow: var(--shadow-md);
+}
+.voice-invite-fab:hover { color: #fff; border-color: var(--accent); background: var(--accent); transform: translateY(-2px); }
+.voice-invite-fab.copied { color: #fff; border-color: transparent; background: #17a877; }
+.voice-invite-fab.failed { color: #fff; border-color: transparent; background: var(--danger); }
+.voice-invite-fab-note { position: absolute; left: 54px; padding: 6px 10px; border-radius: 9px; color: #fff; background: rgba(3, 7, 20, .82); font-size: var(--fs-xs); font-weight: 650; white-space: nowrap; animation: view-in 200ms var(--ease-out) both; }
+
+/* Chat da sala: escondido atrás do ícone no canto superior direito; um contador avisa de mensagem nova */
+.icon-button.chat-toggle { position: relative; }
+.chat-unread-badge {
+  position: absolute; top: -5px; right: -5px; min-width: 17px; height: 17px; display: grid; place-items: center; padding: 0 4px;
+  border: 2px solid var(--main); border-radius: 999px; color: #fff; background: var(--danger); font-size: 10px; font-weight: 800; line-height: 1;
+  animation: badge-pop 320ms var(--ease-out) both;
+}
+@keyframes badge-pop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+[data-perf="lite"] .voice-tile { animation: none; }
+[data-perf="lite"] .voice-tile.speaking .voice-tile-avatar .avatar { animation: none; }

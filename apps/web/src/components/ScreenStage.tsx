@@ -3,7 +3,7 @@ import { LocalVideoTrack, RemoteParticipant, RemoteVideoTrack, Track } from 'liv
 import type { ScreenTrackView } from '../livekit/useVoiceRoom';
 import { EyeIcon, EyeOffIcon, FullscreenIcon, ShareIcon, SpeakerIcon } from './Icons';
 
-function attachVideo(view: ScreenTrackView, element: HTMLVideoElement | null): (() => void) | undefined {
+export function attachVideo(view: ScreenTrackView, element: HTMLVideoElement | null): (() => void) | undefined {
   const track = view.publication.track;
   if (!element || !(track instanceof RemoteVideoTrack || track instanceof LocalVideoTrack)) return undefined;
   track.attach(element);

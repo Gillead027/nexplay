@@ -78,6 +78,7 @@ import {
   SoundboardIcon,
   SpeakerIcon,
   UserIcon,
+  UsersIcon,
   VoiceIcon,
 } from './Icons';
 import { connectRealtime, onRealtimeConnect, onRealtimeEvent } from '../realtime';
@@ -91,13 +92,14 @@ import { FriendsHome, FriendsSidebar, isBlockedByMe as computeIsBlockedByMe, rel
 import { ProfilePopover, type ProfilePopoverTarget } from './ProfilePopover';
 import { RemoteAudioSink } from './RemoteAudioSink';
 import { ScreenStage } from './ScreenStage';
+import { type StageEntry, VoiceStage } from './VoiceStage';
 import { ForwardMessageModal, type ForwardSource } from './ForwardMessage';
 import { AboutPane } from './AboutPane';
 import type { UpdateCheckOutcome } from '../aboutInfo';
 import { AdminOverviewPane } from './AdminOverview';
 import { StatusNotices } from './StatusNotices';
 import { useConnectivity } from '../useConnectivity';
-import { PENDING_INVITE_EVENT, takePendingInvite } from '../pendingInvite';
+import { inviteUrl, PENDING_INVITE_EVENT, takePendingInvite } from '../pendingInvite';
 import { AddServerModal, useActiveServerMember, useServersState } from './Servers';
 import { ServerSettings } from './ServerSettings';
 import { SoundboardPanel, SoundboardToast } from './Soundboard';
@@ -220,15 +222,23 @@ function ChannelUserAvatar({
   ownIdentity,
   ownAvatarUrl,
   speaking,
+  accentColor,
 }: {
   identity: string;
   name: string;
   ownIdentity: string;
   ownAvatarUrl: string;
   speaking: boolean;
+  accentColor?: AccentColor | undefined;
 }) {
   const avatarUrl = useAvatarByIdentity(identity, identity === ownIdentity, ownAvatarUrl);
-  return <Avatar name={name} avatarUrl={avatarUrl} speaking={speaking} compact />;
+  return <Avatar name={name} accentColor={accentColor} avatarUrl={avatarUrl} speaking={speaking} compact />;
+}
+
+// Avatar grande de um quadrado do palco de voz (foto do perfil ou a inicial sobre a cor do perfil).
+function StageAvatar({ entry, ownIdentity, ownAvatarUrl }: { entry: StageEntry; ownIdentity: string; ownAvatarUrl: string }) {
+  const avatarUrl = useAvatarByIdentity(entry.identity, entry.identity === ownIdentity, ownAvatarUrl);
+  return <Avatar name={entry.name} accentColor={ACCENT_COLORS[entry.colorIndex]} avatarUrl={entry.isBot ? undefined : avatarUrl} speaking={entry.speaking} />;
 }
 
 function DeviceMenu({
@@ -401,6 +411,7 @@ function ChannelButton({
   onContextMenu,
   onParticipantContextMenu,
   liveMuted,
+  accentByIdentity,
   draggable,
   onDragStart,
 }: {
@@ -431,6 +442,8 @@ function ChannelButton({
   // Mute ao vivo de cada pessoa, só pro canal em que você está agora. Nos outros
   // canais vale o último estado que o servidor calculou.
   liveMuted?: Map<string, boolean> | undefined;
+  // Cor do perfil de cada pessoa da sala em que você está (vem do LiveKit); nas outras salas a cor sai do nome.
+  accentByIdentity?: Map<string, AccentColor> | undefined;
   draggable?: boolean;
   onDragStart?: (event: ReactDragEvent<HTMLElement>) => void;
 }) {
@@ -505,6 +518,7 @@ function ChannelButton({
                 ownIdentity={ownIdentity}
                 ownAvatarUrl={ownAvatarUrl}
                 speaking={active && speakingIds.has(participant.identity)}
+                accentColor={active ? accentByIdentity?.get(participant.identity) : undefined}
               />
               <span className="channel-user-name">{participant.name}</span>
               {isBot && <span className="bot-badge">BOT</span>}
@@ -1752,6 +1766,14 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [serverSettingsOpen, setServerSettingsOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  // Na sala de voz a lista de membros fica escondida (o palco mostra quem está na chamada); o botão do
+  // cabeçalho a traz de volta.
+  const [voiceMembersOpen, setVoiceMembersOpen] = useState(false);
+  const [chatSeenCount, setChatSeenCount] = useState(0);
+  useEffect(() => {
+    setChatSeenCount(voice.messages.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- só ao abrir/fechar o chat ou trocar de canal
+  }, [chatOpen, voice.currentChannel?.id]);
   const [soundboardOpen, setSoundboardOpen] = useState(false);
   const [soundboardSounds, setSoundboardSounds] = useState<SoundboardSound[]>([]);
   const [textChannels, setTextChannels] = useState<TextChannel[]>([]);
@@ -2425,6 +2447,22 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
 
   const typedParticipants = voice.participants as (LocalParticipant | RemoteParticipant)[];
   const liveMuted = liveMutedByIdentity(typedParticipants, voice.micMuted);
+  const accentByIdentity = new Map<string, AccentColor>();
+  for (const participant of typedParticipants) {
+    const metadata = parseParticipantMetadata(participant.metadata);
+    if (metadata?.participantType === 'HUMAN') accentByIdentity.set(participant.identity, metadata.accentColor);
+  }
+  const unreadChat = chatOpen ? 0 : voice.messages.slice(chatSeenCount).filter((message) => message.senderId !== session.id).length;
+  const cameraViews = voice.screenTracks.filter((view) => view.publication.source === Track.Source.Camera && !view.publication.isMuted);
+  const shareViews = voice.screenTracks.filter((view) => view.publication.source === Track.Source.ScreenShare);
+  // Quem gerencia o servidor pode convidar direto da sala de voz (o convite é do servidor inteiro).
+  const copyServerInvite =
+    canManageServer && activeServerId
+      ? async () => {
+          const { invite } = await api.getServerInvite(activeServerId);
+          return copyText(inviteUrl(window.location.origin, invite.code));
+        }
+      : undefined;
   const activeTextChannel = textChannels.find(({ id }) => id === selectedTextChannelId);
   // Atividade só existe pra quem está no mesmo canal de voz que você agora —
   // o LiveKit não entrega metadata de participantes de salas que você não
@@ -2436,6 +2474,21 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         return metadata?.participantType === 'HUMAN' ? metadata.activity : null;
       })()
     : null;
+
+  const renderVoiceStage = (compact: boolean) => (
+    <VoiceStage
+      participants={typedParticipants}
+      cameras={cameraViews}
+      speakingIds={voice.speakers}
+      liveMuted={liveMuted}
+      channelName={voice.currentChannel?.name ?? 'este canal'}
+      compact={compact}
+      renderAvatar={(entry) => <StageAvatar entry={entry} ownIdentity={session.id} ownAvatarUrl={session.avatarUrl} />}
+      onParticipantContextMenu={openParticipantVolumeMenu}
+      onOpenProfile={openUserProfile}
+      copyInvite={copyServerInvite}
+    />
+  );
 
   return (
     <main className="workspace">
@@ -2741,6 +2794,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                     disconnectingIdentity={disconnectingIdentity}
                     onParticipantContextMenu={openParticipantVolumeMenu}
                     liveMuted={voice.currentChannel?.id === room.id && voice.connected ? liveMuted : undefined}
+                    accentByIdentity={accentByIdentity}
                   />
                 ));
 
@@ -3001,15 +3055,28 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
             <div className="room-header-actions">
               <div className={`connection-state ${voice.connected ? 'online' : ''}`}><span />{connectionLabel}</div>
               {voice.connected && (
-                <button
-                  type="button"
-                  className={`icon-button ${chatOpen ? 'selected' : ''}`}
-                  onClick={() => setChatOpen((open) => !open)}
-                  title={chatOpen ? 'Fechar chat' : 'Abrir chat'}
-                  aria-label={chatOpen ? 'Fechar chat' : 'Abrir chat'}
-                >
-                  <MessageIcon size={17} />
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className={`icon-button ${voiceMembersOpen ? 'selected' : ''}`}
+                    onClick={() => setVoiceMembersOpen((open) => !open)}
+                    title={voiceMembersOpen ? 'Esconder membros' : 'Mostrar membros'}
+                    aria-label={voiceMembersOpen ? 'Esconder membros' : 'Mostrar membros'}
+                    aria-pressed={voiceMembersOpen}
+                  >
+                    <UsersIcon size={17} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`icon-button chat-toggle ${chatOpen ? 'selected' : ''}`}
+                    onClick={() => setChatOpen((open) => !open)}
+                    title={chatOpen ? 'Fechar chat' : unreadChat > 0 ? `Abrir chat (${unreadChat} nova${unreadChat > 1 ? 's' : ''})` : 'Abrir chat'}
+                    aria-label={chatOpen ? 'Fechar chat' : unreadChat > 0 ? `Abrir chat, ${unreadChat} mensage${unreadChat > 1 ? 'ns novas' : 'm nova'}` : 'Abrir chat'}
+                  >
+                    <MessageIcon size={17} />
+                    {unreadChat > 0 && <span className="chat-unread-badge" aria-hidden="true">{unreadChat > 9 ? '9+' : unreadChat}</span>}
+                  </button>
+                </>
               )}
             </div>
           )}
@@ -3045,35 +3112,35 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           </div>
         )}
 
-        <div className={`room-content ${chatOpen && voice.connected ? 'with-chat' : ''}`}>
+        <div className={`room-content ${voice.connected ? 'voice-live' : ''} ${chatOpen && voice.connected ? 'with-chat' : ''} ${voice.connected && voiceMembersOpen ? 'with-members' : ''}`}>
           <section className="stage-column">
             <div className="stage-content">
               {voice.connected && <SoundboardToast event={voice.soundboardEvent} />}
               {joiningId || voice.connectionState === ConnectionState.Connecting ? (
                 <RoomSkeleton />
               ) : voice.connected ? (
-                voice.screenTracks.length > 0 ? (
-                  <ScreenStage
-                    screens={voice.screenTracks}
-                    streamVolumes={streamVolumes}
-                    setStreamVolume={(identity, value) => setStreamVolumes((current) => ({ ...current, [identity]: value }))}
-                    watchingIds={watchingScreenIds}
-                    onWatch={(id) => setWatchingScreenIds((current) => new Set(current).add(id))}
-                    onStopWatching={(id) =>
-                      setWatchingScreenIds((current) => {
-                        const next = new Set(current);
-                        next.delete(id);
-                        return next;
-                      })
-                    }
-                  />
-                ) : (
-                  <div className="voice-idle-stage">
-                    <div className="idle-voice-orb"><VoiceIcon size={42} /></div>
-                    <h2>Você está em {voice.currentChannel?.name}</h2>
-                    <p>Conectado ao canal de voz. Seus amigos podem ouvir você.</p>
-                    <span className="idle-stage-tip">Converse com seus amigos</span>
+                shareViews.length > 0 ? (
+                  <div className="stage-with-strip">
+                    <div className="stage-share">
+                      <ScreenStage
+                        screens={shareViews}
+                        streamVolumes={streamVolumes}
+                        setStreamVolume={(identity, value) => setStreamVolumes((current) => ({ ...current, [identity]: value }))}
+                        watchingIds={watchingScreenIds}
+                        onWatch={(id) => setWatchingScreenIds((current) => new Set(current).add(id))}
+                        onStopWatching={(id) =>
+                          setWatchingScreenIds((current) => {
+                            const next = new Set(current);
+                            next.delete(id);
+                            return next;
+                          })
+                        }
+                      />
+                    </div>
+                    {renderVoiceStage(true)}
                   </div>
+                ) : (
+                  renderVoiceStage(false)
                 )
               ) : (
                 <div className="disconnected-stage">
@@ -3216,7 +3283,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           </aside>
           )}
 
-          {activeServerId && (
+          {activeServerId && (!voice.connected || voiceMembersOpen) && (
             <MemberList serverId={activeServerId} ownId={session.id} onOpenProfile={openUserProfile} />
           )}
         </div>
