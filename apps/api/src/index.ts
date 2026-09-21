@@ -1362,10 +1362,12 @@ app.post(
         rng: defaultRng,
       });
       for (const reply of replies) {
-        sendToServerMembers(serverId, {
+        // Um cartão antigo (um desafio, um Pokémon selvagem) pode estar em outro canal ou servidor: a mensagem sabe o canal
+        // dela e a resposta, o servidor.
+        sendToServerMembers(reply.serverId, {
           type: reply.kind === 'create' ? 'TEXT_MESSAGE_CREATE' : 'TEXT_MESSAGE_UPSERT',
-          serverId,
-          channelId: channelId as string,
+          serverId: reply.serverId,
+          channelId: reply.message.channelId,
           message: reply.message,
         });
       }

@@ -355,7 +355,25 @@ db.exec(`
     created_at INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_text_game_messages_channel ON text_game_messages(channel_id, created_at);
+  -- Desafios de batalha ainda abertos: cada pessoa só tem um desafio por vez (o novo substitui o antigo).
+  CREATE TABLE IF NOT EXISTS pokemon_challenges (
+    challenger_id TEXT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    opponent_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    server_id TEXT NOT NULL,
+    channel_id TEXT NOT NULL,
+    message_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_pokemon_challenges_opponent ON pokemon_challenges(opponent_id);
 `);
+
+// Placar das batalhas e o limite de Pokébolas ganhas por dia nelas.
+ensureColumns('pokemon_players', [
+  ['battle_wins', 'INTEGER NOT NULL DEFAULT 0'],
+  ['battle_losses', 'INTEGER NOT NULL DEFAULT 0'],
+  ['reward_date', "TEXT NOT NULL DEFAULT ''"],
+  ['rewards_today', 'INTEGER NOT NULL DEFAULT 0'],
+]);
 
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_text_messages_channel_pinned

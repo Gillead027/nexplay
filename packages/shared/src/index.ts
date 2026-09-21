@@ -834,16 +834,49 @@ export interface PokemonCardEntry {
   no?: number;
 }
 
-// O cartão que o NexDex mostra numa mensagem: um Pokémon selvagem, o resultado de uma captura ou o time da pessoa.
+// Tipos e atributos base de uma espécie (o que "!info" mostra).
+export interface PokemonInfo {
+  types: string[];
+  stats: { hp: number; attack: number; defense: number; specialAttack: number; specialDefense: number; speed: number };
+  total: number;
+}
+
+// Um duelo de uma batalha: quem venceu, contra quem e quanto de vida sobrou (em %).
+export interface PokemonBattleLine {
+  side: 'A' | 'B';
+  winner: string;
+  loser: string;
+  hpLeftPercent: number;
+}
+
+// Uma batalha entre duas pessoas (o time A é de quem desafiou). Nos desafios ainda abertos só tem os times.
+export interface PokemonBattle {
+  challengerId: string;
+  challengerName: string;
+  opponentId: string;
+  opponentName: string;
+  teamA: PokemonCardEntry[];
+  teamB: PokemonCardEntry[];
+  winnerId?: string;
+  winnerName?: string;
+  lines?: PokemonBattleLine[];
+  // Pokébolas que o vencedor ganhou (0 quando já bateu o limite do dia).
+  reward?: number;
+}
+
+// O cartão que o NexDex mostra numa mensagem: um Pokémon selvagem, o resultado de uma captura, o time da pessoa, a ficha
+// de uma espécie, um desafio de batalha ou o resultado dela.
 export interface PokemonCard {
-  kind: 'wild' | 'caught' | 'team';
-  // Só em 'wild': continua aberto ou já terminou (capturado, fugiu, expirou).
-  status?: 'wild' | 'caught' | 'fled' | 'expired';
+  kind: 'wild' | 'caught' | 'team' | 'info' | 'challenge' | 'battle';
+  // Em 'wild': continua aberto ou já terminou (capturado, fugiu, expirou). Em 'challenge': aguardando resposta ou já resolvido.
+  status?: 'wild' | 'caught' | 'fled' | 'expired' | 'pending' | 'accepted' | 'declined';
   ownerId: string;
   ownerName: string;
   title: string;
   entries: PokemonCardEntry[];
   balls?: number;
+  info?: PokemonInfo;
+  battle?: PokemonBattle;
 }
 
 export interface TextMessage extends ForwardedFromFields {

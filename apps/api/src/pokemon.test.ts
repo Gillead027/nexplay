@@ -210,3 +210,147 @@ test('imagem do Pokémon: só números válidos, só logado, e o que já está n
     assert.deepEqual(Buffer.from(await imagem.arrayBuffer()), png);
   });
 });
+
+// ---- ficha e batalhas (dois jogadores no mesmo servidor)
+async function setUpPair(request: Request, first: string, second: string) {
+  const a = await setUp(request, first);
+  const registered = await request('/auth/register', 'POST', { username: second, password: 'pokemon-password', accentColor: ACCENT_COLORS[0] });
+  assert.equal(registered.status, 201);
+  const cookieB = registered.headers.get('set-cookie')!.split(';')[0]!;
+  const { invite } = (await (await request(`/servers/${a.server.id}/invite`, 'POST', undefined, a.cookie)).json()) as { invite: { code: string } };
+  assert.equal((await request(`/invites/${invite.code}/redeem`, 'POST', undefined, cookieB)).status, 201);
+  const sayB = async (text: string) => {
+    const response = await request(`/servers/${a.server.id}/text-channels/${a.channel.id}/messages`, 'POST', { text }, cookieB);
+    assert.equal(response.status, 201);
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  };
+  return { a, sayA: a.say, sayB, bot: a.bot, names: { [first]: a.say, [second]: sayB } as Record<string, (text: string) => Promise<void>> };
+}
+
+test('!info mostra tipos e atributos da coleção e de qualquer espécie', async () => {
+  await withApi(0.5, async (request) => {
+    const { say, bot } = await setUp(request, 'Professor');
+    await say('!info');
+    assert.match((await bot()).at(-1)!.text, /Não encontrei esse Pokémon/);
+    await say('!pokemon');
+    await say('!capturar');
+    await say('!info');
+    const minha = (await bot()).at(-1)!.pokemonCard!;
+    assert.equal(minha.kind, 'info');
+    assert.equal(minha.entries[0]?.no, 1);
+    assert.ok(minha.info!.types.length >= 1);
+    assert.equal(minha.info!.total, Object.values(minha.info!.stats).reduce((soma, valor) => soma + valor, 0));
+    await say('!info 1');
+    assert.equal((await bot()).at(-1)!.pokemonCard?.entries[0]?.speciesId, minha.entries[0]!.speciesId);
+    await say('!info 5');
+    assert.match((await bot()).at(-1)!.text, /Não encontrei esse Pokémon/);
+    await say('!info PIKACHU');
+    const pikachu = (await bot()).at(-1)!.pokemonCard!;
+    assert.equal(pikachu.kind, 'info');
+    assert.equal(pikachu.title, 'Ficha da espécie');
+    assert.deepEqual(pikachu.info?.types, ['Elétrico']);
+    assert.equal(pikachu.info?.stats.speed, 90);
+    await say('!info charizard');
+    assert.deepEqual((await bot()).at(-1)!.pokemonCard?.info?.types, ['Fogo', 'Voador']);
+  });
+});
+
+test('batalha: desafio, recusa e desistência', async () => {
+  await withApi(0.5, async (request) => {
+    const { sayA, sayB, bot } = await setUpPair(request, 'Ash', 'Misty');
+    await sayA('!batalhar');
+    assert.match((await bot()).at(-1)!.text, /Diga quem você quer desafiar/);
+    await sayA('!batalhar Misty');
+    assert.match((await bot()).at(-1)!.text, /precisa de um time/);
+    await sayA('!pokemon');
+    await sayA('!capturar');
+    await sayA('!time adicionar 1');
+    await sayA('!batalhar Ninguem');
+    assert.match((await bot()).at(-1)!.text, /Não encontrei esse membro/);
+    await sayA('!batalhar Ash');
+    assert.match((await bot()).at(-1)!.text, /desafiar a si mesmo/);
+    await sayA('!batalhar Misty');
+    assert.match((await bot()).at(-1)!.text, /Misty\*\* ainda não montou um time/);
+    await sayB('!pokemon');
+    await sayB('!capturar');
+    await sayB('!time adicionar 1');
+
+    await sayA('!aceitar');
+    assert.match((await bot()).at(-1)!.text, /Ninguém desafiou você/);
+
+    // desafio recusado: o cartão do desafio fica marcado e não dá para aceitar depois
+    await sayA('!batalhar misty');
+    const desafio = (await bot()).at(-1)!;
+    assert.equal(desafio.pokemonCard?.kind, 'challenge');
+    assert.equal(desafio.pokemonCard?.status, 'pending');
+    assert.equal(desafio.pokemonCard?.battle?.opponentName, 'Misty');
+    assert.equal(desafio.pokemonCard?.battle?.teamA.length, 1);
+    await sayB('!recusar');
+    const todas = await bot();
+    assert.match(todas.at(-1)!.text, /Misty\*\* recusou o desafio de \*\*Ash/);
+    assert.equal(todas.find((message) => message.id === desafio.id)?.pokemonCard?.status, 'declined');
+    await sayB('!aceitar');
+    assert.match((await bot()).at(-1)!.text, /Ninguém desafiou você/);
+
+    // quem desafiou pode desistir
+    await sayA('!batalhar Misty');
+    await sayA('!recusar');
+    assert.match((await bot()).at(-1)!.text, /cancelou o seu desafio/);
+    await sayB('!aceitar');
+    assert.match((await bot()).at(-1)!.text, /Ninguém desafiou você/);
+  });
+});
+
+test('batalha aceita: resultado, Pokébolas do vencedor e placar', async () => {
+  await withApi(0.5, async (request) => {
+    const { sayA, sayB, bot, names } = await setUpPair(request, 'Ash', 'Misty');
+    await sayA('!pokemon');
+    await sayA('!capturar');
+    await sayA('!time adicionar 1');
+    await sayB('!pokemon');
+    await sayB('!capturar');
+    await sayB('!time adicionar 1');
+    // desafio aceito: sai o resultado, o vencedor ganha 3 Pokébolas e o placar é contado
+    await sayA('!batalhar Misty');
+    const aceito = (await bot()).at(-1)!;
+    await sayB('!aceitar');
+    const todas = await bot();
+    const resultado = todas.at(-1)!.pokemonCard!;
+    assert.equal(resultado.kind, 'battle');
+    assert.equal(resultado.battle?.reward, 3);
+    assert.ok((resultado.battle?.lines?.length ?? 0) >= 1);
+    assert.ok(['Ash', 'Misty'].includes(resultado.battle!.winnerName!));
+    assert.equal(todas.find((message) => message.id === aceito.id)?.pokemonCard?.status, 'accepted');
+    assert.match(todas.at(-1)!.text, /venceu .* na batalha! Ganhou \*\*3\*\* Pokébolas!.*1 vitória e 0 derrotas/);
+    const vencedor = resultado.battle!.winnerName!;
+    const perdedor = vencedor === 'Ash' ? 'Misty' : 'Ash';
+    await names[vencedor]!('!bolas');
+    assert.match((await bot()).at(-1)!.text, /\*\*12\*\* Pokébolas/);
+    await names[perdedor]!('!bolas');
+    assert.match((await bot()).at(-1)!.text, /\*\*9\*\* Pokébolas/);
+    // o desafio foi consumido
+    await sayB('!aceitar');
+    assert.match((await bot()).at(-1)!.text, /Ninguém desafiou você/);
+  });
+});
+
+test('as Pokébolas de batalha têm limite por dia', async () => {
+  await withApi(0.5, async (request) => {
+    const { sayA, sayB, bot } = await setUpPair(request, 'Brock', 'Gary');
+    await sayA('!pokemon');
+    await sayA('!capturar');
+    await sayA('!time adicionar 1');
+    await sayB('!pokemon');
+    await sayB('!capturar');
+    await sayB('!time adicionar 1');
+    // com a mesma sorte sempre, quem é desafiado (Gary) ganha todas as batalhas
+    const recompensas: (number | undefined)[] = [];
+    for (let batalha = 1; batalha <= 6; batalha += 1) {
+      await sayA('!batalhar Gary');
+      await sayB('!aceitar');
+      recompensas.push((await bot()).at(-1)!.pokemonCard?.battle?.reward);
+    }
+    assert.deepEqual(recompensas, [3, 3, 3, 3, 3, 0]);
+    assert.match((await bot()).at(-1)!.text, /já foram todas ganhas/);
+  });
+});

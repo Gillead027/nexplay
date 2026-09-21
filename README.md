@@ -127,9 +127,13 @@ Qualquer pessoa de um servidor joga escrevendo comandos num canal de texto:
 - `!pokemon` procura um Pokémon selvagem, que aparece só para quem procurou (espera de 20 s entre uma procura e outra; ele vai embora depois de 5 minutos);
 - `!capturar` (ou o botão do cartão) joga uma Pokébola; quanto mais raro, mais difícil de capturar e mais fácil de fugir; `!fugir` deixa ele ir;
 - `!diario` resgata 10 Pokébolas por dia (a data vira à meia-noite de Brasília); quem começa tem 10; `!bolas` mostra quantas tem;
-- `!pokedex [página]` lista a coleção e `!time`, `!time adicionar <nº>`, `!time remover <nº>` e `!time limpar` montam um time de até 6.
+- `!pokedex [página]` lista a coleção e `!time`, `!time adicionar <nº>`, `!time remover <nº>` e `!time limpar` montam um time de até 6;
+- `!info [nº ou nome]` mostra a ficha de um Pokémon com tipos e atributos base (sem argumento, o último capturado; um número é da sua coleção; um nome, como `!info pikachu`, é de qualquer espécie);
+- `!batalhar <nome>` desafia outra pessoa do servidor (os dois precisam ter time) e ela responde com `!aceitar` ou `!recusar` (ou os botões do cartão); o desafio vale 2 minutos, quem desafiou pode desistir com `!recusar`. Aceito, os dois times lutam sozinhos e o resultado sai na hora. Quem vence ganha 3 Pokébolas, nas 5 primeiras vitórias do dia.
 
-As raridades são comum, incomum, raro e lendário (1,5% dos encontros); há também a chance de 1 em 512 de vir brilhante. A lista das 1025 espécies está em `apps/api/src/pokemonData.ts` (gerada da PokeAPI) e as imagens são baixadas da PokeAPI na primeira vez que alguém as vê, guardadas em `pokemon-sprites/` ao lado do banco. Pokémon é marca de Nintendo, Creatures e Game Freak; o jogo é para uso entre amigos.
+As raridades são comum, incomum, raro e lendário (1,5% dos encontros); há também a chance de 1 em 512 de vir brilhante. A lista das 1025 espécies está em `apps/api/src/pokemonData.ts` e os tipos e atributos base em `apps/api/src/pokemonStats.ts` (ambos gerados da PokeAPI); as imagens são baixadas da PokeAPI na primeira vez que alguém as vê, guardadas em `pokemon-sprites/` ao lado do banco.
+
+Na batalha não há níveis nem golpes escolhidos: cada Pokémon luta com os atributos base da espécie, com o melhor dos tipos dele contra os do adversário (tabela de tipos clássica, ataque físico ou especial conforme o maior dos dois, bônus de tipo próprio, sorteio de dano e chance de golpe crítico). Os times lutam na ordem, um contra um, e quem vence um duelo segue com a vida que sobrou. As regras estão em `apps/api/src/pokemonBattle.ts`. Pokémon é marca de Nintendo, Creatures e Game Freak; o jogo é para uso entre amigos.
 
 ## Deploy na VPS
 
