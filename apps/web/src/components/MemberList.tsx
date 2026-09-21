@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { MemberSummary } from '@nexplay/shared';
 import { buildMemberSections } from '../memberListState';
 import { useServerMemberList } from '../useServerMemberList';
+import { MemberSkeleton } from './Skeleton';
 import { Avatar } from './Workspace';
 
 function MemberRow({
@@ -64,7 +65,7 @@ export function MemberList({
         <small>{members.length}</small>
       </div>
       <div className="member-list-scroll">
-        {empty && loading && <p className="member-list-note">Carregando membros…</p>}
+        {empty && loading && <MemberSkeleton />}
         {empty && !loading && failed && <p className="member-list-note" role="alert">Não foi possível carregar os membros.</p>}
         {sections.map((section) => (
           <div className="member-group" key={section.key} data-kind={section.kind}>

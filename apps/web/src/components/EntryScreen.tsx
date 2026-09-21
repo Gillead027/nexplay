@@ -1,6 +1,8 @@
 import { type FormEvent, useState } from 'react';
 import { ACCENT_COLORS, type AccentColor, type UserSession } from '@nexplay/shared';
 import { api } from '../api';
+import { DESKTOP_DOWNLOAD_URL } from '../appLinks';
+import { peekPendingInvite } from '../pendingInvite';
 
 interface EntryScreenProps {
   onAuthenticated: (session: UserSession) => void | Promise<void>;
@@ -16,6 +18,7 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
   const [password, setPassword] = useState('');
   const [inviteToken, setInviteToken] = useState('');
   const [accentColor, setAccentColor] = useState<AccentColor>(ACCENT_COLORS[0]);
+  const pendingInvite = peekPendingInvite() !== null;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -44,6 +47,11 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
   return (
     <main className="entry-screen">
       <section className="entry-window" aria-labelledby="entry-title">
+        {pendingInvite && (
+          <p className="entry-invite-banner" role="status">
+            Você recebeu um convite para um servidor. Entre na sua conta, ou crie uma com o código de cadastro, para aceitar.
+          </p>
+        )}
         <header className="entry-heading">
           <span className="entry-mark" aria-hidden="true">G</span>
           <div>
@@ -90,7 +98,7 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
 
           {mode === 'register' && (
             <>
-              <label htmlFor="inviteToken">Código de convite</label>
+              <label htmlFor="inviteToken">Código de cadastro</label>
               <input
                 id="inviteToken"
                 type="password"
@@ -98,7 +106,7 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
                 required
                 value={inviteToken}
                 onChange={(event) => setInviteToken(event.target.value)}
-                placeholder="Código do convite do servidor"
+                placeholder="Código para criar a conta"
               />
 
               <label htmlFor="accent-color-picker">Cor do perfil</label>
@@ -133,6 +141,11 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
             )}
           </button>
         </form>
+        {!window.desktop && (
+          <a className="entry-download" href={DESKTOP_DOWNLOAD_URL} target="_blank" rel="noopener noreferrer">
+            Baixar o app para Windows
+          </a>
+        )}
       </section>
     </main>
   );

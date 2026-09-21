@@ -1,0 +1,110 @@
+[
+  {
+    "name": "@bufbuild/protobuf",
+    "version": "1.10.1",
+    "license": "(Apache-2.0 AND BSD-3-Clause)",
+    "url": "https://github.com/bufbuild/protobuf-es"
+  },
+  {
+    "name": "@livekit/krisp-noise-filter",
+    "version": "0.4.4",
+    "license": "SEE LICENSE IN https://livekit.io/legal/terms-of-service",
+    "url": ""
+  },
+  {
+    "name": "@livekit/mutex",
+    "version": "1.1.1",
+    "license": "Apache-2.0",
+    "url": "git@github.com:livekit/ts-mutex"
+  },
+  {
+    "name": "@livekit/protocol",
+    "version": "1.50.4",
+    "license": "Apache-2.0",
+    "url": "https://github.com/livekit/protocol"
+  },
+  {
+    "name": "events",
+    "version": "3.3.0",
+    "license": "MIT",
+    "url": "https://github.com/Gozala/events"
+  },
+  {
+    "name": "jose",
+    "version": "6.2.12",
+    "license": "MIT",
+    "url": "panva/jose"
+  },
+  {
+    "name": "livekit-client",
+    "version": "2.22.2",
+    "license": "Apache-2.0",
+    "url": "git@github.com:livekit/client-sdk-js"
+  },
+  {
+    "name": "loglevel",
+    "version": "1.9.2",
+    "license": "MIT",
+    "url": "https://github.com/pimterry/loglevel"
+  },
+  {
+    "name": "machina",
+    "version": "7.0.1",
+    "license": "MIT",
+    "url": "https://github.com/ifandelse/machina.js"
+  },
+  {
+    "name": "react",
+    "version": "19.2.8",
+    "license": "MIT",
+    "url": "https://github.com/react/react"
+  },
+  {
+    "name": "react-dom",
+    "version": "19.2.8",
+    "license": "MIT",
+    "url": "https://github.com/react/react"
+  },
+  {
+    "name": "rxjs",
+    "version": "7.8.2",
+    "license": "Apache-2.0",
+    "url": "https://github.com/reactivex/rxjs"
+  },
+  {
+    "name": "scheduler",
+    "version": "0.27.0",
+    "license": "MIT",
+    "url": "https://github.com/facebook/react"
+  },
+  {
+    "name": "sdp",
+    "version": "3.2.2",
+    "license": "MIT",
+    "url": "https://github.com/fippo/sdp"
+  },
+  {
+    "name": "sdp-transform",
+    "version": "2.15.0",
+    "license": "MIT",
+    "url": "clux/sdp-transform"
+  },
+  {
+    "name": "tslib",
+    "version": "2.8.1",
+    "license": "0BSD",
+    "url": "https://github.com/Microsoft/tslib"
+  },
+  {
+    "name": "typed-emitter",
+    "version": "2.1.0",
+    "license": "MIT",
+    "url": "github:andywer/typed-emitter"
+  },
+  {
+    "name": "webrtc-adapter",
+    "version": "9.0.6",
+    "license": "BSD-3-Clause",
+    "url": "https://github.com/webrtchacks/adapter"
+  }
+]

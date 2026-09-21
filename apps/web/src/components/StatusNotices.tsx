@@ -11,6 +11,8 @@ export function StatusNotices({
   onDismissError,
   notice,
   onDismissNotice,
+  inviteMessage,
+  onDismissInvite,
 }: {
   connectivity: ConnectivityState;
   onRetryConnection: () => void;
@@ -19,12 +21,14 @@ export function StatusNotices({
   onDismissError: () => void;
   notice: string;
   onDismissNotice: () => void;
+  inviteMessage: { text: string; failed: boolean } | null;
+  onDismissInvite: () => void;
 }) {
   const connectionText = connectivityMessage(connectivity);
   const target = errorAction === 'camera' ? 'a câmera' : 'o microfone';
   const canOpenSystemSettings = Boolean(window.desktop?.openMediaSettings);
 
-  if (!connectionText && !error && !notice) return null;
+  if (!connectionText && !error && !notice && !inviteMessage) return null;
   return (
     <div className="floating-notices">
       {connectionText && (
@@ -49,6 +53,12 @@ export function StatusNotices({
             </button>
           )}
           <button type="button" onClick={onDismissError}>Fechar</button>
+        </div>
+      )}
+      {inviteMessage && (
+        <div className={`floating-notice ${inviteMessage.failed ? 'error' : 'info'}`} role={inviteMessage.failed ? 'alert' : 'status'}>
+          <span>{inviteMessage.text}</span>
+          <button type="button" onClick={onDismissInvite}>Fechar</button>
         </div>
       )}
       {notice && (

@@ -18,6 +18,7 @@ import {
 } from '@nexplay/shared';
 import { api } from '../api';
 import { copyText } from '../clipboard';
+import { inviteUrl } from '../pendingInvite';
 import { fileToResizedDataUrl } from '../imageResize';
 import { onRealtimeEvent } from '../realtime';
 import { CloseIcon, CopyIcon, ImageIcon, PlusIcon, SearchIcon, SettingsIcon, TrashIcon, UserIcon } from './Icons';
@@ -387,6 +388,7 @@ export function InvitesPane({ serverId, canManageServer }: { serverId: string; c
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   useEffect(() => {
     if (!canManageServer) {
@@ -410,6 +412,17 @@ export function InvitesPane({ serverId, canManageServer }: { serverId: string; c
       setInvite(next);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível gerar um novo código.');
+    }
+  }
+
+  async function copyLink() {
+    if (!invite) return;
+    setError('');
+    if (await copyText(inviteUrl(window.location.origin, invite.code))) {
+      setLinkCopied(true);
+      window.setTimeout(() => setLinkCopied(false), 2_000);
+    } else {
+      setError('Não foi possível copiar o link. Copie o código e mande junto com o endereço do site.');
     }
   }
 
@@ -437,7 +450,7 @@ export function InvitesPane({ serverId, canManageServer }: { serverId: string; c
   return (
     <div className="invites-page">
       <div className="server-page-title">
-        <div><h1>Convites</h1><p>Compartilhe este código para que outras pessoas entrem no servidor.</p></div>
+        <div><h1>Convites</h1><p>Compartilhe o link (ou o código) para que outras pessoas entrem no servidor.</p></div>
       </div>
       {error && <p className="form-error" role="alert">{error}</p>}
       {loading ? (
@@ -449,6 +462,9 @@ export function InvitesPane({ serverId, canManageServer }: { serverId: string; c
             <code>{invite.code}</code>
             <button type="button" className="secondary-pill" onClick={copyCode}>
               <CopyIcon size={14} /> {copied ? 'Copiado!' : 'Copiar'}
+            </button>
+            <button type="button" className="secondary-pill" onClick={copyLink}>
+              <CopyIcon size={14} /> {linkCopied ? 'Copiado!' : 'Copiar link'}
             </button>
           </div>
           <p>Usado {invite.uses} {invite.uses === 1 ? 'vez' : 'vezes'} — sem limite de usos nem expiração por enquanto.</p>

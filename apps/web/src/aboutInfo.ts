@@ -14,6 +14,20 @@ export function parseEngineVersion(userAgent: string): string | null {
   return /\bChrome\/(\d+)/.exec(userAgent)?.[1] ?? null;
 }
 
+// O que a verificação de atualização do app desktop respondeu.
+export type UpdateCheckOutcome =
+  | { status: 'unavailable'; message: string }
+  | { status: 'up-to-date'; version: string }
+  | { status: 'available'; version: string }
+  | { status: 'error'; message: string };
+
+export function describeUpdate(outcome: UpdateCheckOutcome): string {
+  if (outcome.status === 'up-to-date') return `Você já está na versão mais recente (${outcome.version}).`;
+  if (outcome.status === 'available') return `A versão ${outcome.version} está sendo baixada. Quando terminar, o app pergunta se você quer reiniciar.`;
+  if (outcome.status === 'unavailable') return outcome.message;
+  return `Não foi possível verificar: ${outcome.message}`;
+}
+
 export function describeApp(desktop: boolean, desktopVersion: string | null): string {
   if (!desktop) return 'Navegador (sem o aplicativo instalado)';
   return desktopVersion ? `Aplicativo para Windows ${desktopVersion}` : 'Aplicativo para Windows (versão não identificada)';

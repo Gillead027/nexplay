@@ -1,6 +1,8 @@
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { CHAT_MESSAGE_MAX_LENGTH, type DmChannel, type DmMessage, type UserSession } from '@nexplay/shared';
-import { api } from '../api';
+import { api, NetworkError } from '../api';
+import { FailedMessages } from './FailedMessages';
+import { MessageSkeleton } from './Skeleton';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { MarkdownText } from './Markdown';
 import { Avatar } from './Workspace';
@@ -14,6 +16,12 @@ function applyIncomingMessage(current: DmMessage[], incoming: DmMessage): DmMess
   const index = current.findIndex(({ id }) => id === incoming.id);
   const next = index < 0 ? [...current, incoming] : current.map((message, position) => (position === index ? incoming : message));
   return next.sort((left, right) => left.sentAt - right.sentAt);
+}
+
+interface FailedDmSend {
+  id: string;
+  dmChannelId: string;
+  text: string;
 }
 
 function DmMessageEditForm({
@@ -90,6 +98,10 @@ export function DmChannelView({
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
+  // Mensagens que não saíram por falta de conexão (ficam até serem reenviadas ou descartadas).
+  const [failedSends, setFailedSends] = useState<FailedDmSend[]>([]);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const failedSequence = useRef(0);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const copyFeedback = useCopyFeedback();
   const endRef = useRef<HTMLDivElement>(null);
@@ -146,15 +158,41 @@ export function DmChannelView({
     setSending(true);
     setError('');
     try {
-      const { message } = await api.sendDmMessage(channel.id, text);
-      setMessages((current) => applyIncomingMessage(current, message));
+      await deliverDm(text);
       setDraft('');
       inputRef.current?.focus();
-      window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }));
+    } catch (requestError) {
+      if (requestError instanceof NetworkError) {
+        // Sem conexão: a mensagem sai do campo e fica no fim da conversa como "não enviada".
+        failedSequence.current += 1;
+        setFailedSends((current) => [...current, { id: `falha-${failedSequence.current}`, dmChannelId: channel.id, text }]);
+        setDraft('');
+        window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }));
+      } else {
+        setError(requestError instanceof Error ? requestError.message : 'Não foi possível enviar a mensagem.');
+      }
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function deliverDm(text: string) {
+    const { message } = await api.sendDmMessage(channel.id, text);
+    setMessages((current) => applyIncomingMessage(current, message));
+    window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }));
+  }
+
+  async function retryFailedSend(item: FailedDmSend) {
+    if (retryingId) return;
+    setRetryingId(item.id);
+    setError('');
+    try {
+      await deliverDm(item.text);
+      setFailedSends((current) => current.filter(({ id }) => id !== item.id));
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'Não foi possível enviar a mensagem.');
     } finally {
-      setSending(false);
+      setRetryingId(null);
     }
   }
 
@@ -193,7 +231,7 @@ export function DmChannelView({
       {error && <div className="error-banner" role="alert"><span>{error}</span></div>}
       <div className="messages text-channel-messages" role="log" aria-live="polite" aria-busy={loading}>
         {loading ? (
-          <div className="empty-chat"><strong>Carregando mensagens…</strong></div>
+          <MessageSkeleton />
         ) : messages.length === 0 ? (
           <div className="text-channel-welcome">
             <span aria-hidden="true">@</span>
@@ -256,6 +294,12 @@ export function DmChannelView({
             );
           })
         )}
+        <FailedMessages
+          items={failedSends.filter(({ dmChannelId }) => dmChannelId === channel.id)}
+          retryingId={retryingId}
+          onRetry={(item) => void retryFailedSend(item)}
+          onDiscard={(item) => setFailedSends((current) => current.filter(({ id }) => id !== item.id))}
+        />
         <div ref={endRef} />
       </div>
       {isBlockedByMe && (

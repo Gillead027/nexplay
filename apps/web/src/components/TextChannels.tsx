@@ -17,7 +17,9 @@ import {
   type UserSession,
   type VoiceChannel,
 } from '@nexplay/shared';
-import { api } from '../api';
+import { api, NetworkError } from '../api';
+import { FailedMessages } from './FailedMessages';
+import { MessageSkeleton } from './Skeleton';
 import { routeTextChannelInput } from '../musicCommandRouting';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { MarkdownText } from './Markdown';
@@ -626,6 +628,19 @@ function MessageSearchPanel({
   );
 }
 
+// O que precisa ser guardado pra mandar de novo uma mensagem que não saiu.
+interface OutgoingText {
+  text: string;
+  replyToId: string | undefined;
+  attachmentIds: string[];
+  postAsSystem: boolean;
+}
+
+interface FailedTextSend extends OutgoingText {
+  id: string;
+  channelId: string;
+}
+
 export function TextChannelView({
   channel,
   session,
@@ -647,6 +662,10 @@ export function TextChannelView({
   const [draft, setDraft] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  // Mensagens que não saíram por falta de conexão (ficam até serem reenviadas ou descartadas).
+  const [failedSends, setFailedSends] = useState<FailedTextSend[]>([]);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
+  const failedSequence = useRef(0);
   const [postAsSystem, setPostAsSystem] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState<MusicCommandResponse | null>(null);
@@ -837,6 +856,34 @@ export function TextChannelView({
     if (!loading) endRef.current?.scrollIntoView({ block: 'end' });
   }, [channel.id, loading]);
 
+  // Entrega uma mensagem (ou comando de música) e aplica o resultado na tela. Serve tanto
+  // ao envio normal quanto ao "Tentar de novo" de uma mensagem que não saiu.
+  async function deliverMessage(send: OutgoingText) {
+    const result = await routeTextChannelInput({
+      text: send.text,
+      voiceChannelId,
+      textChannelId: channel.id,
+      sendMusicCommand: (roomId, commandText, textChannelId) =>
+        api.sendMusicCommand(channel.serverId, roomId, commandText, textChannelId),
+      sendTextMessage: async (messageText) =>
+        (await api.sendTextMessage(channel.serverId, channel.id, messageText, send.replyToId, send.attachmentIds, send.postAsSystem)).message,
+    });
+    if (result.kind === 'text-message') {
+      const { message } = result;
+      setMessages((current) => applyIncomingMessage(current, message));
+      window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }));
+    } else if (result.response.textMessage) {
+      const botMessage = result.response.textMessage;
+      setMessages((current) => applyIncomingMessage(current, botMessage));
+      window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }));
+    } else if (result.response.removeTextMessage) {
+      setMessages((current) => current.filter(({ senderType }) => senderType !== 'BOT'));
+      setFeedback(result.response);
+    } else {
+      setFeedback(result.response);
+    }
+  }
+
   async function submitMessage(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = draft.trim();
@@ -844,39 +891,46 @@ export function TextChannelView({
     setSending(true);
     setError('');
     setFeedback(null);
+    const send: OutgoingText = {
+      text,
+      replyToId: replyingTo?.id,
+      attachmentIds: pendingAttachments.map(({ id }) => id),
+      postAsSystem,
+    };
     try {
-      const attachmentIds = pendingAttachments.map(({ id }) => id);
-      const result = await routeTextChannelInput({
-        text,
-        voiceChannelId,
-        textChannelId: channel.id,
-        sendMusicCommand: (roomId, commandText, textChannelId) =>
-          api.sendMusicCommand(channel.serverId, roomId, commandText, textChannelId),
-        sendTextMessage: async (messageText) =>
-          (await api.sendTextMessage(channel.serverId, channel.id, messageText, replyingTo?.id, attachmentIds, postAsSystem)).message,
-      });
+      await deliverMessage(send);
       setReplyingTo(null);
       setPendingAttachments([]);
-      if (result.kind === 'text-message') {
-        const { message } = result;
-        setMessages((current) => applyIncomingMessage(current, message));
-        window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }));
-      } else if (result.response.textMessage) {
-        const botMessage = result.response.textMessage;
-        setMessages((current) => applyIncomingMessage(current, botMessage));
-        window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }));
-      } else if (result.response.removeTextMessage) {
-        setMessages((current) => current.filter(({ senderType }) => senderType !== 'BOT'));
-        setFeedback(result.response);
-      } else {
-        setFeedback(result.response);
-      }
       setDraft('');
       inputRef.current?.focus();
     } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : 'Não foi possível enviar a mensagem.');
+      if (requestError instanceof NetworkError) {
+        // Sem conexão: a mensagem sai do campo e fica no fim da conversa como "não enviada".
+        failedSequence.current += 1;
+        setFailedSends((current) => [...current, { ...send, id: `falha-${failedSequence.current}`, channelId: channel.id }]);
+        setReplyingTo(null);
+        setPendingAttachments([]);
+        setDraft('');
+        window.requestAnimationFrame(() => endRef.current?.scrollIntoView({ block: 'end', behavior: 'smooth' }));
+      } else {
+        setError(requestError instanceof Error ? requestError.message : 'Não foi possível enviar a mensagem.');
+      }
     } finally {
       setSending(false);
+    }
+  }
+
+  async function retryFailedSend(item: FailedTextSend) {
+    if (retryingId) return;
+    setRetryingId(item.id);
+    setError('');
+    try {
+      await deliverMessage(item);
+      setFailedSends((current) => current.filter(({ id }) => id !== item.id));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível enviar a mensagem.');
+    } finally {
+      setRetryingId(null);
     }
   }
 
@@ -930,7 +984,7 @@ export function TextChannelView({
         aria-relevant="additions text"
       >
         {loading ? (
-          <div className="empty-chat"><strong>Carregando mensagens…</strong></div>
+          <MessageSkeleton />
         ) : messages.length === 0 ? (
           <div className="text-channel-welcome">
             <span aria-hidden="true">#</span>
@@ -980,6 +1034,12 @@ export function TextChannelView({
             />
           );
         })}
+        <FailedMessages
+          items={failedSends.filter(({ channelId }) => channelId === channel.id)}
+          retryingId={retryingId}
+          onRetry={(item) => void retryFailedSend(item)}
+          onDiscard={(item) => setFailedSends((current) => current.filter(({ id }) => id !== item.id))}
+        />
         <div ref={endRef} />
       </div>
       {replyingTo && (

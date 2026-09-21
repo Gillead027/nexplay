@@ -47,13 +47,16 @@ function reportIfSessionRejected(path: string, status: number): void {
 
 // fetch só rejeita (TypeError) quando não chegou ao servidor: sem internet, servidor fora do ar.
 // A mensagem original do navegador é em inglês e não diz o que fazer.
+// Erro de quem não chegou ao servidor: as telas de mensagem usam o tipo pra oferecer "Tentar de novo".
+export class NetworkError extends Error {}
+
 export const NETWORK_ERROR_MESSAGE = 'Sem conexão com o servidor. Verifique sua internet e tente de novo.';
 
 async function networkFetch(input: string, init?: RequestInit): Promise<Response> {
   try {
     return await fetch(input, init);
   } catch (error) {
-    if (error instanceof TypeError) throw new Error(NETWORK_ERROR_MESSAGE);
+    if (error instanceof TypeError) throw new NetworkError(NETWORK_ERROR_MESSAGE);
     throw error;
   }
 }

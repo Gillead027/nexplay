@@ -93,9 +93,11 @@ import { RemoteAudioSink } from './RemoteAudioSink';
 import { ScreenStage } from './ScreenStage';
 import { ForwardMessageModal, type ForwardSource } from './ForwardMessage';
 import { AboutPane } from './AboutPane';
+import type { UpdateCheckOutcome } from '../aboutInfo';
 import { AdminOverviewPane } from './AdminOverview';
 import { StatusNotices } from './StatusNotices';
 import { useConnectivity } from '../useConnectivity';
+import { takePendingInvite } from '../pendingInvite';
 import { AddServerModal, useActiveServerMember, useServersState } from './Servers';
 import { ServerSettings } from './ServerSettings';
 import { SoundboardPanel, SoundboardToast } from './Soundboard';
@@ -140,6 +142,9 @@ declare global {
       onFullscreenChanged: (listener: (enabled: boolean) => void) => (() => void);
       getMediaAccessStatus: (mediaType: 'camera' | 'microphone') => Promise<'not-determined' | 'granted' | 'denied' | 'restricted' | 'unknown'>;
       openMediaSettings: (mediaType: 'camera' | 'microphone') => Promise<boolean>;
+      // Novos no desktop 0.2.12: um app mais antigo não tem, e a tela Sobre esconde os botões.
+      checkForUpdates?: () => Promise<UpdateCheckOutcome>;
+      openLogs?: () => Promise<boolean>;
       onActivityChanged?: (listener: (activity: Activity | null) => void) => (() => void);
       getCurrentActivity?: () => Promise<Activity | null>;
       windowAction?: (action: 'minimize' | 'toggle-maximize' | 'close') => void;
@@ -1673,6 +1678,7 @@ function SettingsModal({
 export function Workspace({ session, config, onSignOut, onProfileUpdated }: WorkspaceProps) {
   const voice = useVoiceRoom();
   const connectivity = useConnectivity();
+  const [inviteMessage, setInviteMessage] = useState<{ text: string; failed: boolean } | null>(null);
   const [rooms, setRooms] = useState<RoomSummary[]>([]);
   const [livekitAvailable, setLivekitAvailable] = useState(true);
   const [joiningId, setJoiningId] = useState<string | null>(null);
@@ -1874,6 +1880,21 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     setActiveServerId(serversState.servers[0]?.id ?? null);
   }, [serversState.servers, activeServerId]);
   const activeServer = serversState.servers.find((server) => server.id === activeServerId) ?? null;
+
+  // Chegou por um link de convite: entra no servidor e abre ele.
+  useEffect(() => {
+    const code = takePendingInvite();
+    if (!code) return;
+    void api.redeemInvite(code).then(({ server }) => {
+      serversState.refresh();
+      setActiveServerId(server.id);
+      setView('server');
+      setInviteMessage({ text: `Você entrou em ${server.name}.`, failed: false });
+    }).catch((requestError) => {
+      setInviteMessage({ text: requestError instanceof Error ? requestError.message : 'Não foi possível usar o convite.', failed: true });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // Conta nova não entra em servidor nenhum sozinha: sem servidor, a tela mostra como criar um ou entrar com convite.
   const noServers = serversState.loaded && serversState.servers.length === 0;
   const member = useActiveServerMember(activeServerId, session);
@@ -2418,6 +2439,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         onDismissError={voice.clearError}
         notice={voice.notice}
         onDismissNotice={voice.clearNotice}
+        inviteMessage={inviteMessage}
+        onDismissInvite={() => setInviteMessage(null)}
       />
       {friendActionError && (
         <div className="friend-action-toast" role="alert">

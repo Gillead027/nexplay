@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { describeApp, describeBuild, parseDesktopVersion, parseEngineVersion, versionSummary } from './aboutInfo';
+import { describeApp, describeBuild, describeUpdate, parseDesktopVersion, parseEngineVersion, versionSummary } from './aboutInfo';
 
 const ELECTRON_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) NexPlay/0.2.11 Chrome/152.0.7977.76 Electron/44.2.0 Safari/537.36';
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36';
@@ -46,4 +46,11 @@ test('o resumo copiável junta app, web e Chromium', () => {
     versionSummary({ desktop: false, desktopVersion: null, build: { commit: 'x', builtAt: null }, engineVersion: null }),
     'NexPlay — Navegador (sem o aplicativo instalado) · web x',
   );
+});
+
+test('descreve cada resposta da verificação de atualização', () => {
+  assert.equal(describeUpdate({ status: 'up-to-date', version: '0.2.12' }), 'Você já está na versão mais recente (0.2.12).');
+  assert.match(describeUpdate({ status: 'available', version: '0.2.13' }), /A versão 0.2.13 está sendo baixada/);
+  assert.equal(describeUpdate({ status: 'unavailable', message: 'A verificação só existe no aplicativo instalado.' }), 'A verificação só existe no aplicativo instalado.');
+  assert.equal(describeUpdate({ status: 'error', message: 'sem rede' }), 'Não foi possível verificar: sem rede');
 });
