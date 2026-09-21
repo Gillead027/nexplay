@@ -14,7 +14,7 @@ import { appendFileSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Activity } from '@nexplay/shared';
 import { checkForUpdatesNow, initAutoUpdater } from './updater.js';
-import { externalWebUrl, isAllowedPermission } from './policy.js';
+import { externalWebUrl, findDeepLink, isAllowedPermission } from './policy.js';
 
 // windows-media-sessions calcula o caminho do próprio backend nativo relativo
 // a onde o módulo foi carregado — no build empacotado, isso caiu certo
@@ -38,11 +38,19 @@ if (app.isPackaged) {
   );
 }
 
-const debugLogPath = path.join(process.env.TEMP || process.env.TMP || '.', 'nexplay-startup-debug.log');
+// O log de inicialização fica na pasta de dados do app, a mesma que "Configurações > Sobre > Abrir
+// pasta de logs" abre (junto com o updater.log). Se a pasta não puder ser resolvida, cai no TEMP.
+function startupLogPath(): string {
+  try {
+    return path.join(app.getPath('userData'), 'startup-debug.log');
+  } catch {
+    return path.join(process.env.TEMP || process.env.TMP || '.', 'nexplay-startup-debug.log');
+  }
+}
 
 function debugLog(line: string): void {
   try {
-    appendFileSync(debugLogPath, `[${new Date().toISOString()}] ${line}\n`, 'utf8');
+    appendFileSync(startupLogPath(), `[${new Date().toISOString()}] ${line}\n`, 'utf8');
   } catch (error) {
     try {
       appendFileSync(
@@ -457,6 +465,19 @@ function installSessionSecurity(appUrl: URL): void {
   });
 }
 
+// Link nexplay://convite/<CÓDIGO> que abriu o app (ou chegou de uma segunda instância). Só é
+// entregue à página quando ela terminou de carregar; até lá fica guardado.
+let pendingDeepLink: string | null = findDeepLink(process.argv);
+let rendererReady = false;
+
+function deliverDeepLink(link: string): void {
+  if (mainWindow && rendererReady) {
+    mainWindow.webContents.send('deep-link', link);
+    return;
+  }
+  pendingDeepLink = link;
+}
+
 function createMainWindow(appUrl: URL): BrowserWindow {
   const window = new BrowserWindow({
     width: 1440,
@@ -535,7 +556,17 @@ function createMainWindow(appUrl: URL): BrowserWindow {
       detail: `${appUrl.origin}\n${errorDescription}`,
     });
   });
-  window.webContents.on('did-finish-load', () => debugLog('did-finish-load'));
+  window.webContents.on('did-start-loading', () => {
+    rendererReady = false;
+  });
+  window.webContents.on('did-finish-load', () => {
+    debugLog('did-finish-load');
+    rendererReady = true;
+    if (pendingDeepLink) {
+      window.webContents.send('deep-link', pendingDeepLink);
+      pendingDeepLink = null;
+    }
+  });
   window.webContents.on('dom-ready', () => debugLog('dom-ready'));
   // DevTools fica desligado no build empacotado, então sem isso nenhum
   // console.error/warn/log da página (nem exceções não tratadas do React)
@@ -570,12 +601,15 @@ function createMainWindow(appUrl: URL): BrowserWindow {
 }
 
 if (hasSingleInstanceLock) {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_event, argv) => {
+    // Clicar num link nexplay://convite/... com o app já aberto abre uma segunda instância, que
+    // entrega o link a esta e fecha.
+    const link = findDeepLink(argv);
+    if (link) deliverDeepLink(link);
     if (!mainWindow) return;
     if (mainWindow.isMinimized()) mainWindow.restore();
     mainWindow.focus();
   });
-
   app.whenReady().then(async () => {
     debugLog('whenReady resolved');
     try {
@@ -584,6 +618,8 @@ if (hasSingleInstanceLock) {
       if (app.isPackaged && appUrl.protocol !== 'https:') {
         throw new Error('O cliente de produção exige uma URL HTTPS.');
       }
+      // Faz o Windows abrir o NexPlay ao clicar em nexplay://... (o instalador também registra o protocolo).
+      if (app.isPackaged) app.setAsDefaultProtocolClient('nexplay');
       Menu.setApplicationMenu(null);
       installPickerIpc();
       debugLog('installPickerIpc done');

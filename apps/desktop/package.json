@@ -1,6 +1,6 @@
 {
   "name": "@nexplay/desktop",
-  "version": "0.2.12",
+  "version": "0.2.13",
   "private": true,
   "description": "Cliente Windows do NexPlay",
   "main": "dist/main.js",
@@ -27,6 +27,14 @@
   },
   "build": {
     "appId": "com.nexplay.desktop",
+    "protocols": [
+      {
+        "name": "NexPlay",
+        "schemes": [
+          "nexplay"
+        ]
+      }
+    ],
     "productName": "NexPlay",
     "asar": true,
     "asarUnpack": [

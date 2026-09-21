@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { externalWebUrl, isAllowedPermission } from './policy.js';
+import { externalWebUrl, findDeepLink, isAllowedPermission, parseDeepLink } from './policy.js';
 
 describe('permissões da janela principal', () => {
   it('libera as que o app usa, incluindo a escrita na área de transferência', () => {
@@ -56,5 +56,30 @@ describe('links que podem abrir no navegador do sistema', () => {
     assert.equal(externalWebUrl('example.com'), null);
     assert.equal(externalWebUrl('https://example.com/' + 'a'.repeat(5_000)), null);
     assert.equal(externalWebUrl(undefined as unknown as string), null);
+  });
+});
+
+describe('links nexplay:// que abrem o app', () => {
+  it('aceita só nexplay://convite/<código> e devolve o link reescrito', () => {
+    assert.equal(parseDeepLink('nexplay://convite/6U8JDJU3'), 'nexplay://convite/6U8JDJU3');
+    assert.equal(parseDeepLink('nexplay://convite/6U8JDJU3/'), 'nexplay://convite/6U8JDJU3');
+    assert.equal(parseDeepLink('  nexplay://convite/ab-cd_12  '), 'nexplay://convite/ab-cd_12');
+  });
+
+  it('recusa qualquer outro formato, esquema ou caminho', () => {
+    for (const bad of [
+      '', 'nexplay://', 'nexplay://convite/', 'nexplay://convite/abc', 'nexplay://convite/6U8JDJU3/extra',
+      'nexplay://canal/6U8JDJU3', 'nexplay://convite/6U8JDJU3?x=1', 'nexplay://convite/../etc',
+      'http://convite/6U8JDJU3', 'https://exemplo.com/convite/6U8JDJU3', 'javascript:alert(1)', 'file:///C:/x',
+      'nexplay://convite/6U8JDJU3 --flag', 'nexplay://convite/' + 'A'.repeat(200),
+    ]) {
+      assert.equal(parseDeepLink(bad), null, bad);
+    }
+  });
+
+  it('acha o link entre os argumentos da linha de comando e ignora o resto', () => {
+    assert.equal(findDeepLink(['C:/Program Files/NexPlay/NexPlay.exe', '--flag', 'nexplay://convite/6U8JDJU3']), 'nexplay://convite/6U8JDJU3');
+    assert.equal(findDeepLink(['NexPlay.exe', '--user-data-dir=C:/x']), null);
+    assert.equal(findDeepLink([]), null);
   });
 });

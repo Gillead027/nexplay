@@ -36,6 +36,12 @@ contextBridge.exposeInMainWorld('desktop', {
   openMediaSettings: (mediaType: 'camera' | 'microphone'): Promise<boolean> =>
     ipcRenderer.invoke('media:open-settings', mediaType),
   checkForUpdates: (): Promise<unknown> => ipcRenderer.invoke('app:check-updates'),
+  // Link nexplay://convite/<CÓDIGO> que o sistema entregou ao app (só links validados pelo processo principal).
+  onDeepLink: (listener: (url: string) => void): (() => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, url: unknown) => listener(String(url));
+    ipcRenderer.on('deep-link', wrapped);
+    return () => ipcRenderer.removeListener('deep-link', wrapped);
+  },
   openLogs: (): Promise<boolean> => ipcRenderer.invoke('app:open-logs'),
   onActivityChanged: (listener: (activity: Activity | null) => void): (() => void) => {
     const wrapped = (_event: Electron.IpcRendererEvent, activity: unknown) => listener(activity as Activity | null);
