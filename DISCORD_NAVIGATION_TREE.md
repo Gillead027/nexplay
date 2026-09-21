@@ -333,13 +333,13 @@ APP
 │   ├── Duplo clique                                                         MISSING (barra de título: a confirmar)
 │   ├── Voltar / avançar, URL por canal, restaurar após F5                   MISSING (F5 volta ao canal padrão)
 │   ├── Convite clicável (https://site/convite/CÓDIGO, copiar link)          DONE
-│   ├── nexplay:// (abrir o app pelo protocolo)                              MISSING
+│   ├── nexplay://convite/<CÓDIGO> (abre o app e entra no servidor)          DONE (desktop 0.2.13; canal e mensagem MISSING)
 │   ├── Copiar link da mensagem                                              MISSING
 │   └── Modo desenvolvedor / Copiar ID de servidor, canal, usuário           MISSING
 │
 ├── ESTADOS DE TELA, CONEXÃO E PERMISSÕES                              [Roteiro 16]
 │   ├── Estados vazios
-│   │   ├── Amigos, conversas, pedidos, bloqueados                           DONE (só texto, sem botão)
+│   │   ├── Amigos, conversas, pedidos, bloqueados                           DONE (botões em amigos e conversas)
 │   │   ├── Canal, DM e chat da call sem mensagens                           DONE
 │   │   ├── Busca, fixadas, emoji sem resultado                              DONE
 │   │   ├── Conta sem servidor (Entrar com convite / Criar servidor)         DONE

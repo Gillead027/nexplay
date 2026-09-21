@@ -2860,6 +2860,8 @@ Cobre os roteiros 38 (Keyboard navigation), 39 (Esc), 40 (Hover, só o que é te
 
 ## 15.10 — DEEP_LINKS_PROTOCOL *(MISSING)*
 
+**ATUALIZAÇÃO (commit `db467bb`, desktop 0.2.13 publicado em https://github.com/Gillead027/nexplay/releases/tag/v0.2.13, ver `DEEP_LINK_INVITE_PROTOCOL`, 19.1)**: o protocolo `nexplay://convite/<CÓDIGO>` também existe agora; canal e mensagem continuam sem link.
+
 **ATUALIZAÇÃO PARCIAL (commit `0cd2bdb`, em produção, ver `INVITE_LINK_OPEN_AND_JOIN`, 18.5)**: o convite clicável em https (`/convite/CÓDIGO`) existe; o protocolo `nexplay://` continua `MISSING`. O texto abaixo é o estado anterior.
 
 **ID**: `DEEP_LINKS_PROTOCOL`
@@ -2912,6 +2914,8 @@ Cobre os roteiros 38 (Keyboard navigation), 39 (Esc), 40 (Hover, só o que é te
 Auditado em 2026-09-21 contra o código e com o app rodando (Playwright, Chromium com dispositivos falsos de mídia; rede cortada com `context.setOffline`; WebSocket derrubado com `routeWebSocket`). Cobre os itens 61 a 67 do pedido original: estados vazios, estados de carregamento, offline, permissão de microfone, de câmera, de captura de tela e troca de dispositivos. As correções deste roteiro saíram no commit `f03e594`, em produção; a tela "sem servidor" saiu no commit `4e9708c`, em produção. 24 verificações de ponta a ponta passaram (offline, permissões, aparelhos, banimentos vazios).
 
 ## 16.1 — EMPTY_STATE_FRIENDS_AND_DMS
+
+**ATUALIZAÇÃO — ENTREGUE (commit `44c7563`, em produção, ver `EMPTY_STATE_ACTIONS`, 19.3)**: conversas e amigos vazios ganharam botão ("Ver amigos" e "Adicionar amigo"). Ilustração não foi feita, de propósito. O texto abaixo é o estado anterior.
 
 **ID**: `EMPTY_STATE_FRIENDS_AND_DMS`
 **NOME**: Estados vazios de amigos, conversas, pedidos e bloqueados
@@ -3256,6 +3260,51 @@ Feito em 2026-09-21. Cada ficha abaixo atualiza o estado de uma ficha anterior (
 2. **O desktop 0.2.12 traz as pontes novas**; quem tem o app instalado recebe a versão pelo atualizador automático e a tela Sobre passa a mostrar os dois botões.
 3. **Decisão de segurança registrada**: o convite de servidor não cria conta (18.5).
 4. **Continua fora**: o protocolo `nexplay://` (só o link https existe), o log de inicialização na pasta aberta, o texto jurídico revisado por quem administra, e ilustrações e botões nos vazios de amigos.
+
+---
+
+# ROTEIRO 19 — PROTOCOLO nexplay://, LOG DE INICIALIZAÇÃO E VAZIOS COM AÇÃO
+
+Feito em 2026-09-21. Fecha as três últimas pendências dos Roteiros 15, 16 e 18. Web no commit `44c7563`, em produção; desktop no commit `db467bb`, desktop 0.2.13 publicado em https://github.com/Gillead027/nexplay/releases/tag/v0.2.13. 11 verificações no app web e 7 no app desktop de verdade (Electron aberto contra o site de produção) passaram.
+
+## 19.1 — DEEP_LINK_INVITE_PROTOCOL
+
+**ID**: `DEEP_LINK_INVITE_PROTOCOL`
+**NOME**: Link `nexplay://convite/<CÓDIGO>` que abre o app desktop e entra no servidor
+**ATUALIZA**: `DEEP_LINKS_PROTOCOL` (15.10), que era `MISSING`. Agora é `PARTIAL`: só o convite tem link; canal e mensagem continuam sem.
+**STATUS**: `DONE` para convite (commit `db467bb`, desktop 0.2.13 publicado em https://github.com/Gillead027/nexplay/releases/tag/v0.2.13)
+**COMO FUNCIONA**: o app registra o protocolo `nexplay://` no Windows (no instalador, pela configuração do `electron-builder`, e a cada abertura do app instalado, com `setAsDefaultProtocolClient`). O sistema entrega o link como argumento da linha de comando. (1) **App fechado**: o link vai no início do processo; o app espera a página terminar de carregar e então entrega o código a ela. (2) **App aberto**: clicar num link abre uma segunda instância, que entrega o link à primeira pelo evento `second-instance`, e fecha; a janela existente vem para a frente. (3) A página guarda o código e: **logada**, entra no servidor na hora (sem recarregar) e mostra "Você entrou em <servidor>."; **sem estar logada**, o código espera e vale depois de entrar ou criar a conta.
+**SEGURANÇA**: qualquer site pode montar um link `nexplay://`, então o processo principal só aceita o formato exato `nexplay://convite/<4 a 64 letras, números, "-" ou "_">`, reescreve o link a partir do código e ignora o resto (`nexplay://canal/...`, caminhos com `..`, parâmetros, texto extra, comprimento acima de 128). A página só recebe links já validados.
+**NO NAVEGADOR**: quando alguém abre o link https do convite sem estar logado, o aviso ganha "Já tem o app instalado? Abrir no aplicativo" (`nexplay://convite/<CÓDIGO>`); no desktop essa opção não aparece.
+**LIMITE**: o primeiro registro do protocolo acontece ao instalar ou abrir a versão 0.2.13; em quem ainda está na 0.2.12 o link `nexplay://` não faz nada até atualizar. Só Windows (o app não tem versão para outros sistemas).
+
+---
+
+## 19.2 — STARTUP_LOG_LOCATION
+
+**ID**: `STARTUP_LOG_LOCATION`
+**NOME**: Onde fica o log de inicialização
+**ATUALIZA**: o limite registrado em `ABOUT_UPDATE_AND_LOGS` (18.3)
+**STATUS**: `DONE` (commit `db467bb`, desktop 0.2.13 publicado em https://github.com/Gillead027/nexplay/releases/tag/v0.2.13)
+**COMPORTAMENTO**: o `startup-debug.log` passou de `%TEMP%\nexplay-startup-debug.log` para a pasta de dados do app, a mesma que "Configurações > Sobre > Abrir pasta de logs" abre, ao lado do `updater.log`. Se a pasta de dados não puder ser resolvida, cai no `%TEMP%` como antes. Confirmado abrindo o app com uma pasta de dados própria: o arquivo aparece lá com a sequência de inicialização.
+
+---
+
+## 19.3 — EMPTY_STATE_ACTIONS
+
+**ID**: `EMPTY_STATE_ACTIONS`
+**NOME**: Botões nos vazios de conversas e de amigos
+**ATUALIZA**: `EMPTY_STATE_FRIENDS_AND_DMS` (16.1), que dizia "sem ilustração nem botão de ação"
+**STATUS**: `DONE` para os botões (commit `44c7563`, em produção). **Ilustração: não foi feita**, por decisão: nada decorativo.
+**COMPORTAMENTO**: sem conversas, "Nenhuma conversa ainda." ganha o botão **"Ver amigos"** (volta à lista de amigos); sem amigos, "Você ainda não tem amigos adicionados." ganha **"Adicionar amigo"**, que abre a aba de adicionar. Pedidos pendentes e bloqueados vazios seguem só com o texto, porque não há ação que faça sentido ali.
+
+---
+
+**Achados do Roteiro 19**:
+
+1. **Convite clicável fechado nos dois formatos**: https e `nexplay://`. O outro tipo de deep link (canal e mensagem) continua `MISSING`.
+2. **O protocolo é uma superfície de entrada de fora do app**, por isso a validação estrita no processo principal, com testes para os formatos aceitos e recusados.
+3. **Nada mais ficou pendente do que foi apontado nos Roteiros 15 a 18**, exceto a ilustração dos vazios (recusada) e a revisão jurídica dos textos por quem administra.
 
 ---
 
