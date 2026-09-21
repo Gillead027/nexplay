@@ -465,6 +465,80 @@ function installSessionSecurity(appUrl: URL): void {
   });
 }
 
+// ---- Tela de abertura ----
+// Aparece assim que o app começa, com a logo animada e o passo atual, e some quando a janela
+// principal está pronta. Fica no mínimo SPLASH_MIN_MS na tela para a animação ser vista mesmo
+// quando o servidor responde rápido.
+const SPLASH_MIN_MS = 1_800;
+let splash: BrowserWindow | null = null;
+let splashShownAt = 0;
+let splashStatus = 'Iniciando';
+
+function applySplashStatus(): void {
+  if (!splash || splash.isDestroyed()) return;
+  splash.webContents
+    .executeJavaScript(`window.__setStatus && window.__setStatus(${JSON.stringify(splashStatus)})`)
+    .catch(() => {});
+}
+
+function setSplashStatus(text: string): void {
+  splashStatus = text;
+  applySplashStatus();
+}
+
+function showSplash(): void {
+  try {
+    const window = new BrowserWindow({
+      width: 380,
+      height: 460,
+      frame: false,
+      resizable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      show: false,
+      title: 'NexPlay',
+      backgroundColor: '#070c1a',
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, devTools: false },
+    });
+    splash = window;
+    window.setMenuBarVisibility(false);
+    window.once('ready-to-show', () => {
+      splashShownAt = Date.now();
+      window.show();
+    });
+    window.webContents.on('did-finish-load', applySplashStatus);
+    window.on('closed', () => {
+      if (splash === window) splash = null;
+    });
+    void window.loadFile(path.join(__dirname, '../src/splash.html'), { query: { v: app.getVersion() } });
+  } catch (error) {
+    // A tela de abertura é só apresentação: se falhar, o app abre do mesmo jeito.
+    debugLog(`splash falhou: ${error instanceof Error ? error.message : String(error)}`);
+    splash = null;
+  }
+}
+
+function splashRemainingMs(): number {
+  if (!splash || splash.isDestroyed() || splashShownAt === 0) return 0;
+  return Math.max(0, SPLASH_MIN_MS - (Date.now() - splashShownAt));
+}
+
+function closeSplash(immediately = false): void {
+  const target = splash;
+  if (!target || target.isDestroyed()) return;
+  splash = null;
+  const close = () => {
+    if (!target.isDestroyed()) target.close();
+  };
+  if (immediately) {
+    close();
+    return;
+  }
+  target.webContents.executeJavaScript("document.body.classList.add('leaving')").catch(() => {});
+  setTimeout(close, 260);
+}
+
 // Link nexplay://convite/<CÓDIGO> que abriu o app (ou chegou de uma segunda instância). Só é
 // entregue à página quando ela terminou de carregar; até lá fica guardado.
 let pendingDeepLink: string | null = findDeepLink(process.argv);
@@ -544,11 +618,16 @@ function createMainWindow(appUrl: URL): BrowserWindow {
   window.on('leave-full-screen', emitFullscreenState);
   window.once('ready-to-show', () => {
     debugLog('ready-to-show fired, calling show()');
-    window.show();
+    setSplashStatus('Abrindo');
+    // Se a página carregou antes da animação cumprir o tempo mínimo, espera o que falta.
+    setTimeout(() => {
+      if (!window.isDestroyed()) window.show();
+    }, splashRemainingMs());
   });
   window.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     debugLog(`did-fail-load errorCode=${errorCode} description=${errorDescription}`);
     if (errorCode === -3) return;
+    closeSplash(true);
     void dialog.showMessageBox(window, {
       type: 'error',
       title: 'NexPlay indisponível',
@@ -581,7 +660,10 @@ function createMainWindow(appUrl: URL): BrowserWindow {
   window.webContents.on('render-process-gone', (_event, details) => debugLog(`render-process-gone: ${JSON.stringify(details)}`));
   window.webContents.on('unresponsive', () => debugLog('webContents unresponsive'));
   window.webContents.on('responsive', () => debugLog('webContents responsive again'));
-  window.on('show', () => debugLog('window show event'));
+  window.on('show', () => {
+    debugLog('window show event');
+    closeSplash();
+  });
   window.on('close', () => debugLog('window close event'));
   window.on('closed', () => debugLog('window closed event'));
   // ready-to-show normalmente dispara no primeiro paint; se por algum motivo
@@ -612,6 +694,7 @@ if (hasSingleInstanceLock) {
   });
   app.whenReady().then(async () => {
     debugLog('whenReady resolved');
+    showSplash();
     try {
       const appUrl = readConfiguredUrl();
       debugLog(`appUrl=${appUrl.toString()} isPackaged=${app.isPackaged}`);
@@ -625,6 +708,7 @@ if (hasSingleInstanceLock) {
       debugLog('installPickerIpc done');
       installSessionSecurity(appUrl);
       debugLog('installSessionSecurity done');
+      setSplashStatus('Conectando ao servidor');
       mainWindow = createMainWindow(appUrl);
       debugLog('createMainWindow done');
       mainWindow.once('closed', () => {
@@ -642,6 +726,10 @@ if (hasSingleInstanceLock) {
       debugLog('initAutoUpdater done');
     } catch (error) {
       debugLog(`whenReady handler threw: ${error instanceof Error ? error.stack || error.message : String(error)}`);
+      // Sem janela principal a tela de abertura ficaria aberta para sempre: avisa e encerra.
+      closeSplash(true);
+      dialog.showErrorBox('NexPlay não conseguiu iniciar', error instanceof Error ? error.message : String(error));
+      app.quit();
     }
   }).catch((error) => {
     debugLog(`whenReady promise rejected: ${error instanceof Error ? error.stack || error.message : String(error)}`);
