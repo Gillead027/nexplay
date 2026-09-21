@@ -282,7 +282,7 @@ async function chooseCaptureSource(sources: DesktopCapturerSource[]): Promise<Ca
       show: false,
       frame: false,
       title: 'Compartilhar tela — NexPlay',
-      backgroundColor: '#111315',
+      backgroundColor: '#090f1f',
       autoHideMenuBar: true,
       webPreferences: {
         preload: path.join(__dirname, 'picker-preload.js'),
@@ -561,7 +561,7 @@ function createMainWindow(appUrl: URL): BrowserWindow {
     show: false,
     frame: false,
     title: 'NexPlay',
-    backgroundColor: '#111315',
+    backgroundColor: '#050917',
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
