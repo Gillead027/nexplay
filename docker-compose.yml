@@ -84,6 +84,7 @@ services:
       - ./infra/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+      - ./logs/caddy:/var/log/caddy
     environment:
       APP_DOMAIN: "${APP_DOMAIN:?Defina APP_DOMAIN no arquivo .env}"
     ports:

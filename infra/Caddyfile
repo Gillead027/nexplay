@@ -1,6 +1,19 @@
 {$APP_DOMAIN} {
   encode zstd gzip
 
+  # Log de acesso em arquivo (só este site, não o labstudio) pra o fail2ban
+  # do host ler e banir no firewall quem fizer flood — mais seguro que rodar
+  # um plugin de rate limit de terceiros dentro do próprio Caddy, que é o
+  # único ponto de entrada de todo o tráfego (web+API+LiveKit).
+  log {
+    output file /var/log/caddy/access.log {
+      roll_size 50MiB
+      roll_keep 5
+      roll_keep_for 168h
+    }
+    format json
+  }
+
   @api path /api/*
   handle @api {
     reverse_proxy api:3000
