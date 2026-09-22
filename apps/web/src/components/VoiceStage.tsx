@@ -13,7 +13,7 @@ import type { LocalParticipant, RemoteParticipant } from 'livekit-client';
 import { ACCENT_COLORS, MUSIC_BOT_IDENTITY, parseParticipantMetadata } from '@nexplay/shared';
 import type { ScreenTrackView } from '../livekit/useVoiceRoom';
 import { attachVideo, WatchStage } from './WatchStage';
-import { EyeIcon, MicOffIcon, ShareIcon, UserPlusIcon } from './Icons';
+import { EyeIcon, HeadphonesOffIcon, MicOffIcon, ShareIcon, UserPlusIcon } from './Icons';
 
 export interface StageEntry {
   identity: string;
@@ -23,6 +23,8 @@ export interface StageEntry {
   // Cor de fundo do quadrado: a cor do perfil da pessoa (ou uma derivada do nome quando não há).
   colorIndex: number;
   muted: boolean;
+  // Fone desligado: a pessoa não está ouvindo a call.
+  deafened: boolean;
   speaking: boolean;
   camera: ScreenTrackView | null;
 }
@@ -49,6 +51,7 @@ function buildEntries(
   cameras: ScreenTrackView[],
   speakingIds: Set<string>,
   liveMuted: Map<string, boolean>,
+  liveDeafened: Map<string, boolean>,
 ): StageEntry[] {
   const entries = participants.map((participant) => {
     const metadata = parseParticipantMetadata(participant.metadata);
@@ -62,6 +65,7 @@ function buildEntries(
       isBot,
       colorIndex: accent >= 0 ? accent : colorFromName(name),
       muted: !isBot && (liveMuted.get(participant.identity) ?? false),
+      deafened: !isBot && (liveDeafened.get(participant.identity) ?? false),
       speaking: speakingIds.has(participant.identity),
       camera: cameras.find((view) => view.participant.identity === participant.identity) ?? null,
     } satisfies StageEntry;
@@ -152,7 +156,8 @@ function Tile({
         </button>
       )}
       <div className="voice-tile-label">
-        {entry.muted && <MicOffIcon className="voice-tile-muted" size={13} />}
+        {entry.muted && <span className="voice-tile-status" title="Microfone desligado"><MicOffIcon className="voice-tile-muted" size={13} /></span>}
+        {entry.deafened && <span className="voice-tile-status" title="Fone desligado: não está ouvindo a call"><HeadphonesOffIcon className="voice-tile-muted voice-tile-deafened" size={13} /></span>}
         <span className="voice-tile-name">{entry.name}</span>
         {entry.isBot && <span className="bot-badge">BOT</span>}
       </div>
@@ -190,6 +195,7 @@ export function VoiceStage({
   onToggleChrome,
   speakingIds,
   liveMuted,
+  liveDeafened,
   channelName,
   renderAvatar,
   onParticipantContextMenu,
@@ -209,6 +215,7 @@ export function VoiceStage({
   onToggleChrome: () => void;
   speakingIds: Set<string>;
   liveMuted: Map<string, boolean>;
+  liveDeafened: Map<string, boolean>;
   channelName: string;
   renderAvatar: (entry: StageEntry) => ReactNode;
   onParticipantContextMenu: (event: ReactMouseEvent<HTMLElement>, participant: { identity: string; name: string }) => void;
@@ -216,7 +223,7 @@ export function VoiceStage({
   // Copia o link de convite do servidor. Só existe para quem pode gerenciar o servidor.
   copyInvite?: (() => Promise<boolean>) | undefined;
 }) {
-  const entries = useMemo(() => buildEntries(participants, cameras, speakingIds, liveMuted), [participants, cameras, speakingIds, liveMuted]);
+  const entries = useMemo(() => buildEntries(participants, cameras, speakingIds, liveMuted, liveDeafened), [participants, cameras, speakingIds, liveMuted, liveDeafened]);
   const heroes = shares.filter((view) => watchingIds.has(view.id));
   const streams: StreamEntry[] = shares
     .filter((view) => !watchingIds.has(view.id))

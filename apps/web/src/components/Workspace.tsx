@@ -97,7 +97,7 @@ import { StatusPicker } from './StatusPicker';
 import { useServerMemberList } from '../useServerMemberList';
 import { buildNameColorMap } from '../roleColors';
 import { copyText } from '../clipboard';
-import { liveMutedByIdentity } from '../micState';
+import { liveDeafenedByIdentity, liveMutedByIdentity } from '../micState';
 import { MemberList } from './MemberList';
 import { watchedStreamIdentities } from '../streamAudio';
 import { DEFAULT_PERSON_VOLUME, loadVolumes, saveVolumes, volumeStorageKey } from '../volumePrefs';
@@ -493,6 +493,7 @@ function ChannelButton({
   onContextMenu,
   onParticipantContextMenu,
   liveMuted,
+  liveDeafened,
   accentByIdentity,
   draggable,
   onDragStart,
@@ -525,6 +526,8 @@ function ChannelButton({
   // Mute ao vivo de cada pessoa, só pro canal em que você está agora. Nos outros
   // canais vale o último estado que o servidor calculou.
   liveMuted?: Map<string, boolean> | undefined;
+  // Fone desligado ao vivo (mesma regra do mute).
+  liveDeafened?: Map<string, boolean> | undefined;
   // Cor do perfil de cada pessoa da sala em que você está (vem do LiveKit); nas outras salas a cor sai do nome.
   accentByIdentity?: Map<string, AccentColor> | undefined;
   draggable?: boolean;
@@ -608,6 +611,7 @@ function ChannelButton({
               {isBot && <span className="bot-badge">BOT</span>}
               {participant.isSharingScreen && <span className="live-badge live-badge-inline">AO VIVO</span>}
               {!isBot && (liveMuted?.get(participant.identity) ?? participant.isMuted) && <MicOffIcon className="channel-user-muted" size={12} />}
+              {!isBot && (liveDeafened?.get(participant.identity) ?? participant.isDeafened ?? false) && <HeadphonesOffIcon className="channel-user-muted" size={12} />}
             </button>
             {canDisconnect && (
               <button
@@ -2275,11 +2279,9 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     }
   }, [voice.connectionState]);
 
-  // O painel do usuário fala da pessoa, não da chamada: fora de uma call ela está
-  // online (o app está aberto e em uso). O estado do LiveKit só aparece ali
-  // enquanto há uma call em andamento; o cabeçalho da sala segue usando
-  // connectionLabel puro, onde "Desconectado" descreve a voz de fato.
-  const userStatusLabel = voice.connectionState === ConnectionState.Disconnected ? PRESENCE_STATUS_LABELS[session.presenceStatus] : connectionLabel;
+  // O painel do usuário fala da pessoa (Online, Ausente...), nunca da chamada: o estado da conexão com a call já aparece no
+  // ícone de sinal ao lado, então "Conectado"/"Conectando" não repete ali embaixo. O cabeçalho da sala segue usando connectionLabel.
+  const userStatusLabel = PRESENCE_STATUS_LABELS[session.presenceStatus];
   // Sinal de conexão com a chamada (verde/amarelo/vermelho), só enquanto há uma chamada.
   const connectionSignal = describeConnectionSignal(voice.connectionState, voice.connectionQuality);
 
@@ -2404,6 +2406,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
 
   const typedParticipants = voice.participants as (LocalParticipant | RemoteParticipant)[];
   const liveMuted = liveMutedByIdentity(typedParticipants, voice.micMuted);
+  const liveDeafened = liveDeafenedByIdentity(typedParticipants, voice.deafened);
   const accentByIdentity = new Map<string, AccentColor>();
   for (const participant of typedParticipants) {
     const metadata = parseParticipantMetadata(participant.metadata);
@@ -2477,6 +2480,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       onToggleChrome={() => setCallChromeHidden((hidden) => !hidden)}
       speakingIds={voice.speakers}
       liveMuted={liveMuted}
+      liveDeafened={liveDeafened}
       channelName={voice.currentChannel?.name ?? 'este canal'}
       renderAvatar={(entry) => <StageAvatar entry={entry} ownIdentity={session.id} ownAvatarUrl={session.avatarUrl} ownAvatarFrame={session.avatarFrame} />}
       onParticipantContextMenu={openParticipantVolumeMenu}
@@ -2784,6 +2788,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                     disconnectingIdentity={disconnectingIdentity}
                     onParticipantContextMenu={openParticipantVolumeMenu}
                     liveMuted={voice.currentChannel?.id === room.id && voice.connected ? liveMuted : undefined}
+                    liveDeafened={voice.currentChannel?.id === room.id && voice.connected ? liveDeafened : undefined}
                     accentByIdentity={accentByIdentity}
                   />
                 ));

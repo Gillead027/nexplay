@@ -57,6 +57,7 @@ import {
   type ForwardedFromMeta,
   type LiveKitTokenResponse,
   parseParticipantMetadata,
+  readSelfDeafened,
   readSelfMuted,
   type HumanParticipantMetadata,
   type MusicCommandResponse,
@@ -1886,6 +1887,7 @@ async function computeRoomSummary(channel: VoiceChannel): Promise<RoomSummary> {
         participantType: metadata?.participantType ?? 'HUMAN',
         isSharingScreen: participant.tracks.some((track) => track.source === TrackSource.SCREEN_SHARE),
         isMuted: readSelfMuted(participant.attributes) ?? microphoneTrack?.muted ?? true,
+        isDeafened: readSelfDeafened(participant.attributes),
       };
     }),
   };

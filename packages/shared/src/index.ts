@@ -452,6 +452,14 @@ function parseActivity(value: unknown): Activity | null {
 // entrada ligam e desligam o track o tempo todo sem a pessoa ter mutado nada.
 export const MIC_MUTED_ATTRIBUTE = 'selfMuted';
 
+// Fone desligado (ensurdecer): quem fez isso não ouve ninguém da call. Publicado à parte do mute do microfone para os
+// outros verem os dois ícones, como no Discord. Apps antigos não publicam: sem atributo vale como "ouvindo".
+export const DEAFENED_ATTRIBUTE = 'selfDeafened';
+
+export function readSelfDeafened(attributes: Record<string, string> | undefined): boolean {
+  return attributes?.[DEAFENED_ATTRIBUTE] === '1';
+}
+
 export function readSelfMuted(attributes: Record<string, string> | undefined): boolean | null {
   const value = attributes?.[MIC_MUTED_ATTRIBUTE];
   if (value === '1') return true;
@@ -689,6 +697,8 @@ export interface RoomParticipantSummary {
   participantType: ParticipantType;
   isSharingScreen: boolean;
   isMuted: boolean;
+  // Está com o fone desligado (não ouve a call). Opcional: servidores mais antigos não mandam.
+  isDeafened?: boolean;
 }
 
 export interface RoomSummary extends VoiceChannel {

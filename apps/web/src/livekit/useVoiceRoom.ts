@@ -23,6 +23,7 @@ import {
 } from 'livekit-client';
 import {
   CHAT_MESSAGE_MAX_LENGTH,
+  DEAFENED_ATTRIBUTE,
   MIC_MUTED_ATTRIBUTE,
   MUSIC_BOT_DISPLAY_NAME,
   MUSIC_BOT_IDENTITY,
@@ -303,7 +304,7 @@ export function useVoiceRoom() {
   useEffect(() => {
     if (connectionState !== ConnectionState.Connected) return;
     void room.localParticipant
-      .setAttributes({ [MIC_MUTED_ATTRIBUTE]: deafened || userMuted ? '1' : '0' })
+      .setAttributes({ [MIC_MUTED_ATTRIBUTE]: deafened || userMuted ? '1' : '0', [DEAFENED_ATTRIBUTE]: deafened ? '1' : '0' })
       .catch(() => {});
   }, [connectionState, deafened, userMuted, room]);
 

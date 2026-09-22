@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { MIC_MUTED_ATTRIBUTE } from '@nexplay/shared';
-import { isMicShownMuted, liveMutedByIdentity } from './micState';
+import { DEAFENED_ATTRIBUTE, MIC_MUTED_ATTRIBUTE } from '@nexplay/shared';
+import { isMicShownMuted, liveMutedByIdentity, liveDeafenedByIdentity } from './micState';
 
 test('ao abrir o app e fora de uma chamada o microfone não aparece mutado', () => {
   assert.equal(isMicShownMuted({ connected: false, deafened: false, userMuted: false }), false);
@@ -47,4 +47,21 @@ test('sem mute publicado, cai no estado do track de microfone', () => {
   assert.equal(muted.get('ligado'), false);
   assert.equal(muted.get('desligado'), true);
   assert.equal(muted.get('invalido'), false);
+});
+
+test('fone desligado: você usa o estado local e os outros o que publicaram; sem atributo vale como ouvindo', () => {
+  const deafened = liveDeafenedByIdentity(
+    [
+      { identity: 'eu', isLocal: true, isMicrophoneEnabled: true },
+      { identity: 'surdo', isLocal: false, isMicrophoneEnabled: false, attributes: { [MIC_MUTED_ATTRIBUTE]: '1', [DEAFENED_ATTRIBUTE]: '1' } },
+      { identity: 'so-mudo', isLocal: false, isMicrophoneEnabled: false, attributes: { [MIC_MUTED_ATTRIBUTE]: '1', [DEAFENED_ATTRIBUTE]: '0' } },
+      { identity: 'app-antigo', isLocal: false, isMicrophoneEnabled: true },
+    ],
+    true,
+  );
+  assert.equal(deafened.get('eu'), true);
+  assert.equal(deafened.get('surdo'), true);
+  assert.equal(deafened.get('so-mudo'), false);
+  assert.equal(deafened.get('app-antigo'), false);
+  assert.equal(liveDeafenedByIdentity([{ identity: 'eu', isLocal: true, isMicrophoneEnabled: true }], false).get('eu'), false);
 });
