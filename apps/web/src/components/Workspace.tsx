@@ -44,7 +44,7 @@ import { NotificationsPane } from './NotificationsPane';
 import { DesktopPane, type DesktopSettingsView } from './DesktopPane';
 import { useNotificationSounds } from '../useNotificationSounds';
 import { describeMediaError } from '../mediaAccess';
-import { getPerfMode, type PerfMode, setPerfMode } from '../perfMode';
+import { getPerfMode, PERF_MODE_HINTS, PERF_MODE_LABELS, PERF_MODES, type PerfMode, setPerfMode } from '../perfMode';
 import { getDensity, type Density, setDensity } from '../density';
 import { getTheme, type ThemeMode, setTheme } from '../theme';
 import {
@@ -1443,18 +1443,15 @@ function SettingsModal({
                   ))}
                 </div>
 
-                <span className="settings-label">Modo de desempenho</span>
-                <div className="perf-toggle" role="group" aria-label="Modo de desempenho">
-                  <button type="button" className={perfMode === 'full' ? 'active' : ''} onClick={() => choosePerfMode('full')}>
-                    Completo
-                  </button>
-                  <button type="button" className={perfMode === 'lite' ? 'active' : ''} onClick={() => choosePerfMode('lite')}>
-                    Leve
-                  </button>
+                <span className="settings-label">Otimização</span>
+                <div className="perf-toggle three-way" role="group" aria-label="Otimização">
+                  {PERF_MODES.map((mode) => (
+                    <button key={mode} type="button" className={perfMode === mode ? 'active' : ''} onClick={() => choosePerfMode(mode)}>
+                      {PERF_MODE_LABELS[mode]}
+                    </button>
+                  ))}
                 </div>
-                <p className="settings-hint">
-                  O modo leve desliga animações e efeitos visuais para PCs mais fracos.
-                </p>
+                <p className="settings-hint">{PERF_MODE_HINTS[perfMode]}</p>
 
                 <span className="settings-label">Densidade da interface</span>
                 <div className="perf-toggle three-way" role="group" aria-label="Densidade da interface">
@@ -1644,6 +1641,12 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   useEffect(() => saveVolumes(voiceVolumesKey, volumes), [voiceVolumesKey, volumes]);
   useEffect(() => saveVolumes(streamVolumesKey, streamVolumes), [streamVolumesKey, streamVolumes]);
   const [watchingScreenIds, setWatchingScreenIds] = useState<Set<string>>(new Set());
+  // Trocar de canal de voz (ou sair da call) esquece que transmissões você estava assistindo: um id do canal anterior
+  // nunca deveria continuar marcado como "assistindo" no canal novo (ver useVoiceRoom.ts sobre o mesmo cuidado do lado
+  // dos participantes e transmissões em si).
+  useEffect(() => {
+    setWatchingScreenIds(new Set());
+  }, [voice.currentChannel?.id]);
   // restrictOwnAudio (na captura de áudio da transmissão, useVoiceRoom.ts) já
   // pede pro Chromium excluir o áudio do nosso próprio app do que é capturado
   // por loopback — isso deveria impedir a voz de qualquer um na call (a sua
@@ -2330,7 +2333,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   async function joinChannel(channel: VoiceChannel) {
     setSelectedTextChannelId(null);
     const startViewTransition = (document as ViewTransitionDocument).startViewTransition?.bind(document);
-    if (perfMode === 'full' && startViewTransition) {
+    if (perfMode === 'leve' && startViewTransition) {
       startViewTransition(() => flushSync(() => setJoiningId(channel.id)));
     } else {
       setJoiningId(channel.id);

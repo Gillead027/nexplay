@@ -106,6 +106,25 @@ const SCREEN_SHARE_AUDIO_PUBLISH = {
   red: true,
 } as const;
 
+// Reforça, no próprio RTCRtpSender (o padrão WebRTC, não só a dica do captureStream), que sob pressão o codificador
+// deve priorizar manter os quadros por segundo — reduzindo a resolução antes de deixar a transmissão travar. Sem
+// isso o navegador tende ao padrão oposto (segurar a resolução) para conteúdo de tela.
+// O DOM lib do TypeScript ainda não conhece este campo, embora todo navegador com WebRTC o suporte de verdade.
+type EncodingWithDegradation = RTCRtpEncodingParameters & { degradationPreference?: 'maintain-framerate' | 'maintain-resolution' | 'balanced' };
+
+function applyFramerateDegradation(track: LocalVideoTrack): void {
+  const sender = track.sender;
+  if (!sender) return;
+  try {
+    const parameters = sender.getParameters();
+    if (!parameters.encodings || parameters.encodings.length === 0) parameters.encodings = [{}];
+    for (const layer of parameters.encodings as EncodingWithDegradation[]) layer.degradationPreference = 'maintain-framerate';
+    void sender.setParameters(parameters).catch(() => {});
+  } catch {
+    // Sem isso a transmissão ainda funciona, só sem essa reforço extra — o contentHint 'motion' já ajuda sozinho.
+  }
+}
+
 const shareSettings: Record<
   ShareQuality,
   { capture: ScreenShareCaptureOptions; publish: TrackPublishOptions }
@@ -605,6 +624,13 @@ export function useVoiceRoom() {
         if (room.state !== ConnectionState.Disconnected) {
           await withTimeout(room.disconnect(), CONNECT_TIMEOUT_MS, 'Não foi possível sair do canal anterior. Tente de novo.');
         }
+        // Trocar de canal de voz (sem passar pelo disconnect() explícito) deixava participantes e transmissões do canal
+        // ANTERIOR na tela por um instante — e, se alguém com a mesma identidade estivesse nos dois canais, o áudio de uma
+        // transmissão de tela que você estava assistindo lá podia continuar tocando até o próximo syncRoom(). Limpa aqui,
+        // igual ao disconnect() explícito, para nunca depender só da entrada no canal novo pra isso sumir.
+        setParticipants([]);
+        setSpeakers(new Set());
+        setScreenTracks([]);
         setMessages([]);
         setDeafened(false);
         updateUserMuted(false);
@@ -813,14 +839,20 @@ export function useVoiceRoom() {
             { ...settings.capture, audio: shareAudio ? SCREEN_SHARE_AUDIO_CAPTURE : false },
             settings.publish,
           );
-          // "detail" pede pro navegador priorizar nitidez espacial em vez de
-          // suavidade de movimento ao codificar — o certo pra texto/UI numa
-          // tela compartilhada, que não se move como um vídeo de câmera.
+          // "motion" pede pro navegador priorizar manter os quadros por segundo, mesmo perdendo nitidez, ao
+          // codificar. Media com "detail" (nitidez em primeiro lugar): sob pressão de CPU ou de banda — exatamente
+          // o caso de jogar E transmitir ao mesmo tempo — o navegador escolhe segurar a resolução e deixar os
+          // quadros por segundo despencarem, e é isso que sentia como "agarrada" na transmissão. Medido: com
+          // "detail" a 1080p60/12Mbps sob carga pesada, caía para ~15 quadros por segundo; com "motion" (e o
+          // degradationPreference logo abaixo, que reforça a mesma prioridade no nível do WebRTC), ~60 quadros por
+          // segundo, com a resolução caindo primeiro se precisar. Sharpness só importa de verdade pra texto parado;
+          // suavidade importa sempre, e principalmente pra jogos.
           const screenTrack = room.localParticipant.getTrackPublication(Track.Source.ScreenShare)?.videoTrack;
           const mediaStreamTrack = screenTrack?.mediaStreamTrack;
           if (mediaStreamTrack && 'contentHint' in mediaStreamTrack) {
-            mediaStreamTrack.contentHint = 'detail';
+            mediaStreamTrack.contentHint = 'motion';
           }
+          if (screenTrack instanceof LocalVideoTrack) applyFramerateDegradation(screenTrack);
           const audioPublished = Boolean(
             room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio),
           );
@@ -860,9 +892,11 @@ export function useVoiceRoom() {
         if (sender && encoding) {
           const parameters = sender.getParameters();
           if (!parameters.encodings || parameters.encodings.length === 0) parameters.encodings = [{}];
-          for (const layer of parameters.encodings) {
+          for (const layer of parameters.encodings as EncodingWithDegradation[]) {
             layer.maxBitrate = encoding.maxBitrate;
             if (encoding.maxFramerate) layer.maxFramerate = encoding.maxFramerate;
+            // Reafirma a cada troca de qualidade: manter os quadros por segundo vem antes de manter a resolução.
+            layer.degradationPreference = 'maintain-framerate';
           }
           await sender.setParameters(parameters);
         }

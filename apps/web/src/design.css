@@ -360,10 +360,14 @@ button:hover > .avatar, .avatar:hover { box-shadow: 0 0 0 2px color-mix(in srgb,
 .channels > *:nth-child(3) { animation-delay: 80ms; }
 .channels > *:nth-child(4) { animation-delay: 120ms; }
 
-/* O modo leve e "reduzir movimento" (styles.css) já zeram as durações; aqui só tiramos o que é decorativo */
-[data-perf="lite"] .entry-ghost, [data-perf="lite"] .entry-sparkle { display: none; }
-[data-perf="lite"] .entry-side-logo { animation: none; }
-[data-perf="lite"] .entry-window { backdrop-filter: none; }
+/* Moderado e Completo (styles.css tem os detalhes de cada nível) já zeram durações e desfoque; aqui só tiramos o que
+   é puramente decorativo, sem informação nenhuma (estrelinhas, brilhos e o fantasma de fundo da tela de entrada, e o
+   giro/pulso das bordas animadas de avatar — o anel continua colorido, só parado). */
+[data-perf="moderado"] .entry-ghost, [data-perf="moderado"] .entry-sparkle,
+[data-perf="completo"] .entry-ghost, [data-perf="completo"] .entry-sparkle { display: none; }
+[data-perf="moderado"] .entry-side-logo, [data-perf="completo"] .entry-side-logo { animation: none; }
+[data-perf="moderado"] .entry-window, [data-perf="completo"] .entry-window { backdrop-filter: none; }
+[data-perf="moderado"] .avatar-ring::before, [data-perf="completo"] .avatar-ring::before { animation: none; }
 @media (prefers-reduced-motion: reduce) {
   .entry-ghost, .entry-sparkle { display: none; }
   .entry-side-logo { animation: none; }
@@ -535,8 +539,8 @@ html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #
 }
 @keyframes badge-pop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-[data-perf="lite"] .voice-tile { animation: none; }
-[data-perf="lite"] .voice-tile.speaking .voice-tile-avatar .avatar { animation: none; }
+[data-perf="completo"] .voice-tile { animation: none; }
+[data-perf="completo"] .voice-tile.speaking .voice-tile-avatar .avatar { animation: none; }
 
 /* ---------- transmissão de tela ----------
    Sem assistir: cada transmissão é um quadrado na grade, ao lado dos das pessoas ("Assista à transmissão").
@@ -612,8 +616,8 @@ html:has(.entry-screen), html:has(.entry-screen) body, html:has(.entry-screen) #
 .room-content.voice-live.call-watching .stage-content::before { display: none; }
 .room-content.call-chrome-hidden .voice-toolbar { transform: translate(-50%, 170%); opacity: 0; pointer-events: none; visibility: hidden; transition: transform 320ms var(--ease-out), opacity 220ms var(--ease-out), visibility 0s 320ms; }
 
-[data-perf="lite"] .watch-hero { animation: none; }
-[data-perf="lite"] .watch-strip, [data-perf="lite"] .watch-chrome-tab { transition: none; }
+[data-perf="completo"] .watch-hero { animation: none; }
+[data-perf="completo"] .watch-strip, [data-perf="completo"] .watch-chrome-tab { transition: none; }
 
 /* Tela cheia do palco: o palco é "position: fixed"; nada acima dele pode prender esse posicionamento.
    (Uma animação de entrada com preenchimento "both" deixa um transform no elemento e faz o fixed valer só

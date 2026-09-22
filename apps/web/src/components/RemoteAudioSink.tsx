@@ -72,6 +72,11 @@ export function RemoteAudioSink({
     return () => {
       for (const { element, track } of elements) {
         track.detach(element);
+        // Reforço deliberado: mesmo que o detach do LiveKit não pare o áudio a tempo (o elemento vai para um pool
+        // reciclado e compartilhado entre faixas — ver track.recycleElement), pausar e limpar o srcObject aqui
+        // garante silêncio imediato, sem depender de mais ninguém.
+        element.pause();
+        element.srcObject = null;
         element.remove();
       }
     };

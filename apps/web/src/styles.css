@@ -177,12 +177,24 @@
     transition-duration: .001ms !important;
   }
 }
-[data-perf="lite"] *, [data-perf="lite"] *::before, [data-perf="lite"] *::after {
+[data-perf="completo"] *, [data-perf="completo"] *::before, [data-perf="completo"] *::after {
   animation-duration: .001ms !important;
   transition-duration: .001ms !important;
 }
-[data-perf="lite"] .entry-window::before { display: none; }
-[data-perf="lite"] .shadow-lg-el { box-shadow: 0 0 0 1px var(--border) !important; }
+[data-perf="completo"] .entry-window::before { display: none; }
+[data-perf="completo"] .shadow-lg-el { box-shadow: 0 0 0 1px var(--border) !important; }
+
+/* Otimização "Moderado": um meio-termo — desliga o que é só decoração (sem informação nenhuma) e o desfoque
+   (backdrop-filter é uma das operações mais pesadas de composição gráfica de qualquer navegador, recalculada a cada
+   quadro sob o elemento), mas mantém as transições do dia a dia e os indicadores de estado (falando, digitando, ao
+   vivo, sinal de conexão) — esses continuam ligados mesmo aqui. "Completo" já zera toda animação/transição acima, e
+   por isso herda tudo daqui de graça, sem precisar repetir as regras. */
+[data-perf="moderado"] *, [data-perf="completo"] * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+[data-perf="moderado"] .entry-window::before { display: none; }
+[data-perf="moderado"] .shadow-lg-el { box-shadow: 0 0 0 1px var(--border) !important; }
 
 /* Biblioteca de keyframes compartilhada */
 @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }

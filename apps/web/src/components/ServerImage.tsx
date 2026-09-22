@@ -5,7 +5,7 @@ const stillFrames = new Map<string, string>();
 // Modo leve e "reduzir movimento" do sistema: nada se mexe sozinho. (Passar o mouse por cima é uma ação da pessoa, então
 // isso sempre toca, mesmo com esses modos ligados.)
 function motionAllowed(): boolean {
-  if (document.documentElement.getAttribute('data-perf') === 'lite') return false;
+  if (document.documentElement.getAttribute('data-perf') === 'completo') return false;
   return !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 }
 
