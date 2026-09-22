@@ -1865,6 +1865,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   );
   const canManageChannels = hasPermission(member?.permissions ?? 0, Permission.MANAGE_CHANNELS);
   const canManageServer = hasPermission(member?.permissions ?? 0, Permission.MANAGE_SERVER);
+  const canManageWebhooks = hasPermission(member?.permissions ?? 0, Permission.MANAGE_WEBHOOKS);
   const [addServerOpen, setAddServerOpen] = useState(false);
   const [addServerTab, setAddServerTab] = useState<'create' | 'join'>('create');
   const [forwardingMessage, setForwardingMessage] = useState<ForwardSource | null>(null);
@@ -2758,7 +2759,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                           </button>
                           {canManageChannels && (
                             <TextChannelSettingsModal channel={channel} serverId={activeServerId ?? ''} categories={categories}
-                              canManageServer={canManageServer}
+                              canManageServer={canManageServer} canManageWebhooks={canManageWebhooks}
                               onUpdated={(updated) => setTextChannels((current) => current.map((item) => item.id === updated.id ? updated : item))}
                               onDeleted={() => setTextChannels((current) => current.filter((item) => item.id !== channel.id))} />
                           )}

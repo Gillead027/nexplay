@@ -1,16 +1,22 @@
-import { useId, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   CHANNEL_TOPIC_MAX_LENGTH,
+  SERVER_ICON_DATA_URL_MAX_LENGTH,
   SLOW_MODE_OPTIONS_SECONDS,
   TEXT_CHANNEL_NAME_MAX_LENGTH,
+  WEBHOOK_NAME_MAX_LENGTH,
+  WEBHOOKS_MAX_PER_CHANNEL,
   type Category,
   type ContentVisibility,
   type TextChannel,
+  type TextWebhook,
 } from '@nexplay/shared';
 import { api } from '../api';
 import { SettingsIcon, SmileIcon, TrashIcon } from './Icons';
 import { EmojiPicker } from './EmojiPicker';
 import { InvitesPane } from './ServerSettings';
+import { fileToResizedDataUrl } from '../imageResize';
+import { copyLabel, useCopyFeedback } from '../useCopyFeedback';
 
 function slowModeLabel(seconds: number): string {
   if (seconds === 0) return 'Desligado';
@@ -26,6 +32,7 @@ export function TextChannelSettingsModal({
   serverId,
   categories,
   canManageServer,
+  canManageWebhooks,
   onUpdated,
   onDeleted,
 }: {
@@ -33,6 +40,7 @@ export function TextChannelSettingsModal({
   serverId: string;
   categories: Category[];
   canManageServer: boolean;
+  canManageWebhooks: boolean;
   onUpdated: (channel: TextChannel) => void;
   onDeleted: () => void;
 }) {
@@ -185,10 +193,146 @@ export function TextChannelSettingsModal({
           )}
           {tab === 'invites' && <InvitesPane serverId={serverId} canManageServer={canManageServer} />}
           {tab === 'integrations' && (
-            <p className="channel-settings-stub">Nenhuma integração disponível.</p>
+            <WebhooksPane serverId={serverId} channelId={channel.id} canManageWebhooks={canManageWebhooks} />
           )}
         </div>
       </div>
     </dialog>
   </>;
+}
+
+// Um webhook aqui é a URL inteira (id + token) — qualquer serviço externo
+// que souber ela posta mensagens neste canal sem conta no NexPlay, igual um
+// webhook de canal do Discord real (ver apps/api/src/webhooks.ts).
+function WebhooksPane({
+  serverId,
+  channelId,
+  canManageWebhooks,
+}: {
+  serverId: string;
+  channelId: string;
+  canManageWebhooks: boolean;
+}) {
+  const [webhooks, setWebhooks] = useState<TextWebhook[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [name, setName] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState('');
+  const [avatarError, setAvatarError] = useState('');
+  const [creating, setCreating] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
+  const { copy, statusFor } = useCopyFeedback();
+
+  useEffect(() => {
+    if (!canManageWebhooks) {
+      setLoading(false);
+      return;
+    }
+    let active = true;
+    void api.getWebhooks(serverId, channelId)
+      .then(({ webhooks }) => { if (active) setWebhooks(webhooks); })
+      .catch((requestError) => {
+        if (active) setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar os webhooks.');
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [serverId, channelId, canManageWebhooks]);
+
+  async function handleAvatarFile(file: File | undefined) {
+    if (!file) return;
+    setAvatarError('');
+    try {
+      setAvatarUrl(await fileToResizedDataUrl(file, 256, SERVER_ICON_DATA_URL_MAX_LENGTH, true));
+    } catch {
+      setAvatarError('Não foi possível usar essa imagem. Tente um arquivo menor.');
+    }
+  }
+
+  async function create() {
+    if (creating || !name.trim()) return;
+    setCreating(true);
+    setError('');
+    try {
+      const { webhook } = await api.createWebhook(serverId, channelId, name.trim(), avatarUrl);
+      setWebhooks((current) => [...current, webhook]);
+      setName('');
+      setAvatarUrl('');
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível criar o webhook.');
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  async function remove(webhookId: string) {
+    if (!window.confirm('Apagar este webhook? Qualquer serviço externo que use a URL dele para de conseguir postar aqui.')) return;
+    setError('');
+    try {
+      await api.deleteWebhook(serverId, channelId, webhookId);
+      setWebhooks((current) => current.filter((webhook) => webhook.id !== webhookId));
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'Não foi possível apagar o webhook.');
+    }
+  }
+
+  if (!canManageWebhooks) {
+    return <p className="channel-settings-stub">Só quem gerencia webhooks pode ver e criar webhooks deste canal.</p>;
+  }
+  if (loading) return <p className="channel-settings-stub">Carregando…</p>;
+
+  const atLimit = webhooks.length >= WEBHOOKS_MAX_PER_CHANNEL;
+
+  return (
+    <div className="webhooks-pane">
+      <p className="channel-settings-hint">
+        Qualquer serviço que souber a URL de um webhook pode postar mensagens neste canal, sem conta no NexPlay — igual no Discord.
+      </p>
+      {error && <p className="form-error" role="alert">{error}</p>}
+
+      <ul className="webhooks-list">
+        {webhooks.map((webhook) => {
+          const url = `${window.location.origin}/api/webhooks/${webhook.id}/${webhook.token}`;
+          return (
+            <li key={webhook.id} className="webhooks-list-item">
+              <div className="webhooks-list-avatar" aria-hidden="true">
+                {webhook.avatarUrl ? <img src={webhook.avatarUrl} alt="" draggable={false} /> : <SettingsIcon size={16} />}
+              </div>
+              <div className="webhooks-list-info">
+                <strong>{webhook.name}</strong>
+                <code className="webhooks-list-url">{url}</code>
+              </div>
+              <div className="webhooks-list-actions">
+                <button type="button" onClick={() => void copy(webhook.id, url)}>{copyLabel(statusFor(webhook.id))}</button>
+                <button type="button" className="danger-link" aria-label={`Apagar webhook ${webhook.name}`}
+                  onClick={() => void remove(webhook.id)}>
+                  <TrashIcon size={14} />
+                </button>
+              </div>
+            </li>
+          );
+        })}
+        {webhooks.length === 0 && <li className="webhooks-list-empty">Nenhum webhook ainda.</li>}
+      </ul>
+
+      <div className="webhooks-create">
+        <h3>Novo webhook</h3>
+        <div className="webhooks-create-row">
+          <input ref={avatarInputRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden
+            onChange={(event) => void handleAvatarFile(event.target.files?.[0])} />
+          <button type="button" className="webhooks-avatar-trigger" aria-label="Escolher avatar do webhook"
+            onClick={() => avatarInputRef.current?.click()}>
+            {avatarUrl ? <img src={avatarUrl} alt="" draggable={false} /> : <SettingsIcon size={18} />}
+          </button>
+          <input value={name} maxLength={WEBHOOK_NAME_MAX_LENGTH} placeholder="Nome do webhook"
+            onChange={(event) => setName(event.target.value)} disabled={atLimit} />
+        </div>
+        {avatarError && <p className="form-error" role="alert">{avatarError}</p>}
+        <button type="button" className="primary-button" disabled={creating || !name.trim() || atLimit}
+          onClick={() => void create()}>
+          {creating ? 'Criando…' : 'Criar webhook'}
+        </button>
+        {atLimit && <small>Limite de {WEBHOOKS_MAX_PER_CHANNEL} webhooks por canal atingido.</small>}
+      </div>
+    </div>
+  );
 }

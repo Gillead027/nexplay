@@ -82,6 +82,7 @@ export const Permission = {
   MODERATE_MEMBERS: 1 << 12,
   ADMINISTRATOR: 1 << 13,
   MANAGE_SERVER: 1 << 14,
+  MANAGE_WEBHOOKS: 1 << 15,
 } as const;
 
 export type PermissionFlag = (typeof Permission)[keyof typeof Permission];
@@ -134,6 +135,7 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { flag: Permission.MANAGE_ROLES, category: 'Geral', label: 'Gerenciar cargos', description: 'Criar, editar, apagar e atribuir cargos com posição menor que a sua.' },
   { flag: Permission.SEND_MESSAGES, category: 'Texto', label: 'Enviar mensagens', description: 'Enviar mensagens nos canais de texto.' },
   { flag: Permission.MANAGE_MESSAGES, category: 'Texto', label: 'Gerenciar mensagens', description: 'Apagar mensagens enviadas por outros membros.' },
+  { flag: Permission.MANAGE_WEBHOOKS, category: 'Texto', label: 'Gerenciar webhooks', description: 'Criar, ver e apagar webhooks dos canais de texto.' },
   { flag: Permission.CONNECT, category: 'Voz', label: 'Conectar', description: 'Entrar em canais de voz.' },
   { flag: Permission.SPEAK, category: 'Voz', label: 'Falar', description: 'Transmitir áudio em canais de voz.' },
   { flag: Permission.VIDEO, category: 'Voz', label: 'Transmitir vídeo', description: 'Ativar câmera e compartilhar tela.' },
@@ -884,7 +886,27 @@ export interface ForwardedFromMeta {
 // a um participante de voz de verdade, por isso é um type à parte do
 // ParticipantType usado pelo LiveKit, não uma extensão dele.
 // 'GAME': as respostas do NexDex, o jogo de captura de Pokémon nos canais de texto (comandos que começam com "!").
-export type TextMessageSenderType = ParticipantType | 'SYSTEM' | 'GAME';
+// 'WEBHOOK': mensagem postada por um webhook de canal (ver TextWebhook) — nome/avatar são os do próprio webhook, não de um membro.
+export type TextMessageSenderType = ParticipantType | 'SYSTEM' | 'GAME' | 'WEBHOOK';
+
+export const WEBHOOK_NAME_MAX_LENGTH = 80;
+export const WEBHOOKS_MAX_PER_CHANNEL = 10;
+
+// Um webhook de canal: qualquer serviço externo que souber a URL (id + token,
+// como no Discord real) pode postar mensagens nesse canal sem conta no
+// NexPlay. O token não é reexibido depois de criado em lugar nenhum especial
+// (fica sempre visível pra quem tem MANAGE_WEBHOOKS, diferente do Discord que
+// só mostra uma vez) — mais simples e evita gente perdendo o token à toa.
+export interface TextWebhook {
+  id: string;
+  channelId: string;
+  serverId: string;
+  name: string;
+  avatarUrl: string;
+  token: string;
+  createdBy: string | null;
+  createdAt: number;
+}
 
 export const POKEMON_BOT_IDENTITY = 'nexdex-bot';
 export const POKEMON_BOT_DISPLAY_NAME = 'NexDex';
@@ -957,8 +979,9 @@ export interface TextMessage extends ForwardedFromFields {
   senderId: string;
   senderName: string;
   senderType: TextMessageSenderType;
-  // Só populado quando senderType === 'SYSTEM' (ícone do servidor) — mensagens
-  // HUMAN resolvem avatar pelo próprio senderId (ver useTextAvatar no cliente).
+  // Só populado quando senderType === 'SYSTEM' (ícone do servidor) ou 'WEBHOOK'
+  // (avatar do próprio webhook) — mensagens HUMAN resolvem avatar pelo
+  // próprio senderId (ver useTextAvatar no cliente).
   senderAvatarUrl?: string;
   text: string;
   sentAt: number;

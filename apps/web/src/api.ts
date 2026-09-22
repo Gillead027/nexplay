@@ -29,6 +29,7 @@ import type {
   SoundboardSound,
   TextChannel,
   TextMessage,
+  TextWebhook,
   UserSession,
   VideoQuality,
   VoiceChannel,
@@ -314,6 +315,17 @@ export const api = {
     }),
   deleteSoundboardSound: (serverId: string, soundId: string) =>
     request<void>(`${s(serverId)}/soundboard/${encodeURIComponent(soundId)}`, { method: 'DELETE' }),
+  getWebhooks: (serverId: string, channelId: string) =>
+    request<{ webhooks: TextWebhook[] }>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/webhooks`),
+  createWebhook: (serverId: string, channelId: string, name: string, avatarUrl: string) =>
+    request<{ webhook: TextWebhook }>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/webhooks`, {
+      method: 'POST',
+      body: JSON.stringify({ name, avatarUrl }),
+    }),
+  deleteWebhook: (serverId: string, channelId: string, webhookId: string) =>
+    request<void>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/webhooks/${encodeURIComponent(webhookId)}`, {
+      method: 'DELETE',
+    }),
   getRoles: (serverId: string) => request<{ roles: Role[] }>(`${s(serverId)}/roles`),
   createRole: (serverId: string, name: string, color: string, permissions: number, hoist: boolean) =>
     request<{ role: Role }>(`${s(serverId)}/roles`, {

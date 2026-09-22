@@ -52,6 +52,8 @@ import {
   VOICE_BITRATE_MAX_KBPS,
   VOICE_BITRATE_MIN_KBPS,
   VOICE_USER_LIMIT_MAX,
+  WEBHOOK_NAME_MAX_LENGTH,
+  WEBHOOKS_MAX_PER_CHANNEL,
   type Channel,
   type PresenceStatus,
   type ForwardedFromMeta,
@@ -151,6 +153,14 @@ import {
   sanitizeFilename,
 } from './attachments.js';
 import { deleteAttachmentObject, ensureAttachmentsBucket, getAttachmentObjectStream, uploadAttachmentObject } from './storage.js';
+import {
+  createWebhook,
+  createWebhookMessage,
+  deleteWebhook,
+  getWebhookById,
+  listWebhooksForChannel,
+  verifyWebhookToken,
+} from './webhooks.js';
 import {
   assignRole,
   createRole,
@@ -330,6 +340,26 @@ const dmMessageLimiter = rateLimit({
   message: { error: 'Você está enviando mensagens rápido demais.' },
 });
 
+const webhookManageLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Limite de criação de webhooks atingido. Tente novamente mais tarde.' },
+});
+
+// Chave por webhook (não por IP): um serviço externo mal configurado só
+// afeta o próprio webhook, nunca todo mundo atrás do mesmo IP/proxy — e um
+// webhook não pode ser afogado por tráfego de outro.
+const webhookPostLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  keyGenerator: (request) => String(request.params.webhookId ?? 'unknown'),
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Muitas mensagens deste webhook em pouco tempo.' },
+});
+
 // Emitir token do LiveKit é o que efetivamente abre uma sessão de voz/vídeo
 // na sala (custa CPU no LiveKit) — sem limite aqui, um cliente com bug ou mal
 // intencionado poderia bater nessa rota em loop e sobrecarregar o servidor
@@ -387,6 +417,21 @@ const isRealImageDataUrl = (value: string) => {
   return parsed !== null && parsed.actual === parsed.declared;
 };
 const audioDataUrlPattern = /^data:audio\/(mpeg|ogg|wav|webm);base64,[A-Za-z0-9+/]+=*$/;
+
+const webhookCreateSchema = z.object({
+  name: z.string().trim().min(1).max(WEBHOOK_NAME_MAX_LENGTH),
+  avatarUrl: z
+    .string()
+    .max(SERVER_ICON_DATA_URL_MAX_LENGTH)
+    .refine((value) => value === '' || (dataUrlPattern.test(value) && isRealImageDataUrl(value)), 'Avatar inválido.')
+    .default(''),
+});
+
+// content: mesmo teto de tamanho de uma mensagem normal — um webhook não
+// deveria conseguir postar algo que um humano não conseguiria mandar.
+const webhookPostSchema = z.object({
+  content: z.string().trim().min(1).max(CHAT_MESSAGE_MAX_LENGTH),
+});
 
 const soundboardSoundSchema = z.object({
   name: z.string().trim().min(1).max(SOUNDBOARD_NAME_MAX_LENGTH),
@@ -1696,6 +1741,96 @@ app.get('/api/attachments/:attachmentId/:filename', requireSession, async (reque
     console.error(`Falha ao buscar anexo ${attachment.objectKey} no storage:`, error);
     response.status(503).json({ error: 'Não foi possível carregar o arquivo agora.' });
   }
+});
+
+app.get(
+  '/api/servers/:serverId/text-channels/:channelId/webhooks',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_WEBHOOKS),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const channelId = request.params.channelId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== serverId) {
+      response.status(404).json({ error: 'Canal de texto não encontrado.' });
+      return;
+    }
+    response.json({ webhooks: listWebhooksForChannel(channelId as string) });
+  },
+);
+
+app.post(
+  '/api/servers/:serverId/text-channels/:channelId/webhooks',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_WEBHOOKS),
+  webhookManageLimiter,
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const channelId = request.params.channelId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== serverId) {
+      response.status(404).json({ error: 'Canal de texto não encontrado.' });
+      return;
+    }
+    const body = webhookCreateSchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Webhook inválido — verifique o nome e o avatar.' });
+      return;
+    }
+    const result = createWebhook(channelId as string, serverId, body.data.name, body.data.avatarUrl, currentUser(response).id);
+    if (!result.ok) {
+      response.status(409).json({ error: `Este canal já atingiu o limite de ${WEBHOOKS_MAX_PER_CHANNEL} webhooks.` });
+      return;
+    }
+    response.status(201).json({ webhook: result.webhook });
+  },
+);
+
+app.delete(
+  '/api/servers/:serverId/text-channels/:channelId/webhooks/:webhookId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_WEBHOOKS),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const channelId = request.params.channelId;
+    const webhookId = request.params.webhookId;
+    const webhook = typeof webhookId === 'string' ? getWebhookById(webhookId) : undefined;
+    if (!webhook || webhook.serverId !== serverId || webhook.channelId !== channelId) {
+      response.status(404).json({ error: 'Webhook não encontrado.' });
+      return;
+    }
+    deleteWebhook(serverId, webhook.id);
+    response.status(204).end();
+  },
+);
+
+// Rota pública (sem sessão, igual o webhook do LiveKit acima) — autenticada
+// só pelo id+token na própria URL, do mesmo jeito que um webhook de canal do
+// Discord real. Qualquer serviço externo que souber essa URL posta aqui.
+app.post('/api/webhooks/:webhookId/:token', webhookPostLimiter, (request, response) => {
+  const webhookId = request.params.webhookId;
+  const token = request.params.token;
+  const webhook = typeof webhookId === 'string' && typeof token === 'string' ? verifyWebhookToken(webhookId, token) : undefined;
+  if (!webhook) {
+    response.status(401).json({ error: 'Webhook inválido.' });
+    return;
+  }
+  const body = webhookPostSchema.safeParse(request.body);
+  if (!body.success) {
+    response.status(400).json({ error: 'Corpo inválido — envie {"content": "texto"}.' });
+    return;
+  }
+  const message = createWebhookMessage(webhook, body.data.content);
+  sendToServerMembers(webhook.serverId, {
+    type: 'TEXT_MESSAGE_CREATE',
+    serverId: webhook.serverId,
+    channelId: webhook.channelId,
+    message,
+  });
+  response.status(204).end();
 });
 
 app.post(

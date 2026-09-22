@@ -242,6 +242,40 @@ db.exec(`
     notification_mode TEXT NOT NULL DEFAULT 'all' CHECK (notification_mode IN ('all', 'mentions', 'none')),
     PRIMARY KEY (user_id, category_id)
   );
+
+  -- Webhook de canal: qualquer serviço externo que souber id+token pode
+  -- postar mensagem nesse canal sem conta no NexPlay (ver textChannels via
+  -- webhooks.ts). token é único globalmente (a rota pública de post só
+  -- recebe /api/webhooks/:id/:token, sem sessão).
+  CREATE TABLE IF NOT EXISTS text_webhooks (
+    id TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL REFERENCES text_channels(id) ON DELETE CASCADE,
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    avatar_url TEXT NOT NULL DEFAULT '',
+    token TEXT NOT NULL UNIQUE,
+    created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_text_webhooks_channel ON text_webhooks(channel_id);
+
+  -- Mensagens postadas por um webhook — tabela separada de text_messages
+  -- porque sender_id ali é NOT NULL REFERENCES users(id) e um webhook não é
+  -- um usuário (mesmo padrão de text_bot_messages, mas sem o limite de uma
+  -- linha por canal: um canal pode ter muitas mensagens de webhook).
+  CREATE TABLE IF NOT EXISTS text_webhook_messages (
+    id TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL REFERENCES text_channels(id) ON DELETE CASCADE,
+    webhook_id TEXT NOT NULL REFERENCES text_webhooks(id) ON DELETE CASCADE,
+    sender_name TEXT NOT NULL,
+    sender_avatar_url TEXT NOT NULL DEFAULT '',
+    text TEXT NOT NULL,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_text_webhook_messages_channel_created
+    ON text_webhook_messages(channel_id, created_at DESC);
 `);
 
 // O NexMusic mantém um único player persistente por canal de texto. Limpa

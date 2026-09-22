@@ -186,7 +186,9 @@ function BotTextMessageRow({
 // apps/api/src/textChannels.ts) — mesmo tratamento visual (avatar + selo
 // APP) do card do NexMusic, mas sem nada específico de música: qualquer
 // admin com MANAGE_MESSAGES usa isto pra publicar avisos/regras formatados
-// como se fosse o próprio servidor falando, não um bot externo.
+// como se fosse o próprio servidor falando, não um bot externo. Reaproveitada
+// também pra senderType === 'WEBHOOK' (ver apps/api/src/webhooks.ts) —
+// visualmente é a mesma coisa: nome + avatar próprios, nunca de um membro.
 function SystemTextMessageRow({ message }: { message: TextMessage }) {
   return (
     <article className="message text-message system-message">
@@ -543,7 +545,7 @@ function TextMessageRow(props: {
     ? <BotTextMessageRow message={props.message} onMusicCommand={props.onMusicCommand} />
     : props.message.senderType === 'GAME'
     ? <GameTextMessageRow message={props.message} viewerId={props.session.id} onGameCommand={props.onGameCommand} />
-    : props.message.senderType === 'SYSTEM'
+    : props.message.senderType === 'SYSTEM' || props.message.senderType === 'WEBHOOK'
     ? <SystemTextMessageRow message={props.message} />
     : (
       <HumanTextMessageRow
