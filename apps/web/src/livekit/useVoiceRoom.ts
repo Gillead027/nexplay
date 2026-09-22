@@ -193,7 +193,7 @@ export function useVoiceRoom() {
       adaptiveStream: false,
       dynacast: true,
       disconnectOnPageLeave: true,
-      audioCaptureDefaults: { ...nativeCaptureConstraints(config, false), channelCount: 1, processor },
+      audioCaptureDefaults: { ...nativeCaptureConstraints(config, false), channelCount: 1 },
     });
   });
   const [currentChannel, setCurrentChannel] = useState<VoiceChannel | null>(null);
@@ -287,13 +287,13 @@ export function useVoiceRoom() {
   pttKeyRef.current = pttKey;
   deafenedRef.current = deafened;
 
-  // As opções de captura do microfone: restrições nativas do navegador (eco, ganho, supressão padrão), som mono e o
-  // processador que faz o resto do tratamento.
+  // As opções de captura do microfone: restrições nativas do navegador (eco, ganho, supressão padrão) e som mono. O processador
+  // NÃO vai aqui: o LiveKit cria o microfone sem contexto de áudio e tenta anexar o processador na hora, o que falha ("Audio
+  // context needs to be set"). Ele é anexado logo depois da publicação (onLocalTrackPublished), quando o contexto já existe.
   const currentMicCaptureOptions = useCallback(
     () => ({
       ...nativeCaptureConstraints(voiceSettingsStore.getSnapshot().config, neuralFailedRef.current),
       channelCount: 1,
-      processor: processorRef.current!,
     }),
     [],
   );
@@ -429,6 +429,19 @@ export function useVoiceRoom() {
     // também o único lugar que toca o som de "parar transmissão": tanto o
     // botão quanto a barra nativa acabam disparando este mesmo evento, então
     // tocar o som aqui (em vez de no botão também) evita ele tocar em dobro.
+    // O tratamento de áudio se prende ao microfone publicado (setProcessor troca o que o LiveKit envia). Precisa ser refeito a cada
+    // publicação, porque reconectar cria um microfone novo. Troca de dispositivo NÃO passa por aqui: o LiveKit chama restart() do
+    // processador. Se não der para anexar, o microfone segue sem o tratamento e a pessoa é avisada (nunca fica mudo por isso).
+    const onLocalTrackPublished = (publication: TrackPublication) => {
+      if (publication.source !== Track.Source.Microphone) return;
+      const track = publication.track;
+      const processor = processorRef.current;
+      if (!(track instanceof LocalAudioTrack) || !processor || track.getProcessor() === processor) return;
+      track.setProcessor(processor).catch((error: unknown) => {
+        console.warn('Não foi possível aplicar o tratamento de áudio', error);
+        setNotice('Não foi possível aplicar o tratamento de áudio; o microfone segue sem ele.');
+      });
+    };
     const onLocalTrackUnpublished = (publication: TrackPublication) => {
       if (publication.source === Track.Source.ScreenShare) {
         playScreenShareStopSound(getOutputVolume());
@@ -448,6 +461,7 @@ export function useVoiceRoom() {
       .on(RoomEvent.TrackMuted, onTrackMuted)
       .on(RoomEvent.TrackUnmuted, syncRoom)
       .on(RoomEvent.LocalTrackPublished, syncRoom)
+      .on(RoomEvent.LocalTrackPublished, onLocalTrackPublished)
       .on(RoomEvent.LocalTrackUnpublished, onLocalTrackUnpublished)
       .on(RoomEvent.ActiveSpeakersChanged, onActiveSpeakers)
       .on(RoomEvent.DataReceived, onData)
