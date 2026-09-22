@@ -17,6 +17,15 @@ import path from 'node:path';
 import type { Activity } from '@nexplay/shared';
 import { checkForUpdatesNow, initAutoUpdater } from './updater.js';
 import { externalWebUrl, findDeepLink, isAllowedPermission } from './policy.js';
+import {
+  DEFAULT_DESKTOP_SETTINGS,
+  HIDDEN_LAUNCH_ARGUMENT,
+  parseDesktopSettings,
+  sanitizeSettingsPatch,
+  shouldHideOnClose,
+  shouldStartHidden,
+  type DesktopSettings,
+} from './settings.js';
 
 // windows-media-sessions calcula o caminho do próprio backend nativo relativo
 // a onde o módulo foi carregado — no build empacotado, isso caiu certo
@@ -106,6 +115,10 @@ let tray: Tray | null = null;
 // Ligado assim que o app começa a encerrar (menu da bandeja, atualização, desligar o Windows): daí em diante
 // o X deixa de esconder e as janelas fecham de verdade.
 let isQuitting = false;
+// A janela foi escondida na bandeja de propósito: uma abertura atrasada (fim da tela de abertura) não pode reabri-la.
+let hiddenToTray = false;
+// Preferências do app (Configurações > Aplicativo): fechar minimiza para a bandeja, iniciar com o Windows, iniciar minimizado.
+let desktopSettings: DesktopSettings = { ...DEFAULT_DESKTOP_SETTINGS };
 let pendingCapture: PendingCapture | null = null;
 let stopActivityMonitor: (() => void) | null = null;
 // A detecção roda e já pode publicar a primeira atividade (ex.: alguém que
@@ -325,7 +338,7 @@ function installSessionSecurity(appUrl: URL): void {
     ? ''
     : ' https: wss: http://localhost:* ws://localhost:*';
   // 'wasm-unsafe-eval' só libera compilar/instanciar WebAssembly (o filtro de
-  // ruído Krisp roda como um módulo WASM) — não abre eval de JS arbitrário
+  // ruído por IA rodam como módulos WASM) — não abre eval de JS arbitrário
   // como 'unsafe-eval' faria; sem isso o Chromium bloqueia silenciosamente
   // qualquer WebAssembly.instantiate quando há CSP restringindo script-src.
   const scriptSource = app.isPackaged
@@ -474,10 +487,69 @@ function installSessionSecurity(appUrl: URL): void {
   });
 }
 
+// ---- Preferências do app ----
+function desktopSettingsPath(): string {
+  return path.join(app.getPath('userData'), 'desktop-settings.json');
+}
+
+function loadDesktopSettings(): DesktopSettings {
+  try {
+    return parseDesktopSettings(readFileSync(desktopSettingsPath(), 'utf8'));
+  } catch {
+    return { ...DEFAULT_DESKTOP_SETTINGS };
+  }
+}
+
+// "Iniciar com o Windows" só existe no app instalado (a versão portátil roda de uma pasta temporária, que muda a cada abertura).
+function canLaunchAtLogin(): boolean {
+  return process.platform === 'win32' && app.isPackaged && !process.env.PORTABLE_EXECUTABLE_FILE;
+}
+
+function applyLaunchAtLogin(): void {
+  if (!canLaunchAtLogin()) return;
+  try {
+    app.setLoginItemSettings({ openAtLogin: desktopSettings.launchAtLogin, args: desktopSettings.launchAtLogin ? [HIDDEN_LAUNCH_ARGUMENT] : [] });
+  } catch (error) {
+    debugLog(`iniciar com o Windows falhou: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+function currentSettingsView() {
+  return {
+    ...desktopSettings,
+    // A verdade sobre "iniciar com o Windows" é o Windows (a pessoa também pode mudar em Configurações > Aplicativos > Inicialização).
+    launchAtLogin: canLaunchAtLogin() ? app.getLoginItemSettings().openAtLogin : false,
+    launchAtLoginAvailable: canLaunchAtLogin(),
+    trayAvailable: tray !== null,
+  };
+}
+
+function installSettingsIpc(): void {
+  ipcMain.handle('desktop:get-settings', (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return null;
+    return currentSettingsView();
+  });
+  ipcMain.handle('desktop:set-settings', (event, input: unknown) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return null;
+    const patch = sanitizeSettingsPatch(input);
+    if (!patch) return currentSettingsView();
+    desktopSettings = { ...desktopSettings, ...patch };
+    try {
+      writeFileSync(desktopSettingsPath(), JSON.stringify(desktopSettings, null, 2), 'utf8');
+    } catch (error) {
+      debugLog(`não gravou as preferências: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    if (patch.launchAtLogin !== undefined) applyLaunchAtLogin();
+    debugLog(`preferências: ${JSON.stringify(desktopSettings)}`);
+    return currentSettingsView();
+  });
+}
+
 // ---- Bandeja do sistema ----
 function showMainWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
+  hiddenToTray = false;
   if (!mainWindow.isVisible()) mainWindow.show();
   mainWindow.focus();
 }
@@ -618,6 +690,8 @@ function deliverDeepLink(link: string): void {
   pendingDeepLink = link;
 }
 
+let hiddenLoadRetries = 0;
+
 function createMainWindow(appUrl: URL): BrowserWindow {
   const window = new BrowserWindow({
     width: 1440,
@@ -686,16 +760,28 @@ function createMainWindow(appUrl: URL): BrowserWindow {
   window.on('enter-full-screen', emitFullscreenState);
   window.on('leave-full-screen', emitFullscreenState);
   window.once('ready-to-show', () => {
+    if (shouldStartHidden(process.argv, desktopSettings, tray !== null)) {
+      debugLog('ready-to-show fired; aberto pelo Windows, fica na bandeja');
+      return;
+    }
     debugLog('ready-to-show fired, calling show()');
     setSplashStatus('Abrindo');
     // Se a página carregou antes da animação cumprir o tempo mínimo, espera o que falta.
     setTimeout(() => {
-      if (!window.isDestroyed()) window.show();
+      if (!window.isDestroyed() && !hiddenToTray) window.show();
     }, splashRemainingMs());
   });
   window.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
     debugLog(`did-fail-load errorCode=${errorCode} description=${errorDescription}`);
     if (errorCode === -3) return;
+    // Aberto sozinho pelo Windows a rede pode ainda não ter subido: tenta de novo em silêncio, sem janela de erro.
+    if (shouldStartHidden(process.argv, desktopSettings, tray !== null) && !window.isVisible() && hiddenLoadRetries < 12) {
+      hiddenLoadRetries += 1;
+      setTimeout(() => {
+        if (!window.isDestroyed()) void window.loadURL(appUrl.toString());
+      }, 10_000);
+      return;
+    }
     closeSplash(true);
     void dialog.showMessageBox(window, {
       type: 'error',
@@ -734,10 +820,11 @@ function createMainWindow(appUrl: URL): BrowserWindow {
     closeSplash();
   });
   window.on('close', (event) => {
-    debugLog(`window close event (quitting=${isQuitting}, tray=${Boolean(tray)})`);
-    if (isQuitting || !tray) return;
+    debugLog(`window close event (quitting=${isQuitting}, tray=${Boolean(tray)}, closeToTray=${desktopSettings.closeToTray})`);
+    if (!shouldHideOnClose(desktopSettings, tray !== null, isQuitting)) return;
     // O X (ou Alt+F4) só esconde a janela; o app segue rodando na bandeja.
     event.preventDefault();
+    hiddenToTray = true;
     window.hide();
     hintRunningInBackground();
   });
@@ -751,7 +838,7 @@ function createMainWindow(appUrl: URL): BrowserWindow {
   // isso garante que a janela apareça de qualquer forma em vez de ficar
   // rodando invisível pra sempre.
   const forceShowTimer = setTimeout(() => {
-    if (!window.isDestroyed() && !window.isVisible()) {
+    if (!window.isDestroyed() && !window.isVisible() && !shouldStartHidden(process.argv, desktopSettings, tray !== null)) {
       debugLog('forcing show() after timeout — ready-to-show never fired');
       window.show();
     }
@@ -773,7 +860,10 @@ if (hasSingleInstanceLock) {
   });
   app.whenReady().then(async () => {
     debugLog('whenReady resolved');
-    showSplash();
+    desktopSettings = loadDesktopSettings();
+    // Aberto sozinho pelo Windows e para ficar na bandeja: sem tela de abertura.
+    const hiddenLaunch = process.argv.includes(HIDDEN_LAUNCH_ARGUMENT) && desktopSettings.startMinimized;
+    if (!hiddenLaunch) showSplash();
     try {
       const appUrl = readConfiguredUrl();
       debugLog(`appUrl=${appUrl.toString()} isPackaged=${app.isPackaged}`);
@@ -784,6 +874,8 @@ if (hasSingleInstanceLock) {
       if (app.isPackaged) app.setAsDefaultProtocolClient('nexplay');
       Menu.setApplicationMenu(null);
       installPickerIpc();
+      installSettingsIpc();
+      applyLaunchAtLogin();
       debugLog('installPickerIpc done');
       installSessionSecurity(appUrl);
       debugLog('installSessionSecurity done');

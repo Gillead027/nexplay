@@ -22,6 +22,9 @@ export type MediaAccessStatus = 'not-determined' | 'granted' | 'denied' | 'restr
 
 contextBridge.exposeInMainWorld('desktop', {
   windowAction: (action: 'minimize' | 'toggle-maximize' | 'close'): void => ipcRenderer.send('window:action', action),
+  // Bandeja do sistema e início com o Windows (Configurações > Aplicativo).
+  getDesktopSettings: (): Promise<unknown> => ipcRenderer.invoke('desktop:get-settings'),
+  setDesktopSettings: (patch: unknown): Promise<unknown> => ipcRenderer.invoke('desktop:set-settings', patch),
   chooseShareSource: (): Promise<SharePickerChoice | null> => ipcRenderer.invoke('share-picker:open'),
   setZoomFactor: (factor: number): void => ipcRenderer.send('set-zoom-factor', Number(factor)),
   setFullscreen: (enabled: boolean): Promise<boolean> => ipcRenderer.invoke('window:set-fullscreen', Boolean(enabled)),
