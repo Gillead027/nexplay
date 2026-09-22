@@ -30,6 +30,7 @@ import {
   DISPLAY_NAME_MAX_LENGTH,
   DISPLAY_NAME_MIN_LENGTH,
   hasPermission,
+  PRESENCE_STATUSES,
   isStaffTier,
   MESSAGE_SEARCH_QUERY_MAX_LENGTH,
   MESSAGE_SEARCH_QUERY_MIN_LENGTH,
@@ -52,6 +53,7 @@ import {
   VOICE_BITRATE_MIN_KBPS,
   VOICE_USER_LIMIT_MAX,
   type Channel,
+  type PresenceStatus,
   type ForwardedFromMeta,
   type LiveKitTokenResponse,
   parseParticipantMetadata,
@@ -76,6 +78,9 @@ import {
   createUser,
   getUserById,
   getUserByUsername,
+  getUserServerLayoutJson,
+  setUserPresenceStatus,
+  setUserServerLayoutJson,
   updateUserPassword,
   updateUserProfile,
   verifyPassword,
@@ -123,7 +128,8 @@ import { defaultRng, handlePokemonCommand, isPokemonCommand } from './pokemon.js
 import { getPokemonSprite } from './pokemonSprites.js';
 import { fetchMusicThumbnail } from './musicThumbnails.js';
 import { authorizeVoiceDisconnect } from './voiceModeration.js';
-import { attachRealtime, broadcast, disconnectUser, presence, sendToServerMembers, sendToUser, sendToUsers } from './realtime.js';
+import { attachRealtime, broadcast, disconnectUser, presence, refreshPresence, sendToServerMembers, sendToUser, sendToUsers, visiblePresenceStatus } from './realtime.js';
+import { normalizeServerLayout, parseStoredServerLayout, serverLayoutSchema } from './serverLayout.js';
 import {
   createVoiceChannel,
   renameVoiceChannel,
@@ -163,6 +169,7 @@ import {
   getServerMember,
   isServerMember,
   listMemberUserIdsForServer,
+  listServerIdsForMember,
   listServerMembers,
   removeServerMember,
   setServerMemberTimeout,
@@ -303,6 +310,15 @@ const dmChannelLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: { error: 'Limite de novas conversas atingido. Tente novamente mais tarde.' },
+});
+
+// "Digitando…": o cliente avisa no máximo a cada 3 s por conversa, então o limite folgado só barra abuso.
+const typingLimiter = rateLimit({
+  windowMs: 10 * 1000,
+  limit: 60,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Devagar.' },
 });
 
 const dmMessageLimiter = rateLimit({
@@ -668,6 +684,7 @@ function toUserSession(user: UserRecord): UserSession {
     avatarFrame: user.avatarFrame,
     bannerUrl: user.bannerDataUrl ? `/api/users/${user.id}/banner?v=${user.assetsRev}` : '',
     bannerAnimated: user.bannerAnimated,
+    presenceStatus: user.presenceStatus,
   };
 }
 
@@ -803,6 +820,43 @@ app.patch('/api/profile', requireSession, serverProfileJson, (request, response)
     return;
   }
   response.json({ user: toUserSession(updated) });
+});
+
+// O que a pessoa mostra: online, ausente, não perturbe ou invisível (aparece como offline para os outros).
+const presenceStatusSchema = z.object({ status: z.enum(PRESENCE_STATUSES as unknown as [PresenceStatus, ...PresenceStatus[]]) });
+
+app.put('/api/me/presence', requireSession, (request, response) => {
+  const body = presenceStatusSchema.safeParse(request.body);
+  if (!body.success) {
+    response.status(400).json({ error: 'Status inválido.' });
+    return;
+  }
+  const user = currentUser(response);
+  setUserPresenceStatus(user.id, body.data.status);
+  refreshPresence(user.id);
+  // As outras abas e aparelhos da própria pessoa acompanham a troca.
+  sendToUser(user.id, { type: 'PRESENCE_STATUS_CHOICE', status: body.data.status });
+  response.json({ presenceStatus: body.data.status });
+});
+
+// Como a pessoa organizou a lista de servidores (pastas). Sempre devolvido já conferido contra os servidores dela.
+app.get('/api/me/server-layout', requireSession, (_request, response) => {
+  const user = currentUser(response);
+  const stored = parseStoredServerLayout(getUserServerLayoutJson(user.id));
+  response.json({ layout: normalizeServerLayout(stored, listServerIdsForMember(user.id)) });
+});
+
+app.put('/api/me/server-layout', requireSession, (request, response) => {
+  const body = serverLayoutSchema.safeParse(request.body);
+  if (!body.success) {
+    response.status(400).json({ error: 'Organização de servidores inválida.' });
+    return;
+  }
+  const user = currentUser(response);
+  const layout = normalizeServerLayout(body.data, listServerIdsForMember(user.id));
+  setUserServerLayoutJson(user.id, JSON.stringify(layout));
+  sendToUser(user.id, { type: 'SERVER_LAYOUT_UPDATE', layout });
+  response.json({ layout });
 });
 
 app.get('/api/users/:id/avatar', requireSession, (request, response) => {
@@ -1302,6 +1356,32 @@ app.get(
     }
     await refreshMusicBotTextMessage(channelId as string);
     response.json({ messages: listTextMessages(channelId as string) });
+  },
+);
+
+app.post(
+  '/api/servers/:serverId/text-channels/:channelId/typing',
+  requireSession,
+  requireServerMembership,
+  typingLimiter,
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const channelId = request.params.channelId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== serverId) {
+      response.status(404).json({ error: 'Canal de texto não encontrado.' });
+      return;
+    }
+    // Quem está em timeout não pode enviar mensagem, então também não "digita" para os outros.
+    if (rejectIfTimedOut(serverId, currentUser(response).id, response)) return;
+    sendToServerMembers(serverId, {
+      type: 'TYPING_START',
+      serverId,
+      channelId: channelId as string,
+      userId: currentUser(response).id,
+      displayName: currentUser(response).username,
+    });
+    response.status(204).end();
   },
 );
 
@@ -2179,8 +2259,12 @@ app.get('/api/servers/:serverId/members', requireSession, requireServerMembershi
 // Quem, entre os membros deste servidor, está online agora. Só membros veem, e só
 // os membros do próprio servidor aparecem (nada de listar a instância inteira).
 app.get('/api/servers/:serverId/presence', requireSession, requireServerMembership, (_request, response) => {
-  const onlineUserIds = listMemberUserIdsForServer(currentServerId(response)).filter((userId) => presence.isOnline(userId));
-  response.json({ onlineUserIds });
+  const statuses: Record<string, PresenceStatus> = {};
+  for (const userId of listMemberUserIdsForServer(currentServerId(response))) {
+    const status = visiblePresenceStatus(userId);
+    if (status) statuses[userId] = status;
+  }
+  response.json({ onlineUserIds: Object.keys(statuses), statuses });
 });
 
 app.get('/api/friends', requireSession, (_request, response) => {
@@ -2320,6 +2404,22 @@ app.get('/api/dm-channels/:dmChannelId/messages', requireSession, (request, resp
     return;
   }
   response.json({ messages: listDmMessages(channel.id) });
+});
+
+app.post('/api/dm-channels/:dmChannelId/typing', requireSession, typingLimiter, (request, response) => {
+  const dmChannelId = request.params.dmChannelId;
+  const user = currentUser(response);
+  const channel = typeof dmChannelId === 'string' ? getDmChannelForParticipant(dmChannelId, user.id) : undefined;
+  if (!channel) {
+    response.status(404).json({ error: 'Conversa não encontrada.' });
+    return;
+  }
+  const other = channel.participants.find((participant) => participant.id !== user.id)!;
+  // Quem foi bloqueado não descobre isso pelo "digitando": o aviso simplesmente não chega.
+  if (!isBlocked(user.id, other.id)) {
+    sendToUser(other.id, { type: 'DM_TYPING_START', dmChannelId: channel.id, userId: user.id, displayName: user.username });
+  }
+  response.status(204).end();
 });
 
 app.post('/api/dm-channels/:dmChannelId/messages', requireSession, dmMessageLimiter, (request, response) => {

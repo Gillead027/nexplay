@@ -120,6 +120,44 @@ O app inteiro (web, desktop, tela de abertura e seletor de compartilhamento) usa
 - Cor de destaque escolhida pela pessoa (Configurações > Aparência > Cores) troca o azul de toda a interface, inclusive o gradiente dos botões.
 - O seletor de compartilhamento de tela do app desktop tem CSS próprio (`apps/desktop/src/picker.css`) com a mesma paleta, porque roda numa janela separada.
 
+## Tratamento de áudio do microfone
+
+Tudo roda dentro do próprio app (Web Audio), em tempo real, e vale igual para a chamada e para o teste de microfone (Configurações > Voz e vídeo):
+
+```text
+microfone -> mono -> filtro de graves -> supressão de ruído por IA -> gate de sensibilidade -> compressor -> volume -> limitador -> chamada
+```
+
+- **Perfis**, como no Discord: Isolamento de voz (IA máxima, eco e ganho automático), Estúdio (áudio puro) e Personalizado (cada opção).
+- **Supressão de ruído**: Nenhuma; Padrão (a do navegador); Alta (RNNoise, rede neural rápida); Máxima (GTCRN, a mais forte contra digitação, cliques e sopro no microfone). Os modelos são WebAssembly (~150 a 200 KB), baixados só quando escolhidos, e rodam localmente. Medido no Chromium com fala real (TTS) misturada a teclado, sopro e ruído de ambiente: a Máxima derruba digitação em cerca de -50 dB, o sopro em cerca de -40 dB e o ambiente em cerca de -40 dB, com a voz preservada.
+- **Sensibilidade de entrada** (só em Voz ativa): gate com atraso de 6 ms (não engole o começo da fala), tempo de espera e fechamento suave. No modo automático aprende o ruído do ambiente sozinho. O medidor das configurações mostra o nível já tratado e o limite.
+- **Compressor de voz** (Leve, Médio, Forte), **volume de entrada** de 0 a 200% e **limitador** de segurança contra estouro.
+- Cancelamento de eco e controle automático de ganho são os do navegador, aplicados ao vivo.
+- Mudar qualquer opção vale na hora, na chamada e no teste, sem reconectar. "Ouvir a mim mesmo" toca o áudio tratado nos alto-falantes (use fones).
+- O código está em `apps/web/src/audio/` (`processingConfig.ts` decide o que vale, `voice-dsp.worklet.js` é o gate, `voiceGraph.ts` monta o caminho do áudio) e tem testes (`voiceDsp.test.ts`), inclusive do gate alimentado com sinais sintéticos.
+
+O motor anterior (`@livekit/krisp-noise-filter`) só funciona com o LiveKit Cloud, não com este servidor próprio, e foi removido.
+
+## Operação: backup, vigia e deploy
+
+Os scripts ficam em `scripts/` e são enviados à VPS junto com o código:
+
+- `scripts/vps/backup.sh` (cron diário às 04:17, instalado por `scripts/vps/install.sh`): cópia consistente do banco (`VACUUM INTO`, com o app no ar), conferida com `PRAGMA integrity_check`, mais anexos e configuração, em `/opt/nexplay/backups/daily/nexplay-<data>.tar.zst`. Guarda 14 dias e 8 domingos.
+- `scripts/vps/healthcheck.sh` (a cada minuto): confere `/api/health` pelo endereço público, reinicia a API e o site depois de 3 falhas seguidas e avisa se o disco passar de 90% ou se o último backup tiver mais de 36 h. Para receber os avisos, crie `/opt/nexplay/.alerts` com `ALERT_WEBHOOK_URL=` (webhook do Discord ou um tópico do ntfy.sh). Ele vive na mesma máquina que vigia: para saber que a VPS inteira caiu, use também um monitor externo (UptimeRobot, por exemplo).
+- `scripts/pull-backup.ps1`: traz os últimos backups para este computador (uma cópia fora da VPS). Registrado como tarefa diária do Windows ("NexPlay backup", 12:00); para remover: `schtasks /Delete /TN "NexPlay backup"`.
+- `scripts/deploy.sh <rótulo>`: publica web e API (backup antes, imagens de volta com o rótulo, envio sem secrets, build e conferência de saúde).
+- Restaurar: `zstd -d nexplay-<data>.tar.zst -c | tar -x`, parar a API, colocar `nexplay.db` no volume `api_data` e subir de novo.
+
+## Como usar o app: novidades do dia a dia
+
+- **Status** (clique no seu nome, no canto): Online, Ausente, Não perturbe (sem sons) e Invisível (aparece offline). **"Digitando…"** nos canais e nas conversas diretas (quem está invisível não avisa). **Cor do cargo** nos nomes, no painel de membros e nas mensagens (o cargo mais alto com cor de verdade; os dois cinzas da paleta valem como sem cor). **@nome** destaca a mensagem e toca um som diferente.
+- **Sons** (Configurações > Notificações): mensagem nova e menção, cada um com seu interruptor; respeitam o modo de notificação da categoria e o Não perturbe, e não tocam no canal que você está olhando.
+- **Pastas de servidores**: arraste um servidor sobre outro para criar uma pasta, sobre uma pasta para colocar dentro, entre os itens para reordenar. O clique direito faz o mesmo sem arrastar (criar pasta, mover, tirar, editar nome e cor, desfazer). É por pessoa e igual em todos os aparelhos.
+- **Esc** fecha uma camada por vez (menus, cartões, janelas e diálogos numa pilha só: `apps/web/src/escapeLayers.ts`).
+- **Qualidade da transmissão** troca ao vivo, sem parar (setinha ao lado do botão de compartilhar tela, ou em Configurações): a captura muda de resolução e taxa de quadros e o codificador recebe o novo limite de bitrate.
+- **Telas estreitas**: em janelas menores que 820 px os servidores e canais viram uma gaveta (botão de menu), as configurações ocupam a tela e o app pode ser instalado no celular (`manifest.webmanifest`).
+- **Desktop** (Configurações > Aplicativo): fechar minimiza para a bandeja (ligado por padrão), iniciar com o Windows e iniciar minimizado.
+
 ## NexDex (captura de Pokémon nos canais de texto)
 
 Qualquer pessoa de um servidor joga escrevendo comandos num canal de texto:

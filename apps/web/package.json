@@ -8,11 +8,11 @@
     "build": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit && vite build",
     "licenses": "node scripts/generate-licenses.mjs",
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.node.json --noEmit",
-    "test": "node --import tsx --test src/musicCommandRouting.test.ts src/components/Markdown.test.tsx src/realtime.test.ts src/components/profilePopoverPosition.test.ts src/clipboard.test.ts src/streamAudio.test.ts src/volumePrefs.test.ts src/memberListState.test.ts src/micState.test.ts src/adminFormat.test.ts src/connectivity.test.ts src/deviceChanges.test.ts src/mediaAccess.test.ts src/aboutInfo.test.ts src/pendingInvite.test.ts src/connectionSignal.test.ts src/iconImage.test.ts src/appVersion.test.ts"
+    "test": "node --import tsx --test src/musicCommandRouting.test.ts src/components/Markdown.test.tsx src/realtime.test.ts src/components/profilePopoverPosition.test.ts src/clipboard.test.ts src/streamAudio.test.ts src/volumePrefs.test.ts src/memberListState.test.ts src/micState.test.ts src/adminFormat.test.ts src/connectivity.test.ts src/deviceChanges.test.ts src/mediaAccess.test.ts src/aboutInfo.test.ts src/pendingInvite.test.ts src/connectionSignal.test.ts src/iconImage.test.ts src/appVersion.test.ts src/escapeLayers.test.ts src/socialState.test.ts src/notificationSound.test.ts src/audio/voiceDsp.test.ts src/serverFolders.test.ts"
   },
   "dependencies": {
-    "@livekit/krisp-noise-filter": "^0.4.4",
     "@nexplay/shared": "0.1.0",
+    "@sapphi-red/web-noise-suppressor": "^0.4.1",
     "livekit-client": "^2.22.2",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

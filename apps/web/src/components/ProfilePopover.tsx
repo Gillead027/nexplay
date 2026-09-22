@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { ACCENT_COLORS, type Activity, type FriendshipStatus, type UserSession } from '@nexplay/shared';
 import { api } from '../api';
 import { Avatar } from './Workspace';
+import { useEscapeLayer } from '../escapeLayers';
 import { ServerImage } from './ServerImage';
 import { ActivityLine, ListeningActivityCard } from './ActivityDisplay';
 import { BlockIcon, CloseIcon, MessageIcon, UserPlusIcon } from './Icons';
@@ -111,19 +112,16 @@ export function ProfilePopover({
     return () => window.removeEventListener('resize', handleResize);
   }, [target]);
 
+  useEscapeLayer(Boolean(target), onClose);
+
   useEffect(() => {
     if (!target) return;
     const handlePointerDown = (event: MouseEvent) => {
       if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) onClose();
     };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
     window.addEventListener('mousedown', handlePointerDown);
-    window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('mousedown', handlePointerDown);
-      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [target, onClose]);
 

@@ -19,10 +19,12 @@ import type {
   MusicCommandResponse,
   NotificationMode,
   AdminOverview,
+  PresenceStatus,
   PublicConfig,
   Role,
   RoomSummary,
   Server,
+  ServerLayout,
   ServerMember,
   SoundboardSound,
   TextChannel,
@@ -332,7 +334,18 @@ export const api = {
       method: 'DELETE',
     }),
   getMembers: (serverId: string) => request<{ members: MemberSummary[] }>(`${s(serverId)}/members`),
-  getPresence: (serverId: string) => request<{ onlineUserIds: string[] }>(`${s(serverId)}/presence`),
+  getPresence: (serverId: string) =>
+    request<{ onlineUserIds: string[]; statuses?: Record<string, PresenceStatus> }>(`${s(serverId)}/presence`),
+  setPresenceStatus: (status: PresenceStatus) =>
+    request<{ presenceStatus: PresenceStatus }>('/api/me/presence', { method: 'PUT', body: JSON.stringify({ status }) }),
+  getServerLayout: () => request<{ layout: ServerLayout }>('/api/me/server-layout'),
+  saveServerLayout: (layout: ServerLayout) =>
+    request<{ layout: ServerLayout }>('/api/me/server-layout', { method: 'PUT', body: JSON.stringify(layout) }),
+  // "Digitando…": avisos curtos e descartáveis; um erro aqui nunca deve incomodar quem está escrevendo.
+  sendTyping: (serverId: string, channelId: string) =>
+    request<void>(`${s(serverId)}/text-channels/${encodeURIComponent(channelId)}/typing`, { method: 'POST' }),
+  sendDmTyping: (dmChannelId: string) =>
+    request<void>(`/api/dm-channels/${encodeURIComponent(dmChannelId)}/typing`, { method: 'POST' }),
   timeoutMember: (serverId: string, userId: string, minutes: number) =>
     request<{ timeoutUntil: number }>(`${s(serverId)}/moderation/timeout`, {
       method: 'POST',

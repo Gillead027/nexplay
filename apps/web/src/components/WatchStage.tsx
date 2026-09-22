@@ -2,6 +2,7 @@ import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'rea
 import { LocalVideoTrack, RemoteParticipant, RemoteVideoTrack } from 'livekit-client';
 import type { ScreenTrackView } from '../livekit/useVoiceRoom';
 import { ChevronIcon, EyeOffIcon, FullscreenIcon, SpeakerIcon } from './Icons';
+import { useEscapeLayer } from '../escapeLayers';
 
 export function attachVideo(view: ScreenTrackView, element: HTMLVideoElement | null): (() => void) | undefined {
   const track = view.publication.track;
@@ -30,14 +31,9 @@ function useStageFullscreen(stageRef: RefObject<HTMLElement | null>) {
     };
   }, [stageRef]);
 
-  useEffect(() => {
-    if (!fullscreen || !window.desktop?.setFullscreen) return undefined;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') void window.desktop?.setFullscreen?.(false);
-    };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [fullscreen]);
+  useEscapeLayer(fullscreen && Boolean(window.desktop?.setFullscreen), () => {
+    void window.desktop?.setFullscreen?.(false);
+  });
 
   async function toggle() {
     const stage = stageRef.current;

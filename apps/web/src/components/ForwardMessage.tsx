@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import type { FriendSummary, Server, TextChannel } from '@nexplay/shared';
 import { api } from '../api';
 import { Avatar } from './Workspace';
+import { useEscapeLayer } from '../escapeLayers';
 import { CloseIcon, ForwardIcon, SearchIcon } from './Icons';
 
 export type ForwardSource =
@@ -44,13 +45,10 @@ export function ForwardMessageModal({
     void Promise.all(
       servers.map((server) => api.getTextChannels(server.id).then(({ channels }) => [server.id, channels] as const)),
     ).then((entries) => setChannelsByServer(Object.fromEntries(entries)));
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  useEscapeLayer(open, onClose);
 
   if (!source) return null;
   // Capturado em uma const à parte: fechos definidos depois de um `if`

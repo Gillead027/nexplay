@@ -1,7 +1,7 @@
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { RealtimeEvent } from '@nexplay/shared';
+import type { PresenceStatus, RealtimeEvent } from '@nexplay/shared';
 import { config } from './config.js';
 import { isBanned } from './moderation.js';
 import { PresenceTracker } from './presence.js';
@@ -63,17 +63,30 @@ export function sendToUser(userId: string, event: RealtimeEvent): void {
   sendToUsers([userId], event);
 }
 
-// Presença: quem tem o app aberto. O aviso de mudança vai só pra quem divide ao
-// menos um servidor com a pessoa (incluindo ela mesma, o que é inofensivo).
-function notifyPresence(userId: string, online: boolean): void {
+// Presença: quem tem o app aberto E quer ser visto. Quem escolheu "invisível" aparece como offline para os outros
+// (só a própria pessoa sabe). O aviso de mudança vai só pra quem divide ao menos um servidor com ela (incluindo ela
+// mesma, o que é inofensivo).
+export function visiblePresenceStatus(userId: string): PresenceStatus | null {
+  if (!presence.isOnline(userId)) return null;
+  const status = getUserById(userId)?.presenceStatus ?? 'online';
+  return status === 'invisible' ? null : status;
+}
+
+function notifyPresence(userId: string): void {
   const audience = new Set<string>();
   for (const serverId of listServerIdsForMember(userId)) {
     for (const memberId of listMemberUserIdsForServer(serverId)) audience.add(memberId);
   }
-  sendToUsers([...audience], { type: 'PRESENCE_UPDATE', userId, online });
+  const status = visiblePresenceStatus(userId);
+  sendToUsers([...audience], { type: 'PRESENCE_UPDATE', userId, online: status !== null, ...(status ? { status } : {}) });
 }
 
-export const presence = new PresenceTracker(notifyPresence);
+export const presence = new PresenceTracker((userId) => notifyPresence(userId));
+
+// A pessoa trocou o que mostra (online, ausente, não perturbe, invisível): avisa quem a vê, sem mexer nas conexões.
+export function refreshPresence(userId: string): void {
+  notifyPresence(userId);
+}
 
 // Usado quando um usuário é banido — sem isso, o cookie continuaria válido
 // até a próxima requisição HTTP dele; fechar a conexão de tempo real força o

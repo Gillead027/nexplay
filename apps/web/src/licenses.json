@@ -6,12 +6,6 @@
     "url": "https://github.com/bufbuild/protobuf-es"
   },
   {
-    "name": "@livekit/krisp-noise-filter",
-    "version": "0.4.4",
-    "license": "SEE LICENSE IN https://livekit.io/legal/terms-of-service",
-    "url": "https://livekit.io/legal/terms-of-service"
-  },
-  {
     "name": "@livekit/mutex",
     "version": "1.1.1",
     "license": "Apache-2.0",
@@ -24,10 +18,22 @@
     "url": "https://github.com/livekit/protocol"
   },
   {
+    "name": "@sapphi-red/web-noise-suppressor",
+    "version": "0.4.1",
+    "license": "MIT",
+    "url": "https://github.com/sapphi-red/web-noise-suppressor"
+  },
+  {
     "name": "events",
     "version": "3.3.0",
     "license": "MIT",
     "url": "https://github.com/Gozala/events"
+  },
+  {
+    "name": "GTCRN (modelo de supressão de ruído)",
+    "version": "2024",
+    "license": "MIT",
+    "url": "https://github.com/Xiaobin-Rong/gtcrn"
   },
   {
     "name": "Inter (fonte, @fontsource-variable/inter)",
@@ -70,6 +76,12 @@
     "version": "19.2.8",
     "license": "MIT",
     "url": "https://github.com/react/react"
+  },
+  {
+    "name": "RNNoise (modelo de supressão de ruído)",
+    "version": "0.2",
+    "license": "BSD-3-Clause",
+    "url": "https://gitlab.xiph.org/xiph/rnnoise"
   },
   {
     "name": "rxjs",

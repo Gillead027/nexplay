@@ -1,25 +1,31 @@
 import { useMemo } from 'react';
-import type { MemberSummary } from '@nexplay/shared';
+import type { MemberSummary, PresenceStatus } from '@nexplay/shared';
 import { buildMemberSections } from '../memberListState';
-import { useServerMemberList } from '../useServerMemberList';
+import { buildNameColorMap } from '../roleColors';
+import type { ServerMemberListData } from '../useServerMemberList';
+import { PRESENCE_STATUS_LABELS } from '@nexplay/shared';
 import { MemberSkeleton } from './Skeleton';
 import { Avatar } from './Workspace';
 
 function MemberRow({
   member,
   online,
+  status,
+  nameColor,
   isOwn,
   onOpenProfile,
 }: {
   member: MemberSummary;
   online: boolean;
+  status: PresenceStatus | 'offline';
+  nameColor: string | undefined;
   isOwn: boolean;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
 }) {
   return (
     <button
       type="button"
-      className={`member-row ${online ? 'online' : 'offline'}`}
+      className={`member-row ${online ? 'online' : 'offline'} status-${status}`}
       onClick={(event) => onOpenProfile(member.id, event)}
       title={`Ver perfil de ${member.displayName}`}
     >
@@ -28,12 +34,12 @@ function MemberRow({
         <span className="member-status-dot" aria-hidden="true" />
       </span>
       <span className="member-copy">
-        <strong>
+        <strong style={nameColor ? { color: nameColor } : undefined}>
           {member.displayName}
           {isOwn ? ' (você)' : ''}
         </strong>
         {member.statusText && <span>{member.statusText}</span>}
-        <span className="sr-only">{online ? 'Online' : 'Offline'}</span>
+        <span className="sr-only">{status === 'offline' ? 'Offline' : PRESENCE_STATUS_LABELS[status]}</span>
       </span>
     </button>
   );
@@ -46,16 +52,19 @@ function MemberRow({
 // controles de voz aqui: o volume de cada pessoa fica no botão direito na lista
 // de canais de voz, à esquerda.
 export function MemberList({
-  serverId,
+  data,
   ownId,
+  ownStatus,
   onOpenProfile,
 }: {
-  serverId: string;
+  data: ServerMemberListData;
   ownId: string;
+  ownStatus: PresenceStatus;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
 }) {
-  const { members, roles, onlineIds, loading, failed } = useServerMemberList(serverId);
+  const { members, roles, onlineIds, statuses, loading, failed } = data;
   const sections = useMemo(() => buildMemberSections(members, onlineIds, ownId, roles), [members, onlineIds, ownId, roles]);
+  const nameColors = useMemo(() => buildNameColorMap(members, roles), [members, roles]);
   const empty = members.length === 0;
 
   return (
@@ -77,6 +86,8 @@ export function MemberList({
                 key={member.id}
                 member={member}
                 online={section.kind !== 'offline'}
+                status={section.kind === 'offline' ? 'offline' : member.id === ownId ? ownStatus : (statuses.get(member.id) ?? 'online')}
+                nameColor={nameColors.get(member.id)}
                 isOwn={member.id === ownId}
                 onOpenProfile={onOpenProfile}
               />

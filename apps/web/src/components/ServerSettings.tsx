@@ -26,6 +26,7 @@ import { fileToServerImageDataUrl } from '../imageResize';
 import { dataUrlIsAnimated } from '../iconImage';
 import { ServerImage } from './ServerImage';
 import { onRealtimeEvent } from '../realtime';
+import { useEscapeLayer } from '../escapeLayers';
 import { CloseIcon, CopyIcon, ImageIcon, PlusIcon, SearchIcon, SettingsIcon, TrashIcon, UserIcon } from './Icons';
 
 type ServerSettingsSection = 'profile' | 'roles' | 'members' | 'invites' | 'integrations';
@@ -72,14 +73,7 @@ export function ServerSettings({
   // conseguiria excluí-lo.
   const canDeleteServer = server.ownerId ? server.ownerId === member.userId : canManageServer;
 
-  useEffect(() => {
-    if (!open) return;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [onClose, open]);
+  useEscapeLayer(open, onClose);
 
   if (!open) return null;
 
@@ -170,20 +164,11 @@ function DeleteServerDialog({
     }
   }, [open]);
 
-  // O diálogo fica por cima das Configurações do servidor, que também escutam Esc
-  // no window. Este ouvinte roda antes (fase de captura) e consome o toque, pra
-  // um Esc fechar só o diálogo, não as duas camadas. Durante a exclusão o Esc é
-  // engolido sem fechar nada.
-  useEffect(() => {
-    if (!open) return;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.stopPropagation();
-      if (!deleting) onClose();
-    };
-    window.addEventListener('keydown', handleEscape, true);
-    return () => window.removeEventListener('keydown', handleEscape, true);
-  }, [open, deleting, onClose]);
+  // O diálogo fica por cima das Configurações do servidor: por ser a camada de cima da pilha de Esc, um Esc fecha só o
+  // diálogo. Durante a exclusão o Esc é engolido sem fechar nada.
+  useEscapeLayer(open, () => {
+    if (!deleting) onClose();
+  });
 
   if (!open) return null;
 

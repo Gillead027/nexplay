@@ -1,0 +1,15 @@
+{
+  "name": "NexPlay",
+  "short_name": "NexPlay",
+  "description": "NexPlay — voz, jogos e tela entre amigos.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#050917",
+  "theme_color": "#050917",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/logo-320.png", "sizes": "320x320", "type": "image/png", "purpose": "any" },
+    { "src": "/apple-touch-icon.png", "sizes": "180x180", "type": "image/png", "purpose": "any" }
+  ]
+}

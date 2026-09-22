@@ -63,6 +63,17 @@ export function playMessageSound(outputVolume: number): void {
   playTones([{ frequency: 740, startOffset: 0, duration: 0.09 }], outputVolume);
 }
 
+// Alguém te chamou pelo nome (@Nome): dois tons subindo, mais marcantes que o de uma mensagem comum.
+export function playMentionSound(outputVolume: number): void {
+  playTones(
+    [
+      { frequency: 660, startOffset: 0, duration: 0.09 },
+      { frequency: 990, startOffset: 0.08, duration: 0.14 },
+    ],
+    outputVolume,
+  );
+}
+
 // Frequências diferentes das de entrar/sair de canal (587/880/660/415) pra
 // não confundir "eu mutei" com "alguém saiu da call" — mais agudo e mais
 // curto, já que é feedback imediato da própria ação, não um evento social.

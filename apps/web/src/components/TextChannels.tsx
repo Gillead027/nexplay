@@ -25,6 +25,10 @@ import { FailedMessages } from './FailedMessages';
 import { MessageSkeleton } from './Skeleton';
 import { routeTextChannelInput } from '../musicCommandRouting';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
+import { useEscapeLayer } from '../escapeLayers';
+import { TypingIndicator } from './TypingIndicator';
+import { useTypingIndicator, useTypingSender } from '../useTypingIndicator';
+import { mentionsUser } from '../mentions';
 import { MarkdownText } from './Markdown';
 import { MusicCard } from './MusicCard';
 import { copyLabel, useCopyFeedback } from '../useCopyFeedback';
@@ -368,11 +372,13 @@ function HumanTextMessageRow({
   replyTarget,
   onJumpToMessage,
   onTogglePin,
+  nameColor,
 }: {
   message: TextMessage;
   continued: boolean;
   session: UserSession;
   canManageMessages: boolean;
+  nameColor: string | undefined;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
   isEditing: boolean;
   onStartEdit: () => void;
@@ -393,7 +399,10 @@ function HumanTextMessageRow({
   const copyFeedback = useCopyFeedback();
   const copyStatus = copyFeedback.statusFor(message.id);
   return (
-    <article id={`message-${message.id}`} className={`message text-message ${continued ? 'continued' : ''} ${message.pinnedAt ? 'pinned' : ''}`}>
+    <article
+      id={`message-${message.id}`}
+      className={`message text-message ${continued ? 'continued' : ''} ${message.pinnedAt ? 'pinned' : ''} ${!isOwn && mentionsUser(message.text, session.displayName) ? 'mentions-me' : ''}`}
+    >
       <button
         type="button"
         className="message-avatar-trigger"
@@ -411,7 +420,12 @@ function HumanTextMessageRow({
           <ReplyPreview replyTarget={replyTarget} onJump={() => onJumpToMessage(message.replyToMessageId!)} />
         )}
         <header>
-          <button type="button" className="message-name-trigger" onClick={(event) => onOpenProfile(message.senderId, event)}>
+          <button
+            type="button"
+            className="message-name-trigger"
+            style={nameColor ? { color: nameColor } : undefined}
+            onClick={(event) => onOpenProfile(message.senderId, event)}
+          >
             {message.senderName}
           </button>
           <time dateTime={new Date(message.sentAt).toISOString()}>
@@ -509,6 +523,7 @@ function TextMessageRow(props: {
   continued: boolean;
   session: UserSession;
   canManageMessages: boolean;
+  nameColor: string | undefined;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
   onMusicCommand: (command: string) => Promise<MusicCommandResponse>;
   onGameCommand: (command: string) => Promise<void>;
@@ -536,6 +551,7 @@ function TextMessageRow(props: {
         continued={props.continued}
         session={props.session}
         canManageMessages={props.canManageMessages}
+        nameColor={props.nameColor}
         onOpenProfile={props.onOpenProfile}
         isEditing={props.isEditing}
         onStartEdit={props.onStartEdit}
@@ -683,6 +699,7 @@ export function TextChannelView({
   channel,
   session,
   member,
+  nameColors,
   messageStyle,
   voiceChannelId,
   onOpenProfile,
@@ -691,6 +708,7 @@ export function TextChannelView({
   channel: TextChannel;
   session: UserSession;
   member: ServerMember | null;
+  nameColors: ReadonlyMap<string, string>;
   messageStyle: MessageStyle;
   voiceChannelId: string | null;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
@@ -718,6 +736,12 @@ export function TextChannelView({
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const typingNames = useTypingIndicator({ kind: 'channel', serverId: channel.serverId, channelId: channel.id }, session.id);
+  const notifyTyping = useTypingSender(
+    `${channel.serverId}:${channel.id}`,
+    () => api.sendTyping(channel.serverId, channel.id),
+    session.presenceStatus === 'invisible',
+  );
   const isTimedOut = Boolean(member?.timeoutUntil && member.timeoutUntil > Date.now());
   const canManageMessages = hasPermission(member?.permissions ?? 0, Permission.MANAGE_MESSAGES);
 
@@ -1042,6 +1066,7 @@ export function TextChannelView({
               continued={continued}
               session={session}
               canManageMessages={canManageMessages}
+              nameColor={nameColors.get(message.senderId)}
               onOpenProfile={onOpenProfile}
               isEditing={editingMessageId === message.id}
               onStartEdit={() => setEditingMessageId(message.id)}
@@ -1131,6 +1156,7 @@ export function TextChannelView({
           ))}
         </div>
       )}
+      <TypingIndicator names={typingNames} />
       <form className="text-channel-form" onSubmit={submitMessage}>
         <div className="text-channel-input-row">
           <input
@@ -1158,7 +1184,10 @@ export function TextChannelView({
             maxLength={CHAT_MESSAGE_MAX_LENGTH}
             value={draft}
             disabled={isTimedOut}
-            onChange={(event) => setDraft(event.target.value)}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              notifyTyping(event.target.value);
+            }}
             onKeyDown={(event) => {
               if (event.key === 'Enter' && !event.shiftKey) {
                 event.preventDefault();
@@ -1233,6 +1262,10 @@ export function CreateTextChannelDialog({
     window.requestAnimationFrame(() => returnFocusRef.current?.focus());
   }, [onClose, returnFocusRef]);
 
+  useEscapeLayer(open, () => {
+    if (!saving) close();
+  });
+
   useEffect(() => {
     if (!open) return;
     nameInputRef.current?.focus();
@@ -1245,10 +1278,6 @@ export function CreateTextChannelDialog({
       element.setAttribute('aria-hidden', 'true');
     }
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !saving) {
-        close();
-        return;
-      }
       if (event.key !== 'Tab') return;
       const focusable = Array.from(
         dialogRef.current?.querySelectorAll<HTMLElement>(

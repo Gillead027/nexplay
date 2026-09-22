@@ -5,6 +5,7 @@ import {
   ConnectionState,
   LocalAudioTrack,
   LocalParticipant,
+  LocalVideoTrack,
   Participant,
   RemoteParticipant,
   type RemoteTrack,
@@ -20,7 +21,6 @@ import {
   type TrackProcessor,
   type TrackPublishOptions,
 } from 'livekit-client';
-import type { KrispNoiseFilterProcessor } from '@livekit/krisp-noise-filter';
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   MIC_MUTED_ATTRIBUTE,
@@ -37,6 +37,10 @@ import {
 } from '@nexplay/shared';
 import { api } from '../api';
 import { getOutputVolume } from '../appearancePrefs';
+import { captureConstraintsFor, type VoiceProcessingConfig } from '../audio/processingConfig';
+import { NexPlayVoiceProcessor } from '../audio/voiceGraph';
+import { clearVoiceMeter } from '../audio/voiceMeter';
+import { useVoiceSettings, voiceSettingsStore } from '../audio/voiceSettingsStore';
 import { deviceAddedMessage, deviceLostMessage, diffDevices, selectionLost, type DeviceKind, type DeviceLite } from '../deviceChanges';
 import { describeMediaError, isPermissionDenied, type MediaAccessKind } from '../mediaAccess';
 import { isMicShownMuted } from '../micState';
@@ -52,122 +56,21 @@ import {
 } from '../sounds';
 
 export type ShareQuality = '720p30' | '720p60' | '1080p60';
-export type InputMode = 'voice' | 'ptt';
+import type { InputMode } from '../audio/processingConfig';
+export type { InputMode, MicProfile } from '../audio/processingConfig';
 
-const INPUT_MODE_KEY = 'np:input-mode';
 const PTT_KEY_KEY = 'np:ptt-key';
 const DEFAULT_PTT_KEY = 'ControlRight';
-const NOISE_SUPPRESSION_KEY = 'np:noise-suppression';
-const ECHO_CANCELLATION_KEY = 'np:echo-cancellation';
-const AUTO_GAIN_KEY = 'np:auto-gain';
-const MIC_PROFILE_KEY = 'np:mic-profile';
-const AUTO_SENSITIVITY_KEY = 'np:auto-sensitivity';
-const INPUT_SENSITIVITY_KEY = 'np:input-sensitivity';
-
-/**
- * Espelha os 3 perfis do Discord. A supressão de ruído usa o Krisp de
- * verdade (@livekit/krisp-noise-filter, o mesmo motor que o Discord usa —
- * roda localmente no navegador via WASM, não é um serviço pago por
- * requisição) sempre que o navegador suportar; sem suporte, cai pra
- * supressão nativa do Chromium como alternativa. "Personalizado" expõe
- * supressão/eco/ganho individualmente.
- */
-export type MicProfile = 'isolamento' | 'estudio' | 'personalizado';
-
-// @livekit/krisp-noise-filter empacota o modelo Krisp (~6MB) dentro do
-// próprio módulo JS — um import estático incharia o bundle principal do app
-// inteiro pra todo mundo, mesmo quem nunca abre um canal de voz. import()
-// dinâmico vira um chunk separado que só baixa quando alguém realmente entra
-// numa call, disparado assim que este módulo carrega (não só no primeiro
-// uso) pra já estar pronto quando a pessoa terminar de escolher o canal.
-let krispSupported = false;
-let krispModulePromise: ReturnType<typeof loadKrispModule> | null = null;
-
-function loadKrispModule() {
-  return import('@livekit/krisp-noise-filter').then((module) => {
-    krispSupported = module.isKrispNoiseFilterSupported();
-    return module;
-  });
-}
-
-function ensureKrispModule() {
-  krispModulePromise ??= loadKrispModule().catch((error) => {
-    krispSupported = false;
-    krispModulePromise = null;
-    throw error;
-  });
-  return krispModulePromise;
-}
-
-void ensureKrispModule();
-
-function wantsRealNoiseSuppression(profile: MicProfile, noiseSuppression: boolean): boolean {
-  if (profile === 'estudio') return false;
-  if (profile === 'isolamento') return true;
-  return noiseSuppression;
-}
-
-function loadMicProfile(): MicProfile {
-  const stored = localStorage.getItem(MIC_PROFILE_KEY);
-  if (stored === 'estudio' || stored === 'personalizado') return stored;
-  if (stored === 'isolamento') return 'isolamento';
-  // Ninguém escolheu um perfil ainda: quem já tinha desligado a supressão de
-  // ruído no toggle antigo (única opção que existia antes desse recurso) cai
-  // em "Personalizado" pra manter exatamente o que essa pessoa já preferia,
-  // em vez de reativar a supressão silenciosamente com o padrão "Isolamento".
-  return localStorage.getItem(NOISE_SUPPRESSION_KEY) === 'false' ? 'personalizado' : 'isolamento';
-}
-
-function loadNoiseSuppression(): boolean {
-  return localStorage.getItem(NOISE_SUPPRESSION_KEY) !== 'false';
-}
-
-function loadEchoCancellation(): boolean {
-  return localStorage.getItem(ECHO_CANCELLATION_KEY) !== 'false';
-}
-
-function loadAutoGain(): boolean {
-  return localStorage.getItem(AUTO_GAIN_KEY) !== 'false';
-}
-
-function loadAutoSensitivity(): boolean {
-  return localStorage.getItem(AUTO_SENSITIVITY_KEY) !== 'false';
-}
-
-function loadInputSensitivity(): number {
-  const stored = localStorage.getItem(INPUT_SENSITIVITY_KEY);
-  const value = stored === null ? NaN : Number(stored);
-  return Number.isFinite(value) && value >= 0 && value <= 100 ? value : 15;
-}
-
-function microphoneCaptureOptions(
-  profile: MicProfile,
-  noiseSuppression: boolean,
-  echoCancellation: boolean,
-  autoGain: boolean,
-) {
-  if (profile === 'estudio') {
-    // "Áudio puro": igual ao Discord, mic aberto sem nenhum processamento.
-    return { noiseSuppression: false, echoCancellation: false, autoGainControl: false };
-  }
-  const suppressionWanted = wantsRealNoiseSuppression(profile, noiseSuppression);
-  return {
-    // O Krisp roda como processor sobre o track já publicado (attachKrispProcessor),
-    // não como constraint de captura — pedir os dois ao mesmo tempo cascateia
-    // dois DSPs de ruído diferentes, o que soa pior, não melhor. A constraint
-    // nativa só entra quando o Krisp não pôde carregar.
-    noiseSuppression: suppressionWanted && !krispSupported,
-    echoCancellation: profile === 'isolamento' ? true : echoCancellation,
-    autoGainControl: profile === 'isolamento' ? true : autoGain,
-  };
-}
-
-function loadInputMode(): InputMode {
-  return localStorage.getItem(INPUT_MODE_KEY) === 'ptt' ? 'ptt' : 'voice';
-}
 
 function loadPttKey(): string {
   return localStorage.getItem(PTT_KEY_KEY) || DEFAULT_PTT_KEY;
+}
+
+// As restrições de captura do navegador que valem agora. Se a rede neural escolhida não pôde ser carregada, cai para a
+// supressão nativa (senão o microfone ficaria sem nenhuma supressão sem a pessoa saber).
+function nativeCaptureConstraints(config: VoiceProcessingConfig, neuralFailed: boolean) {
+  const constraints = captureConstraintsFor(config);
+  return neuralFailed && (config.noiseLevel === 'high' || config.noiseLevel === 'max') ? { ...constraints, noiseSuppression: true } : constraints;
 }
 
 // echoCancellation/noiseSuppression/autoGainControl são DSP de voz — aplicados
@@ -273,27 +176,26 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
 }
 
 export function useVoiceRoom() {
-  const initialMicProfile = useRef(loadMicProfile());
-  const initialNoiseSuppression = useRef(loadNoiseSuppression());
-  const initialEchoCancellation = useRef(loadEchoCancellation());
-  const initialAutoGain = useRef(loadAutoGain());
-  const [room] = useState(
-    () =>
-      new Room({
-        // adaptiveStream reduz a resolução recebida com base no tamanho do
-        // elemento <video> na tela — útil pra economizar banda, mas troca
-        // nitidez por isso, e foi apontado como causa da imagem borrada.
-        adaptiveStream: false,
-        dynacast: true,
-        disconnectOnPageLeave: true,
-        audioCaptureDefaults: microphoneCaptureOptions(
-          initialMicProfile.current,
-          initialNoiseSuppression.current,
-          initialEchoCancellation.current,
-          initialAutoGain.current,
-        ),
-      }),
-  );
+  const processorRef = useRef<NexPlayVoiceProcessor | null>(null);
+  const neuralFailedRef = useRef(false);
+  const applyMicCaptureOptionsRef = useRef<() => Promise<void>>(async () => undefined);
+  const onNeuralFailureRef = useRef<() => void>(() => undefined);
+  const [room] = useState(() => {
+    const config = voiceSettingsStore.getSnapshot().config;
+    // O tratamento de áudio (supressão de ruído por IA, gate de sensibilidade, compressor, volume) roda dentro deste
+    // processador; o LiveKit publica a saída dele no lugar do microfone cru.
+    const processor = new NexPlayVoiceProcessor(config, () => onNeuralFailureRef.current());
+    processorRef.current = processor;
+    return new Room({
+      // adaptiveStream reduz a resolução recebida com base no tamanho do
+      // elemento <video> na tela — útil pra economizar banda, mas troca
+      // nitidez por isso, e foi apontado como causa da imagem borrada.
+      adaptiveStream: false,
+      dynacast: true,
+      disconnectOnPageLeave: true,
+      audioCaptureDefaults: { ...nativeCaptureConstraints(config, false), channelCount: 1, processor },
+    });
+  });
   const [currentChannel, setCurrentChannel] = useState<VoiceChannel | null>(null);
   useEffect(() => onRealtimeEvent((event) => {
     if (event.type === 'VOICE_CHANNEL_UPDATE') {
@@ -326,6 +228,13 @@ export function useVoiceRoom() {
   }, []);
   // Aviso que não é erro: um aparelho foi conectado ou o escolhido sumiu.
   const [notice, setNotice] = useState('');
+  // Se o modelo de IA de supressão de ruído não carregar, a chamada segue com a supressão nativa do navegador e avisa.
+  onNeuralFailureRef.current = () => {
+    if (neuralFailedRef.current) return;
+    neuralFailedRef.current = true;
+    setNotice('Não foi possível carregar a supressão de ruído por IA; usando a do navegador no lugar.');
+    void applyMicCaptureOptionsRef.current();
+  };
   const [deafened, setDeafened] = useState(false);
   // Mute de verdade: só muda quando a pessoa clica no microfone (ou ensurdece).
   // O track do microfone liga e desliga sozinho no push-to-talk e na
@@ -345,37 +254,19 @@ export function useVoiceRoom() {
   const [shareAudioActive, setShareAudioActive] = useState(false);
   const [cameraEnabled, setCameraEnabled] = useState(false);
   const [canPlaybackAudio, setCanPlaybackAudio] = useState(true);
-  const [krispReady, setKrispReady] = useState(krispSupported);
-
-  useEffect(() => {
-    ensureKrispModule()
-      .then(() => setKrispReady(krispSupported))
-      .catch(() => setKrispReady(false));
-  }, []);
   const [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]);
   const [audioOutputs, setAudioOutputs] = useState<MediaDeviceInfo[]>([]);
   const [videoInputs, setVideoInputs] = useState<MediaDeviceInfo[]>([]);
   const [selectedMicId, setSelectedMicId] = useState('default');
   const [selectedSpeakerId, setSelectedSpeakerId] = useState('default');
   const [selectedCameraId, setSelectedCameraId] = useState('default');
-  const [inputMode, setInputModeState] = useState<InputMode>(() => loadInputMode());
+  // O modo de entrada (Voz ativa ou push-to-talk) e os tratamentos de áudio ficam no armazém de configurações de voz.
+  const { inputMode, config: processingConfig } = useVoiceSettings();
   const [pttKey, setPttKeyState] = useState(() => loadPttKey());
   const [pttActive, setPttActive] = useState(false);
-  const [micProfile, setMicProfileState] = useState<MicProfile>(initialMicProfile.current);
-  const [noiseSuppressionEnabled, setNoiseSuppressionEnabled] = useState(initialNoiseSuppression.current);
-  const [echoCancellationEnabled, setEchoCancellationEnabled] = useState(initialEchoCancellation.current);
-  const [autoGainEnabled, setAutoGainEnabled] = useState(initialAutoGain.current);
-  const [autoSensitivity, setAutoSensitivityState] = useState(() => loadAutoSensitivity());
-  const [inputSensitivity, setInputSensitivityState] = useState(() => loadInputSensitivity());
   const inputModeRef = useRef(inputMode);
   const pttKeyRef = useRef(pttKey);
-  const micProfileRef = useRef(micProfile);
-  const noiseSuppressionRef = useRef(noiseSuppressionEnabled);
-  const echoCancellationRef = useRef(echoCancellationEnabled);
-  const autoGainRef = useRef(autoGainEnabled);
-  const inputSensitivityRef = useRef(inputSensitivity);
   const deafenedRef = useRef(false);
-  const krispProcessorRef = useRef<KrispNoiseFilterProcessor | null>(null);
   // Trava contra chamadas concorrentes de connect() — clicar de novo no
   // canal de voz (ex.: voltando de um canal de texto) enquanto uma tentativa
   // anterior ainda está em andamento faria dois room.connect()/disconnect()
@@ -394,21 +285,16 @@ export function useVoiceRoom() {
   const suppressPresenceSoundsRef = useRef(true);
   inputModeRef.current = inputMode;
   pttKeyRef.current = pttKey;
-  micProfileRef.current = micProfile;
-  noiseSuppressionRef.current = noiseSuppressionEnabled;
-  echoCancellationRef.current = echoCancellationEnabled;
-  autoGainRef.current = autoGainEnabled;
-  inputSensitivityRef.current = inputSensitivity;
   deafenedRef.current = deafened;
 
+  // As opções de captura do microfone: restrições nativas do navegador (eco, ganho, supressão padrão), som mono e o
+  // processador que faz o resto do tratamento.
   const currentMicCaptureOptions = useCallback(
-    () =>
-      microphoneCaptureOptions(
-        micProfileRef.current,
-        noiseSuppressionRef.current,
-        echoCancellationRef.current,
-        autoGainRef.current,
-      ),
+    () => ({
+      ...nativeCaptureConstraints(voiceSettingsStore.getSnapshot().config, neuralFailedRef.current),
+      channelCount: 1,
+      processor: processorRef.current!,
+    }),
     [],
   );
 
@@ -552,40 +438,6 @@ export function useVoiceRoom() {
       }
       syncRoom();
     };
-    // O Krisp se prende ao track de microfone publicado (via setProcessor,
-    // que troca o sender por baixo dos panos) — precisa ser reanexado a cada
-    // publish porque reconectar cria um LocalAudioTrack novo. Troca de
-    // dispositivo NÃO passa por aqui: o próprio LiveKit reinicializa o
-    // processor já anexado quando o track é trocado.
-    const onLocalTrackPublished = (publication: TrackPublication) => {
-      if (publication.source !== Track.Source.Microphone) return;
-      const track = publication.track;
-      if (!(track instanceof LocalAudioTrack)) return;
-      void ensureKrispModule()
-        .then(({ KrispNoiseFilter }) => {
-          if (!krispSupported) return;
-          const processor = KrispNoiseFilter({ quality: 'medium' });
-          const previous = krispProcessorRef.current;
-          krispProcessorRef.current = processor;
-          // @livekit/krisp-noise-filter tipa `processedTrack` como
-          // `T | undefined` explícito; o `TrackProcessor` do livekit-client
-          // tipa como opcional simples — sob exactOptionalPropertyTypes isso
-          // é só uma divergência entre as declarações dos dois pacotes, não
-          // uma incompatibilidade real (é o processor oficial da LiveKit).
-          return track
-            .setProcessor(processor as TrackProcessor<Track.Kind.Audio, AudioProcessorOptions>)
-            .then(() => processor.setEnabled(wantsRealNoiseSuppression(micProfileRef.current, noiseSuppressionRef.current)))
-            .then(() => void previous?.destroy())
-            .catch(() => {
-              if (krispProcessorRef.current === processor) krispProcessorRef.current = null;
-            });
-        })
-        .catch(() => {
-          // Sem Krisp disponível: microphoneCaptureOptions() já usa a
-          // supressão nativa do navegador como alternativa nesse caso.
-        });
-    };
-
     room
       .on(RoomEvent.ParticipantConnected, onParticipantConnected)
       .on(RoomEvent.ParticipantDisconnected, onParticipantDisconnected)
@@ -596,7 +448,6 @@ export function useVoiceRoom() {
       .on(RoomEvent.TrackMuted, onTrackMuted)
       .on(RoomEvent.TrackUnmuted, syncRoom)
       .on(RoomEvent.LocalTrackPublished, syncRoom)
-      .on(RoomEvent.LocalTrackPublished, onLocalTrackPublished)
       .on(RoomEvent.LocalTrackUnpublished, onLocalTrackUnpublished)
       .on(RoomEvent.ActiveSpeakersChanged, onActiveSpeakers)
       .on(RoomEvent.DataReceived, onData)
@@ -608,8 +459,8 @@ export function useVoiceRoom() {
     return () => {
       room.removeAllListeners();
       void room.disconnect();
-      void krispProcessorRef.current?.destroy();
-      krispProcessorRef.current = null;
+      void processorRef.current?.destroy();
+      clearVoiceMeter('call');
     };
   }, [room, syncRoom]);
 
@@ -721,103 +572,6 @@ export function useVoiceRoom() {
       window.removeEventListener('keyup', handleKeyUp);
     };
   }, [connectionState, inputMode, pttActive, room, syncRoom]);
-
-  // "Sensibilidade de entrada" (perfil Personalizado, modo Voz ativa): igual
-  // ao gate de ruído do Discord. Abre uma captura própria (independente do
-  // track publicado) só pra medir o nível do microfone — assim conseguimos
-  // decidir quando ligar/desligar o microfone publicado sem travar a
-  // detecção (um MediaStreamTrack desabilitado também para de gerar dados
-  // pro analisador, então monitorar o próprio track publicado não funciona).
-  useEffect(() => {
-    if (connectionState !== ConnectionState.Connected || inputMode !== 'voice' || micProfile !== 'personalizado') {
-      return;
-    }
-
-    let cancelled = false;
-    let audioContext: AudioContext | undefined;
-    let stream: MediaStream | undefined;
-    let rafId = 0;
-    let gateOpen = true;
-    let lastLoudAt = Date.now();
-    let calibratedThreshold: number | null = null;
-    const calibrationSamples: number[] = [];
-    const calibrationStart = Date.now();
-    const HANGOVER_MS = 400;
-    const CALIBRATION_MS = 1500;
-
-    async function start() {
-      try {
-        const constraints: MediaStreamConstraints = {
-          audio: selectedMicId === 'default' ? true : { deviceId: { exact: selectedMicId } },
-        };
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
-        if (cancelled) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        audioContext = new AudioContext();
-        const source = audioContext.createMediaStreamSource(stream);
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 512;
-        source.connect(analyser);
-        const data = new Uint8Array(analyser.frequencyBinCount);
-
-        const tick = () => {
-          if (cancelled) return;
-          analyser.getByteFrequencyData(data);
-          const average = data.reduce((sum, value) => sum + value, 0) / data.length;
-          const level = Math.min(100, Math.round((average / 160) * 100));
-
-          let effectiveThreshold: number | null;
-          if (autoSensitivity) {
-            if (calibratedThreshold === null) {
-              calibrationSamples.push(level);
-              if (Date.now() - calibrationStart >= CALIBRATION_MS) {
-                const floor = calibrationSamples.reduce((sum, value) => sum + value, 0) / calibrationSamples.length;
-                calibratedThreshold = Math.min(60, Math.max(6, floor + 12));
-              }
-            }
-            effectiveThreshold = calibratedThreshold;
-          } else {
-            effectiveThreshold = inputSensitivityRef.current;
-          }
-
-          if (effectiveThreshold !== null && !deafenedRef.current) {
-            const now = Date.now();
-            if (level > effectiveThreshold) lastLoudAt = now;
-            const shouldBeOpen = now - lastLoudAt < HANGOVER_MS;
-            if (shouldBeOpen !== gateOpen) {
-              gateOpen = shouldBeOpen;
-              if (!userMutedRef.current) {
-                void room.localParticipant
-                  .setMicrophoneEnabled(gateOpen, gateOpen ? currentMicCaptureOptions() : undefined)
-                  .then(syncRoom);
-              }
-            }
-          }
-          rafId = requestAnimationFrame(tick);
-        };
-        tick();
-      } catch {
-        // Sem acesso pra monitorar o nível — a sensibilidade de entrada não
-        // atua, mas o resto da chamada continua funcionando normalmente.
-      }
-    }
-
-    void start();
-
-    return () => {
-      cancelled = true;
-      cancelAnimationFrame(rafId);
-      stream?.getTracks().forEach((track) => track.stop());
-      void audioContext?.close();
-      // Se o gate tinha fechado o microfone, devolve pro estado normal
-      // (ligado) ao sair desse modo — senão a pessoa ficaria muda sem saber.
-      if (!gateOpen && !userMutedRef.current && !deafenedRef.current) {
-        void room.localParticipant.setMicrophoneEnabled(true, currentMicCaptureOptions()).then(syncRoom);
-      }
-    };
-  }, [connectionState, inputMode, micProfile, autoSensitivity, selectedMicId, room, syncRoom, currentMicCaptureOptions]);
 
   const connect = useCallback(
     async (channel: VoiceChannel) => {
@@ -946,8 +700,7 @@ export function useVoiceRoom() {
 
   const setInputMode = useCallback(
     (mode: InputMode) => {
-      localStorage.setItem(INPUT_MODE_KEY, mode);
-      setInputModeState(mode);
+      voiceSettingsStore.setInputMode(mode);
       if (mode === 'voice' && connectionState === ConnectionState.Connected && !userMutedRef.current && !deafenedRef.current) {
         void room.localParticipant
           .setMicrophoneEnabled(true, currentMicCaptureOptions())
@@ -956,7 +709,7 @@ export function useVoiceRoom() {
         void room.localParticipant.setMicrophoneEnabled(false).then(syncRoom);
       }
     },
-    [connectionState, room, syncRoom],
+    [connectionState, room, syncRoom, currentMicCaptureOptions],
   );
 
   const setPttKeyBinding = useCallback((code: string) => {
@@ -964,79 +717,33 @@ export function useVoiceRoom() {
     setPttKeyState(code);
   }, []);
 
-  // Reaplica as constraints de captura (perfil + os 3 toggles individuais do
-  // modo Personalizado) no track de microfone já publicado, sem precisar
-  // reconectar — usado por todo setter de perfil/supressão/eco/ganho abaixo.
+  // Reaplica ao microfone já publicado as restrições nativas (eco, ganho, supressão padrão), sem reconectar.
   const applyMicCaptureOptions = useCallback(async () => {
-    const captureOptions = currentMicCaptureOptions();
-    room.options.audioCaptureDefaults = {
-      ...room.options.audioCaptureDefaults,
-      ...captureOptions,
-    };
+    const constraints = nativeCaptureConstraints(voiceSettingsStore.getSnapshot().config, neuralFailedRef.current);
+    room.options.audioCaptureDefaults = { ...room.options.audioCaptureDefaults, ...constraints };
     const microphone = room.localParticipant.getTrackPublication(Track.Source.Microphone)?.track;
     if (microphone instanceof LocalAudioTrack) {
       try {
-        await microphone.applyConstraints(captureOptions);
+        await microphone.applyConstraints(constraints);
         setError('');
       } catch (mediaError) {
         await reportMediaError(mediaError, 'microphone');
       }
     }
-  }, [room, currentMicCaptureOptions]);
+  }, [room]);
 
-  const setMicProfile = useCallback(
-    (profile: MicProfile) => {
-      localStorage.setItem(MIC_PROFILE_KEY, profile);
-      micProfileRef.current = profile;
-      setMicProfileState(profile);
-      void applyMicCaptureOptions();
-      void krispProcessorRef.current?.setEnabled(wantsRealNoiseSuppression(profile, noiseSuppressionRef.current));
-    },
-    [applyMicCaptureOptions],
-  );
+  applyMicCaptureOptionsRef.current = applyMicCaptureOptions;
 
-  const setNoiseSuppression = useCallback(
-    (enabled: boolean) => {
-      localStorage.setItem(NOISE_SUPPRESSION_KEY, String(enabled));
-      noiseSuppressionRef.current = enabled;
-      setNoiseSuppressionEnabled(enabled);
-      void applyMicCaptureOptions();
-      void krispProcessorRef.current?.setEnabled(wantsRealNoiseSuppression(micProfileRef.current, enabled));
-    },
-    [applyMicCaptureOptions],
-  );
-
-  const setEchoCancellation = useCallback(
-    (enabled: boolean) => {
-      localStorage.setItem(ECHO_CANCELLATION_KEY, String(enabled));
-      echoCancellationRef.current = enabled;
-      setEchoCancellationEnabled(enabled);
-      void applyMicCaptureOptions();
-    },
-    [applyMicCaptureOptions],
-  );
-
-  const setAutoGain = useCallback(
-    (enabled: boolean) => {
-      localStorage.setItem(AUTO_GAIN_KEY, String(enabled));
-      autoGainRef.current = enabled;
-      setAutoGainEnabled(enabled);
-      void applyMicCaptureOptions();
-    },
-    [applyMicCaptureOptions],
-  );
-
-  const setAutoSensitivity = useCallback((enabled: boolean) => {
-    localStorage.setItem(AUTO_SENSITIVITY_KEY, String(enabled));
-    setAutoSensitivityState(enabled);
-  }, []);
-
-  const setInputSensitivity = useCallback((value: number) => {
-    const clamped = Math.min(100, Math.max(0, Math.round(value)));
-    localStorage.setItem(INPUT_SENSITIVITY_KEY, String(clamped));
-    inputSensitivityRef.current = clamped;
-    setInputSensitivityState(clamped);
-  }, []);
+  // Qualquer mudança nas opções de áudio (perfil, supressão, compressor, volume, sensibilidade, modo de entrada) vale na hora
+  // para a chamada em andamento: o processador se reconfigura ao vivo e as restrições nativas voltam a valer no microfone.
+  useEffect(() => {
+    processorRef.current?.setConfig(processingConfig);
+  }, [processingConfig]);
+  // As restrições nativas só mexem no microfone quando elas próprias mudam (arrastar a sensibilidade não precisa disso).
+  const nativeConstraintsKey = JSON.stringify(captureConstraintsFor(processingConfig));
+  useEffect(() => {
+    void applyMicCaptureOptions();
+  }, [nativeConstraintsKey, applyMicCaptureOptions]);
 
   const setMicrophoneDevice = useCallback(
     async (deviceId: string) => {
@@ -1114,6 +821,42 @@ export function useVoiceRoom() {
       }
     },
     [room, syncRoom],
+  );
+
+  // Troca a qualidade da transmissão de tela com ela no ar, sem parar nem escolher a tela de novo: a captura passa a entregar a
+  // nova resolução e taxa de quadros (o navegador reescala a captura na hora) e o codificador recebe o novo limite de bitrate
+  // e de quadros por segundo, sem renegociar com o servidor. Devolve false se o navegador não aceitou a mudança ao vivo.
+  const changeShareQuality = useCallback(
+    async (quality: ShareQuality): Promise<boolean> => {
+      const track = room.localParticipant.getTrackPublication(Track.Source.ScreenShare)?.videoTrack;
+      if (!(track instanceof LocalVideoTrack)) return false;
+      const { capture, publish } = shareSettings[quality];
+      const resolution = capture.resolution;
+      try {
+        if (resolution) {
+          await track.mediaStreamTrack.applyConstraints({
+            width: { ideal: resolution.width },
+            height: { ideal: resolution.height },
+            ...(resolution.frameRate ? { frameRate: { ideal: resolution.frameRate } } : {}),
+          });
+        }
+        const sender = track.sender;
+        const encoding = publish.videoEncoding;
+        if (sender && encoding) {
+          const parameters = sender.getParameters();
+          if (!parameters.encodings || parameters.encodings.length === 0) parameters.encodings = [{}];
+          for (const layer of parameters.encodings) {
+            layer.maxBitrate = encoding.maxBitrate;
+            if (encoding.maxFramerate) layer.maxFramerate = encoding.maxFramerate;
+          }
+          await sender.setParameters(parameters);
+        }
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [room],
   );
 
   const sendMessage = useCallback(
@@ -1250,21 +993,8 @@ export function useVoiceRoom() {
       inputMode,
       pttKey,
       pttActive,
-      micProfile,
-      krispSupported: krispReady,
-      noiseSuppressionEnabled,
-      echoCancellationEnabled,
-      autoGainEnabled,
-      autoSensitivity,
-      inputSensitivity,
       setInputMode,
       setPttKeyBinding,
-      setMicProfile,
-      setNoiseSuppression,
-      setEchoCancellation,
-      setAutoGain,
-      setAutoSensitivity,
-      setInputSensitivity,
       setMicrophoneDevice,
       setSpeakerDevice,
       setCameraDevice,
@@ -1275,6 +1005,7 @@ export function useVoiceRoom() {
       toggleDeafen,
       toggleCamera,
       toggleScreenShare,
+      changeShareQuality,
       sendMessage,
       playSoundboardSound,
       soundboardEvent,
@@ -1308,21 +1039,8 @@ export function useVoiceRoom() {
       inputMode,
       pttKey,
       pttActive,
-      micProfile,
-      krispReady,
-      noiseSuppressionEnabled,
-      echoCancellationEnabled,
-      autoGainEnabled,
-      autoSensitivity,
-      inputSensitivity,
       setInputMode,
       setPttKeyBinding,
-      setMicProfile,
-      setNoiseSuppression,
-      setEchoCancellation,
-      setAutoGain,
-      setAutoSensitivity,
-      setInputSensitivity,
       setMicrophoneDevice,
       setSpeakerDevice,
       setCameraDevice,
@@ -1333,6 +1051,7 @@ export function useVoiceRoom() {
       toggleDeafen,
       toggleCamera,
       toggleScreenShare,
+      changeShareQuality,
       sendMessage,
       playSoundboardSound,
       soundboardEvent,

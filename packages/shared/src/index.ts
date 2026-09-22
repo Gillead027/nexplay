@@ -236,6 +236,67 @@ export type AccentColor = (typeof ACCENT_COLORS)[number];
 // cliente busca isso separadamente por servidor ativo (GET
 // /api/servers/:serverId/members/me), o mesmo padrão de useFriendsState
 // já usado pra amigos/DMs (não embutido na sessão global).
+// O que a pessoa escolhe mostrar: 'invisible' aparece como offline para os outros. Quem não tem o app aberto é offline
+// de qualquer jeito, então "offline" nunca é uma escolha.
+export type PresenceStatus = 'online' | 'idle' | 'dnd' | 'invisible';
+export const PRESENCE_STATUSES: readonly PresenceStatus[] = ['online', 'idle', 'dnd', 'invisible'];
+export const PRESENCE_STATUS_LABELS: Record<PresenceStatus, string> = {
+  online: 'Online',
+  idle: 'Ausente',
+  dnd: 'Não perturbe',
+  invisible: 'Invisível',
+};
+export const PRESENCE_STATUS_HINTS: Record<PresenceStatus, string> = {
+  online: 'Todo mundo vê que você está por aqui.',
+  idle: 'Você está por aqui, mas longe do computador.',
+  dnd: 'Sem sons de aviso; os outros veem que você não quer ser incomodado.',
+  invisible: 'Você aparece como offline para os outros.',
+};
+
+// Como a lista de servidores da barra lateral está organizada, para cada pessoa: servidores soltos e pastas (como no
+// Discord). Servidores que não aparecem aqui (entrou num novo) ficam soltos no fim.
+export type ServerLayoutItem =
+  | { type: 'server'; serverId: string }
+  | { type: 'folder'; id: string; name: string; color: string; serverIds: string[] };
+export interface ServerLayout {
+  items: ServerLayoutItem[];
+}
+export const SERVER_FOLDER_NAME_MAX_LENGTH = 32;
+export const SERVER_FOLDER_COLORS: readonly string[] = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#ec4899', '#14b8a6', '#94a3b8'];
+
+/**
+ * Deixa o layout coerente com os servidores em que a pessoa está: cada servidor aparece uma vez só, servidores dos quais ela
+ * saiu somem, pastas vazias somem e servidores novos (que não estão no layout) entram soltos no fim. Usado pela API (ao gravar
+ * e ler) e pelo cliente (ao montar a barra), com a mesma regra dos dois lados.
+ */
+export function normalizeServerLayout(layout: ServerLayout, memberServerIds: readonly string[]): ServerLayout {
+  const allowed = new Set(memberServerIds);
+  const used = new Set<string>();
+  const take = (serverId: string): boolean => {
+    if (!allowed.has(serverId) || used.has(serverId)) return false;
+    used.add(serverId);
+    return true;
+  };
+
+  const items: ServerLayoutItem[] = [];
+  const folderIds = new Set<string>();
+  for (const item of layout.items) {
+    if (item.type === 'server') {
+      if (take(item.serverId)) items.push(item);
+      continue;
+    }
+    if (folderIds.has(item.id)) continue;
+    const serverIds = item.serverIds.filter(take);
+    if (serverIds.length === 0) continue;
+    folderIds.add(item.id);
+    items.push({ ...item, name: item.name.trim(), serverIds });
+  }
+  for (const serverId of memberServerIds) {
+    if (take(serverId)) items.push({ type: 'server', serverId });
+  }
+  return { items };
+}
+
 export interface UserSession {
   id: string;
   displayName: string;
@@ -248,6 +309,7 @@ export interface UserSession {
   // A capa vem de /api/users/:id/banner (a URL traz a versão); "animated" diz se é GIF/WebP/PNG animado.
   bannerUrl: string;
   bannerAnimated: boolean;
+  presenceStatus: PresenceStatus;
 }
 
 // 'default' = normal; 'spoiler' e 'age_restricted' só guardam o selo visual e
@@ -997,7 +1059,14 @@ export type RealtimeEvent =
   | { type: 'MEMBER_UNBANNED'; userId: string }
   // Quem tem o app aberto (ao menos um WebSocket conectado). Vai só pra quem divide
   // servidor com a pessoa; o estado inicial vem de GET /api/servers/:id/presence.
-  | { type: 'PRESENCE_UPDATE'; userId: string; online: boolean }
+  // "status" é o que a pessoa escolheu mostrar (só vem quando ela está online e visível).
+  | { type: 'PRESENCE_UPDATE'; userId: string; online: boolean; status?: PresenceStatus }
+  // Alguém começou a digitar (vale por poucos segundos; o cliente renova a cada tecla, no máximo a cada 3 s).
+  // A própria pessoa trocou o que mostra (outras abas e aparelhos dela acompanham) ou reorganizou a lista de servidores.
+  | { type: 'PRESENCE_STATUS_CHOICE'; status: PresenceStatus }
+  | { type: 'SERVER_LAYOUT_UPDATE'; layout: ServerLayout }
+  | { type: 'TYPING_START'; serverId: string; channelId: string; userId: string; displayName: string }
+  | { type: 'DM_TYPING_START'; dmChannelId: string; userId: string; displayName: string }
   | { type: 'SERVER_CREATE'; server: Server }
   | { type: 'SERVER_UPDATE'; server: Server }
   | { type: 'SERVER_DELETE'; serverId: string }

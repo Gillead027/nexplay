@@ -7,6 +7,7 @@ import {
 } from '@nexplay/shared';
 import { api } from '../api';
 import { CloseIcon, SearchIcon, TrashIcon, UploadIcon } from './Icons';
+import { useEscapeLayer } from '../escapeLayers';
 
 const ACCEPTED_AUDIO_TYPES = ['audio/mpeg', 'audio/ogg', 'audio/wav', 'audio/webm'];
 
@@ -152,14 +153,9 @@ export function SoundboardPanel({
     const handlePointerDown = (event: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(event.target as Node)) onClose();
     };
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
     window.addEventListener('mousedown', handlePointerDown);
-    window.addEventListener('keydown', handleKeyDown);
     return () => {
       window.removeEventListener('mousedown', handlePointerDown);
-      window.removeEventListener('keydown', handleKeyDown);
     };
   }, [open, onClose]);
 

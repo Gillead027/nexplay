@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import { parseImageDataUrl, type AccentColor, type AvatarFrame } from '@nexplay/shared';
+import { PRESENCE_STATUSES, parseImageDataUrl, type AccentColor, type AvatarFrame, type PresenceStatus } from '@nexplay/shared';
 import { db } from './db.js';
 
 export interface UserRecord {
@@ -15,6 +15,7 @@ export interface UserRecord {
   bannerDataUrl: string;
   bannerAnimated: boolean;
   avatarFrame: AvatarFrame | '';
+  presenceStatus: PresenceStatus;
   assetsRev: number;
   timeoutUntil: number | null;
 }
@@ -31,9 +32,13 @@ interface UserRow {
   banner_data_url: string;
   banner_animated: number;
   avatar_frame: AvatarFrame | '';
+  presence_status: string;
   assets_rev: number;
   timeout_until: number | null;
 }
+
+const asPresenceStatus = (value: string): PresenceStatus =>
+  (PRESENCE_STATUSES as readonly string[]).includes(value) ? (value as PresenceStatus) : 'online';
 
 function toRecord(row: UserRow): UserRecord {
   return {
@@ -48,6 +53,7 @@ function toRecord(row: UserRow): UserRecord {
     bannerDataUrl: row.banner_data_url,
     bannerAnimated: row.banner_animated === 1,
     avatarFrame: row.avatar_frame,
+    presenceStatus: asPresenceStatus(row.presence_status),
     assetsRev: row.assets_rev,
     timeoutUntil: row.timeout_until,
   };
@@ -63,6 +69,9 @@ const updateProfileStatement = db.prepare(
     banner_animated = ?, assets_rev = ? WHERE id = ?`,
 );
 const updateTimeoutStatement = db.prepare('UPDATE users SET timeout_until = ? WHERE id = ?');
+const updatePresenceStatusStatement = db.prepare('UPDATE users SET presence_status = ? WHERE id = ?');
+const selectServerLayoutStatement = db.prepare('SELECT server_layout FROM users WHERE id = ?');
+const updateServerLayoutStatement = db.prepare('UPDATE users SET server_layout = ? WHERE id = ?');
 const updatePasswordStatement = db.prepare('UPDATE users SET password_hash = ? WHERE id = ?');
 
 export function createUser(username: string, password: string, accentColor: AccentColor): UserRecord {
@@ -81,9 +90,23 @@ export function createUser(username: string, password: string, accentColor: Acce
     bannerDataUrl: '',
     bannerAnimated: false,
     avatarFrame: '',
+    presenceStatus: 'online',
     assetsRev: 0,
     timeoutUntil: null,
   };
+}
+
+export function setUserPresenceStatus(id: string, status: PresenceStatus): void {
+  updatePresenceStatusStatement.run(status, id);
+}
+
+// A organização da lista de servidores fica como JSON opaco aqui; quem valida o formato é a rota (serverLayout.ts).
+export function getUserServerLayoutJson(id: string): string {
+  return ((selectServerLayoutStatement.get(id) as { server_layout: string } | undefined)?.server_layout) ?? '';
+}
+
+export function setUserServerLayoutJson(id: string, json: string): void {
+  updateServerLayoutStatement.run(json, id);
 }
 
 export function setUserTimeout(id: string, until: number | null): void {

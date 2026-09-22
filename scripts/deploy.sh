@@ -8,7 +8,8 @@
 # .env, bancos ou node_modules), reconstrói web e api e confere que os dois ficaram saudáveis.
 #
 # Variáveis: VPS_HOST (padrão root@147.93.11.201), SSH_KEY (padrão ~/.ssh/gillecord_vultr), APP_DIR (padrão /opt/nexplay).
-# O music-bot fica de fora de propósito (é isolado; ver README).
+# O music-bot fica de fora de propósito (é isolado; ver README). A pasta infra/ também: na VPS ela tem as chaves de produção
+# (livekit.local.yaml), que não podem ser trocadas pelas de desenvolvimento.
 set -euo pipefail
 
 LABEL="${1:-}"
@@ -31,7 +32,7 @@ TARBALL="$(mktemp -u "${TMPDIR:-/tmp}/nexplay-deploy-XXXXXX").tar.gz"
 tar --exclude=node_modules --exclude=dist --exclude=data --exclude=secrets --exclude='*.db' --exclude='*.db-*' \
     --exclude=.env --exclude=.alerts --exclude=release --exclude=renderer-dist --exclude=.vite --exclude=coverage \
     --exclude='*.log' --exclude='*.tsbuildinfo' \
-    -czf "$TARBALL" apps packages scripts infra package.json package-lock.json tsconfig.base.json README.md
+    -czf "$TARBALL" apps packages scripts package.json package-lock.json tsconfig.base.json README.md
 if tar -tzf "$TARBALL" | grep -E '(^|/)(secrets/|\.env$|.*\.db$)' >/dev/null; then
   echo "ERRO: o pacote de deploy contém arquivo sensível; abortando."; rm -f "$TARBALL"; exit 1
 fi

@@ -3,6 +3,7 @@ import { SERVER_DESCRIPTION_MAX_LENGTH, SERVER_NAME_MAX_LENGTH, type Server, typ
 import { api } from '../api';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { CloseIcon } from './Icons';
+import { useEscapeLayer } from '../escapeLayers';
 
 // Mesmo padrão de useFriendsState (Friends.tsx) — um único fetch + assinatura
 // de tempo real, centralizado em Workspace.tsx, alimenta a rail de
@@ -110,13 +111,12 @@ export function AddServerModal({
     setError('');
     setTab(initialTab);
     window.requestAnimationFrame(() => nameInputRef.current?.focus());
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !saving) close();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+
+  useEscapeLayer(open, () => {
+    if (!saving) close();
+  });
 
   if (!open) return null;
 

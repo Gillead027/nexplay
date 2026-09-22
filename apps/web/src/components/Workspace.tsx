@@ -37,7 +37,12 @@ import { useDelayedUnmount } from '../hooks/useDelayedUnmount';
 import { fileToResizedDataUrl, fileToServerImageDataUrl } from '../imageResize';
 import { dataUrlIsAnimated } from '../iconImage';
 import { AvatarRing } from './AvatarRing';
-import { type InputMode, type MicProfile, type ShareQuality, useVoiceRoom } from '../livekit/useVoiceRoom';
+import { type InputMode, type ShareQuality, useVoiceRoom } from '../livekit/useVoiceRoom';
+import { VoiceProcessingPane } from './VoiceProcessingPane';
+import { ServerRail } from './ServerRail';
+import { NotificationsPane } from './NotificationsPane';
+import { DesktopPane, type DesktopSettingsView } from './DesktopPane';
+import { useNotificationSounds } from '../useNotificationSounds';
 import { describeMediaError } from '../mediaAccess';
 import { getPerfMode, type PerfMode, setPerfMode } from '../perfMode';
 import { getDensity, type Density, setDensity } from '../density';
@@ -76,6 +81,8 @@ import {
   PlusIcon,
   SearchIcon,
   SettingsIcon,
+  BellIcon,
+  MenuIcon,
   ShareIcon,
   SoundboardIcon,
   SpeakerIcon,
@@ -84,6 +91,11 @@ import {
   VoiceIcon,
 } from './Icons';
 import { connectRealtime, onRealtimeConnect, onRealtimeEvent } from '../realtime';
+import { useEscapeLayer } from '../escapeLayers';
+import { PRESENCE_STATUS_LABELS, type PresenceStatus } from '@nexplay/shared';
+import { StatusPicker } from './StatusPicker';
+import { useServerMemberList } from '../useServerMemberList';
+import { buildNameColorMap } from '../roleColors';
 import { copyText } from '../clipboard';
 import { liveMutedByIdentity } from '../micState';
 import { MemberList } from './MemberList';
@@ -157,6 +169,9 @@ declare global {
       onActivityChanged?: (listener: (activity: Activity | null) => void) => (() => void);
       getCurrentActivity?: () => Promise<Activity | null>;
       windowAction?: (action: 'minimize' | 'toggle-maximize' | 'close') => void;
+      // Novos no desktop 0.2.17: bandeja do sistema (fechar minimiza) e iniciar com o Windows.
+      getDesktopSettings?: () => Promise<DesktopSettingsView>;
+      setDesktopSettings?: (patch: Partial<Pick<DesktopSettingsView, 'closeToTray' | 'launchAtLogin' | 'startMinimized'>>) => Promise<DesktopSettingsView>;
     };
   }
 }
@@ -178,6 +193,7 @@ export function Avatar({
   frame,
   speaking = false,
   compact = false,
+  status,
 }: {
   name: string;
   accentColor?: AccentColor | undefined;
@@ -185,6 +201,8 @@ export function Avatar({
   frame?: AvatarFrame | '' | undefined;
   speaking?: boolean;
   compact?: boolean;
+  // O que a pessoa mostra (só a bolinha muda de cor; sem isso ela fica no padrão).
+  status?: PresenceStatus | undefined;
 }) {
   const colorIndex = accentColor ? ACCENT_COLORS.indexOf(accentColor) : avatarColorIndex(name);
   const className = `avatar ${avatarUrl ? '' : `avatar-color-${colorIndex}`} ${speaking ? 'speaking' : ''} ${compact ? 'compact' : ''}`;
@@ -192,7 +210,7 @@ export function Avatar({
     <AvatarRing frame={frame}>
       <span className={className}>
         {avatarUrl ? <img src={avatarUrl} alt={name} /> : avatarLetter(name)}
-        <span className="presence-dot" />
+        <span className={`presence-dot ${status ? `status-${status}` : ''}`} />
       </span>
     </AvatarRing>
   );
@@ -260,23 +278,48 @@ function StageAvatar({ entry, ownIdentity, ownAvatarUrl, ownAvatarFrame }: { ent
 }
 
 // Botão de um servidor na barra da esquerda. O ícone (imagem ou GIF) aparece inteiro; o animado só se mexe com o mouse em cima.
-function ServerRailButton({ server, active, onSelect }: { server: { name: string; iconUrl: string; iconAnimated: boolean }; active: boolean; onSelect: () => void }) {
-  const [hovered, setHovered] = useState(false);
-  const hasIcon = Boolean(server.iconUrl);
+const SHARE_QUALITY_OPTIONS: { value: ShareQuality; label: string }[] = [
+  { value: '720p30', label: '720p · 30 FPS' },
+  { value: '720p60', label: '720p · 60 FPS' },
+  { value: '1080p60', label: '1080p · 60 FPS' },
+];
+
+// A setinha ao lado do botão de compartilhar tela: com a transmissão no ar, escolher outra qualidade vale na hora.
+function ShareQualityMenu({ value, onSelect }: { value: ShareQuality; onSelect: (quality: ShareQuality) => void }) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  useEscapeLayer(open, () => setOpen(false));
+  useEffect(() => {
+    if (!open) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) setOpen(false);
+    };
+    window.addEventListener('mousedown', handleClickOutside);
+    return () => window.removeEventListener('mousedown', handleClickOutside);
+  }, [open]);
   return (
-    <button
-      className={`server-button server-current ${hasIcon ? 'has-icon' : ''} ${active ? 'active' : ''}`}
-      type="button"
-      title={server.name}
-      aria-label={server.name}
-      onClick={onSelect}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onFocus={() => setHovered(true)}
-      onBlur={() => setHovered(false)}
-    >
-      {hasIcon ? <ServerImage src={server.iconUrl} animated={server.iconAnimated} hovered={hovered} /> : server.name.charAt(0).toUpperCase()}
-    </button>
+    <div className="device-menu" ref={containerRef}>
+      <button type="button" className="device-menu-chevron" onClick={() => setOpen((current) => !current)} aria-label="Qualidade da transmissão" title="Qualidade da transmissão" aria-expanded={open}>
+        <ChevronIcon size={12} />
+      </button>
+      {open && (
+        <div className="device-menu-popover">
+          {SHARE_QUALITY_OPTIONS.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              className={value === option.value ? 'active' : ''}
+              onClick={() => {
+                setOpen(false);
+                if (option.value !== value) onSelect(option.value);
+              }}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -377,12 +420,11 @@ function CreateCategoryDialog({
   useEffect(() => {
     if (!open) return;
     nameInputRef.current?.focus();
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && !saving) close();
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [close, open, saving]);
+  }, [open]);
+
+  useEscapeLayer(open, () => {
+    if (!saving) close();
+  });
 
   if (!open) return null;
 
@@ -650,72 +692,7 @@ function RoomSkeleton() {
   );
 }
 
-type SettingsSection = 'profile' | 'security' | 'privacy' | 'voice' | 'appearance' | 'about' | 'admin';
-
-const MIC_METER_BARS = 20;
-
-function MicTest({ deviceId }: { deviceId: string }) {
-  const [testing, setTesting] = useState(false);
-  const [level, setLevel] = useState(0);
-  const streamRef = useRef<MediaStream | null>(null);
-  const contextRef = useRef<AudioContext | null>(null);
-  const frameRef = useRef(0);
-
-  function stopTest() {
-    cancelAnimationFrame(frameRef.current);
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    void contextRef.current?.close();
-    streamRef.current = null;
-    contextRef.current = null;
-    setTesting(false);
-    setLevel(0);
-  }
-
-  useEffect(() => () => stopTest(), []);
-
-  async function startTest() {
-    try {
-      const constraints: MediaStreamConstraints = {
-        audio: deviceId === 'default' ? true : { deviceId: { exact: deviceId } },
-      };
-      const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      streamRef.current = stream;
-      const audioContext = new AudioContext();
-      contextRef.current = audioContext;
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 512;
-      source.connect(analyser);
-      const data = new Uint8Array(analyser.frequencyBinCount);
-
-      const tick = () => {
-        analyser.getByteFrequencyData(data);
-        const average = data.reduce((sum, value) => sum + value, 0) / data.length;
-        setLevel(Math.min(100, Math.round((average / 160) * 100)));
-        frameRef.current = requestAnimationFrame(tick);
-      };
-      tick();
-      setTesting(true);
-    } catch {
-      stopTest();
-    }
-  }
-
-  const litBars = Math.round((level / 100) * MIC_METER_BARS);
-
-  return (
-    <div className="mic-test">
-      <div className="mic-test-meter" aria-hidden="true">
-        {Array.from({ length: MIC_METER_BARS }, (_, index) => (
-          <span key={index} className={index < litBars ? 'lit' : ''} />
-        ))}
-      </div>
-      <button type="button" className="test-toggle-button" onClick={() => (testing ? stopTest() : void startTest())}>
-        {testing ? 'Parar teste' : 'Testar microfone'}
-      </button>
-    </div>
-  );
-}
+type SettingsSection = 'profile' | 'security' | 'privacy' | 'voice' | 'notifications' | 'app' | 'appearance' | 'about' | 'admin';
 
 function CameraPreview({ deviceId }: { deviceId: string }) {
   const [testing, setTesting] = useState(false);
@@ -835,19 +812,6 @@ function SettingsModal({
   setInputMode,
   pttKey,
   setPttKeyBinding,
-  micProfile,
-  setMicProfile,
-  krispSupported,
-  noiseSuppressionEnabled,
-  setNoiseSuppression,
-  echoCancellationEnabled,
-  setEchoCancellation,
-  autoGainEnabled,
-  setAutoGain,
-  autoSensitivity,
-  setAutoSensitivity,
-  inputSensitivity,
-  setInputSensitivity,
 }: {
   open: boolean;
   onClose: () => void;
@@ -908,19 +872,6 @@ function SettingsModal({
   setInputMode: (mode: InputMode) => void;
   pttKey: string;
   setPttKeyBinding: (code: string) => void;
-  micProfile: MicProfile;
-  setMicProfile: (profile: MicProfile) => void;
-  krispSupported: boolean;
-  noiseSuppressionEnabled: boolean;
-  setNoiseSuppression: (enabled: boolean) => void;
-  echoCancellationEnabled: boolean;
-  setEchoCancellation: (enabled: boolean) => void;
-  autoGainEnabled: boolean;
-  setAutoGain: (enabled: boolean) => void;
-  autoSensitivity: boolean;
-  setAutoSensitivity: (enabled: boolean) => void;
-  inputSensitivity: number;
-  setInputSensitivity: (value: number) => void;
 }) {
   const [listeningForKey, setListeningForKey] = useState(false);
   const [voiceSearch, setVoiceSearch] = useState('');
@@ -1043,6 +994,8 @@ function SettingsModal({
     if (open) refreshDevices();
   }, [open, refreshDevices]);
 
+  useEscapeLayer(open, onClose);
+
   useEffect(() => {
     if (!open || !mounted) return;
     firstNavigationButtonRef.current?.focus();
@@ -1055,10 +1008,6 @@ function SettingsModal({
       element.setAttribute('aria-hidden', 'true');
     }
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-        return;
-      }
       if (event.key !== 'Tab') return;
       const focusable = Array.from(
         modalRef.current?.querySelectorAll<HTMLElement>(
@@ -1109,6 +1058,14 @@ function SettingsModal({
           <button type="button" className={section === 'voice' ? 'active' : ''} onClick={() => setSection('voice')}>
             <VoiceIcon size={15} /> Voz e vídeo
           </button>
+          <button type="button" className={section === 'notifications' ? 'active' : ''} onClick={() => setSection('notifications')}>
+            <BellIcon size={15} /> Notificações
+          </button>
+          {window.desktop?.getDesktopSettings && (
+            <button type="button" className={section === 'app' ? 'active' : ''} onClick={() => setSection('app')}>
+              <SettingsIcon size={15} /> Aplicativo
+            </button>
+          )}
           <button type="button" className={section === 'appearance' ? 'active' : ''} onClick={() => setSection('appearance')}>
             <PaletteIcon size={15} /> Aparência
           </button>
@@ -1131,6 +1088,8 @@ function SettingsModal({
 
         <div className="settings-content">
           {section === 'about' && <AboutPane />}
+          {section === 'notifications' && <NotificationsPane />}
+          {section === 'app' && window.desktop?.getDesktopSettings && <DesktopPane />}
           {section === 'admin' && isInstanceAdmin && <AdminOverviewPane />}
           {section === 'profile' && (
             <div className="settings-pane two-column">
@@ -1391,125 +1350,7 @@ function SettingsModal({
                   </div>
                 )}
 
-                {matchesSearch('teste de microfone') && (
-                  <>
-                    <span className="settings-label">Teste de microfone</span>
-                    <MicTest deviceId={selectedMicId} />
-                  </>
-                )}
-
-                {matchesSearch('perfil de entrada isolamento de voz estúdio personalizado') && (
-                  <>
-                    <span className="settings-label">Perfil de entrada</span>
-                    <div className="input-mode-cards mic-profile-cards" role="group" aria-label="Perfil de entrada de microfone">
-                      <button type="button" className={`input-mode-card ${micProfile === 'isolamento' ? 'active' : ''}`} onClick={() => setMicProfile('isolamento')}>
-                        <MicIcon size={18} />
-                        <strong>Isolamento de Voz</strong>
-                        <span>
-                          {krispSupported
-                            ? 'Só a sua voz: roda o Krisp (o mesmo motor de IA do Discord) localmente pra remover ruído de fundo de verdade.'
-                            : 'Só a sua voz: seu navegador não suporta o motor de IA, então usamos a supressão nativa dele como alternativa.'}
-                        </span>
-                      </button>
-                      <button type="button" className={`input-mode-card ${micProfile === 'estudio' ? 'active' : ''}`} onClick={() => setMicProfile('estudio')}>
-                        <SpeakerIcon size={18} />
-                        <strong>Estúdio</strong>
-                        <span>Áudio puro: microfone aberto, sem nenhum processamento.</span>
-                      </button>
-                      <button type="button" className={`input-mode-card ${micProfile === 'personalizado' ? 'active' : ''}`} onClick={() => setMicProfile('personalizado')}>
-                        <SettingsIcon size={18} />
-                        <strong>Personalizado</strong>
-                        <span>Modo avançado: escolha cada opção de processamento manualmente.</span>
-                      </button>
-                    </div>
-                  </>
-                )}
-
-                {micProfile === 'personalizado' && matchesSearch('supressão de ruído cancelamento de eco ganho automático sensibilidade de entrada') && (
-                  <div className="mic-profile-advanced">
-                    <div className="settings-toggle-row voice-processing-toggle">
-                      <div>
-                        <span className="settings-label">Supressão de ruído</span>
-                        <p className="settings-hint">
-                          {krispSupported
-                            ? 'Krisp de verdade rodando localmente (mesmo motor de IA do Discord) — reduz ventilador, teclado, cliques e ruído de fundo constante.'
-                            : 'Seu navegador não suporta o motor de IA do Krisp; isso liga a supressão nativa dele como alternativa, mais fraca contra ruídos como teclado.'}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-label="Supressão de ruído"
-                        aria-checked={noiseSuppressionEnabled}
-                        className={`settings-switch ${noiseSuppressionEnabled ? 'on' : ''}`}
-                        onClick={() => setNoiseSuppression(!noiseSuppressionEnabled)}
-                      />
-                    </div>
-                    <div className="settings-toggle-row voice-processing-toggle">
-                      <div>
-                        <span className="settings-label">Cancelamento de eco</span>
-                        <p className="settings-hint">Evita que o som dos seus alto-falantes volte pelo microfone.</p>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-label="Cancelamento de eco"
-                        aria-checked={echoCancellationEnabled}
-                        className={`settings-switch ${echoCancellationEnabled ? 'on' : ''}`}
-                        onClick={() => setEchoCancellation(!echoCancellationEnabled)}
-                      />
-                    </div>
-                    <div className="settings-toggle-row voice-processing-toggle">
-                      <div>
-                        <span className="settings-label">Controle automático de ganho</span>
-                        <p className="settings-hint">Ajusta o volume de entrada automaticamente pra manter a fala num nível constante.</p>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-label="Controle automático de ganho"
-                        aria-checked={autoGainEnabled}
-                        className={`settings-switch ${autoGainEnabled ? 'on' : ''}`}
-                        onClick={() => setAutoGain(!autoGainEnabled)}
-                      />
-                    </div>
-
-                    <div className="settings-toggle-row voice-processing-toggle">
-                      <div>
-                        <span className="settings-label">Ajustar automaticamente a sensibilidade de entrada</span>
-                        <p className="settings-hint">Em modo Voz ativa, o microfone só transmite quando você está falando de verdade — calibra sozinho o ruído de fundo ao entrar na chamada.</p>
-                      </div>
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-label="Ajustar automaticamente a sensibilidade de entrada"
-                        aria-checked={autoSensitivity}
-                        className={`settings-switch ${autoSensitivity ? 'on' : ''}`}
-                        onClick={() => setAutoSensitivity(!autoSensitivity)}
-                      />
-                    </div>
-                    {!autoSensitivity && (
-                      <div>
-                        <label htmlFor="input-sensitivity">Sensibilidade de entrada (manual)</label>
-                        <div className="pref-slider-row">
-                          <input
-                            id="input-sensitivity"
-                            type="range"
-                            min={0}
-                            max={100}
-                            value={inputSensitivity}
-                            onChange={(event) => setInputSensitivity(Number(event.target.value))}
-                          />
-                          <output>{inputSensitivity}%</output>
-                        </div>
-                        <p className="settings-hint">Quanto maior, mais alto você precisa falar pra o microfone ligar. Use o teste de microfone acima pra calibrar.</p>
-                      </div>
-                    )}
-                    {inputMode !== 'voice' && (
-                      <p className="settings-hint">A sensibilidade de entrada só se aplica no modo Voz ativa — em Push to talk, a tecla já controla isso.</p>
-                    )}
-                  </div>
-                )}
+                <VoiceProcessingPane micDeviceId={selectedMicId} search={matchesSearch} />
 
                 {matchesSearch('modo de entrada') && (
                   <>
@@ -1549,12 +1390,12 @@ function SettingsModal({
                       id="share-quality"
                       value={quality}
                       onChange={(event) => setQuality(event.target.value as ShareQuality)}
-                      disabled={screenEnabled}
                     >
                       <option value="720p30">720p · 30 FPS</option>
                       <option value="720p60">720p · 60 FPS</option>
                       <option value="1080p60">1080p · 60 FPS</option>
                     </select>
+                    {screenEnabled && <p className="settings-hint">A mudança vale na hora, com a transmissão no ar.</p>}
                   </>
                 )}
               </div>
@@ -2002,6 +1843,19 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   // Conta nova não entra em servidor nenhum sozinha: sem servidor, a tela mostra como criar um ou entrar com convite.
   const noServers = serversState.loaded && serversState.servers.length === 0;
   const member = useActiveServerMember(activeServerId, session);
+  // Membros, cargos e presença do servidor aberto: uma leitura só, usada pela lista da direita e pela cor dos nomes.
+  const memberData = useServerMemberList(activeServerId);
+  const nameColors = useMemo(() => buildNameColorMap(memberData.members, memberData.roles), [memberData.members, memberData.roles]);
+  // Trocar o status em outra aba ou aparelho da própria pessoa chega por aqui.
+  useEffect(
+    () =>
+      onRealtimeEvent((event) => {
+        if (event.type === 'PRESENCE_STATUS_CHOICE' && event.status !== session.presenceStatus) {
+          onProfileUpdated({ ...session, presenceStatus: event.status });
+        }
+      }),
+    [session, onProfileUpdated],
+  );
   const canManageChannels = hasPermission(member?.permissions ?? 0, Permission.MANAGE_CHANNELS);
   const canManageServer = hasPermission(member?.permissions ?? 0, Permission.MANAGE_SERVER);
   const [addServerOpen, setAddServerOpen] = useState(false);
@@ -2202,6 +2056,18 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     setProfileAvatar(session.avatarUrl);
     setProfileBanner(session.bannerUrl);
     setProfileFrame(session.avatarFrame);
+  }
+
+  // Escolher o que mostrar (online, ausente, não perturbe, invisível): aparece na hora e volta atrás se o servidor recusar.
+  async function changePresenceStatus(status: PresenceStatus) {
+    const previous = session.presenceStatus;
+    onProfileUpdated({ ...session, presenceStatus: status });
+    try {
+      await api.setPresenceStatus(status);
+    } catch {
+      onProfileUpdated({ ...session, presenceStatus: previous });
+      setInviteMessage({ text: 'Não foi possível trocar o status agora.', failed: true });
+    }
   }
 
   async function saveProfile() {
@@ -2413,7 +2279,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   // online (o app está aberto e em uso). O estado do LiveKit só aparece ali
   // enquanto há uma call em andamento; o cabeçalho da sala segue usando
   // connectionLabel puro, onde "Desconectado" descreve a voz de fato.
-  const userStatusLabel = voice.connectionState === ConnectionState.Disconnected ? 'Online' : connectionLabel;
+  const userStatusLabel = voice.connectionState === ConnectionState.Disconnected ? PRESENCE_STATUS_LABELS[session.presenceStatus] : connectionLabel;
   // Sinal de conexão com a chamada (verde/amarelo/vermelho), só enquanto há uma chamada.
   const connectionSignal = describeConnectionSignal(voice.connectionState, voice.connectionQuality);
 
@@ -2431,6 +2297,15 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       ),
     [voice.screenTracks, watchingScreenIds],
   );
+
+  // Trocar a qualidade com a transmissão no ar vale na hora (sem parar e escolher a tela de novo).
+  function changeShareQuality(next: ShareQuality) {
+    setQuality(next);
+    if (!voice.screenEnabled) return;
+    void voice.changeShareQuality(next).then((applied) => {
+      if (!applied) setInviteMessage({ text: 'Não foi possível trocar a qualidade ao vivo. Pare a transmissão e inicie de novo.', failed: true });
+    });
+  }
 
   async function startOrStopScreenShare() {
     if (voice.screenEnabled) {
@@ -2548,6 +2423,29 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         }
       : undefined;
   const activeTextChannel = textChannels.find(({ id }) => id === selectedTextChannelId);
+  // Em telas estreitas os servidores e canais viram uma gaveta que abre pelo botão de menu e fecha ao escolher um canal.
+  const [navOpen, setNavOpen] = useState(false);
+  useEscapeLayer(navOpen, () => setNavOpen(false));
+  const navServerRef = useRef(activeServerId);
+  useEffect(() => {
+    // Trocar de servidor mantém a gaveta aberta (é hora de escolher o canal); escolher canal ou conversa fecha.
+    if (navServerRef.current !== activeServerId) {
+      navServerRef.current = activeServerId;
+      return;
+    }
+    setNavOpen(false);
+  }, [selectedTextChannelId, selectedDmChannelId, activeServerId, voice.currentChannel?.id]);
+  // Som de mensagem nova e de menção (respeitando o modo de notificação da categoria, o "Não perturbe" e o que a pessoa está vendo).
+  useNotificationSounds({
+    session,
+    viewingChannelId: view === 'server' ? (activeTextChannel?.id ?? null) : null,
+    viewingDmChannelId: view === 'friends' ? selectedDmChannelId : null,
+    modeFor: (serverId, channelId) => {
+      if (serverId !== activeServerId) return 'all';
+      const channel = textChannels.find(({ id }) => id === channelId);
+      return channel?.categoryId ? categoryPrefFor(channel.categoryId).notificationMode : 'all';
+    },
+  });
   // Atividade só existe pra quem está no mesmo canal de voz que você agora —
   // o LiveKit não entrega metadata de participantes de salas que você não
   // entrou, então fora daí o popover mostra o perfil sem essa seção.
@@ -2588,7 +2486,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   );
 
   return (
-    <main className="workspace">
+    <main className={`workspace ${navOpen ? 'nav-open' : ''}`}>
       <StatusNotices
         connectivity={connectivity.state}
         onRetryConnection={connectivity.retryNow}
@@ -2616,7 +2514,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         returnFocusRef={settingsButtonRef}
         session={session}
         quality={quality}
-        setQuality={setQuality}
+        setQuality={changeShareQuality}
         screenEnabled={voice.screenEnabled}
         perfMode={perfMode}
         choosePerfMode={choosePerfMode}
@@ -2656,17 +2554,6 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         onSaveProfile={() => void saveProfile()}
         onCancelProfile={resetProfileDraft}
         onSignOut={() => void voice.disconnect().finally(onSignOut)}
-        micProfile={voice.micProfile}
-        krispSupported={voice.krispSupported}
-        setMicProfile={voice.setMicProfile}
-        echoCancellationEnabled={voice.echoCancellationEnabled}
-        setEchoCancellation={voice.setEchoCancellation}
-        autoGainEnabled={voice.autoGainEnabled}
-        setAutoGain={voice.setAutoGain}
-        autoSensitivity={voice.autoSensitivity}
-        setAutoSensitivity={voice.setAutoSensitivity}
-        inputSensitivity={voice.inputSensitivity}
-        setInputSensitivity={voice.setInputSensitivity}
         audioInputs={voice.audioInputs}
         audioOutputs={voice.audioOutputs}
         videoInputs={voice.videoInputs}
@@ -2681,8 +2568,6 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         setInputMode={voice.setInputMode}
         pttKey={voice.pttKey}
         setPttKeyBinding={voice.setPttKeyBinding}
-        noiseSuppressionEnabled={voice.noiseSuppressionEnabled}
-        setNoiseSuppression={(enabled) => void voice.setNoiseSuppression(enabled)}
       />
       <CreateTextChannelDialog
         open={createChannelOpen}
@@ -2797,17 +2682,15 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           {friendsState.incoming.length > 0 && <span className="dm-pending-badge rail-badge">{friendsState.incoming.length}</span>}
         </button>
         <span className="rail-divider" />
-        {serversState.servers.map((server) => (
-          <ServerRailButton
-            key={server.id}
-            server={server}
-            active={view === 'server' && activeServerId === server.id}
-            onSelect={() => {
-              setActiveServerId(server.id);
-              setView('server');
-            }}
-          />
-        ))}
+        <ServerRail
+          servers={serversState.servers}
+          activeServerId={activeServerId}
+          serverViewActive={view === 'server'}
+          onSelectServer={(serverId) => {
+            setActiveServerId(serverId);
+            setView('server');
+          }}
+        />
         <button
           ref={addServerButtonRef}
           className="server-button add"
@@ -2823,7 +2706,13 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         </button>
       </aside>
 
-      <aside className="sidebar">
+      <aside
+        className="sidebar"
+        onClick={(event) => {
+          // Em tela estreita, escolher um canal ou conversa fecha a gaveta (mesmo que ele já estivesse aberto).
+          if (navOpen && (event.target as HTMLElement).closest('.text-channel-button, .channel-button')) setNavOpen(false);
+        }}
+      >
         {view === 'server' ? (
           <>
             <header className={`sidebar-header ${activeServer?.bannerUrl ? 'has-banner' : ''}`}>
@@ -3053,11 +2942,13 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         )}
 
         <footer className="sidebar-user">
-          <Avatar name={session.displayName} accentColor={session.accentColor} avatarUrl={session.avatarUrl} frame={session.avatarFrame} />
-          <div className="current-user-copy">
-            <strong>{session.displayName}</strong>
-            <span>{userStatusLabel}</span>
-          </div>
+          <StatusPicker status={session.presenceStatus} onSelect={(status) => void changePresenceStatus(status)}>
+            <Avatar name={session.displayName} accentColor={session.accentColor} avatarUrl={session.avatarUrl} frame={session.avatarFrame} status={session.presenceStatus} />
+            <div className="current-user-copy">
+              <strong>{session.displayName}</strong>
+              <span>{userStatusLabel}</span>
+            </div>
+          </StatusPicker>
           <div className="sidebar-actions">
             {connectionSignal && <ConnectionSignal info={connectionSignal} />}
             <button
@@ -3106,7 +2997,11 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         </footer>
       </aside>
 
+      {navOpen && <div className="mobile-nav-backdrop" onClick={() => setNavOpen(false)} aria-hidden="true" />}
       <section className="main-panel">
+        <button type="button" className="mobile-nav-button" onClick={() => setNavOpen(true)} aria-label="Abrir servidores e canais" title="Servidores e canais">
+          <MenuIcon size={20} />
+        </button>
         {view === 'friends' ? (
           selectedDmChannel ? (
             <DmChannelView
@@ -3188,6 +3083,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
             channel={activeTextChannel}
             session={session}
             member={member}
+            nameColors={nameColors}
             messageStyle={messageStyle}
             voiceChannelId={voice.currentChannel?.id ?? null}
             onOpenProfile={openUserProfile}
@@ -3250,14 +3146,17 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                   </button>
                   <button type="button" className="device-menu-chevron" aria-label="Opções de câmera"><ChevronIcon size={12} /></button>
                 </div>
-                <button
-                  className={`voice-action ${voice.screenEnabled ? 'sharing' : ''}`}
-                  type="button"
-                  onClick={() => void startOrStopScreenShare()}
-                  title={voice.screenEnabled ? 'Parar transmissão' : 'Compartilhar tela'}
-                >
-                  <ShareIcon />
-                </button>
+                <div className="voice-split-action">
+                  <button
+                    className={`voice-action ${voice.screenEnabled ? 'sharing' : ''}`}
+                    type="button"
+                    onClick={() => void startOrStopScreenShare()}
+                    title={voice.screenEnabled ? 'Parar transmissão' : 'Compartilhar tela'}
+                  >
+                    <ShareIcon />
+                  </button>
+                  {voice.screenEnabled && <ShareQualityMenu value={quality} onSelect={changeShareQuality} />}
+                </div>
                 <div className="soundboard-anchor">
                   <button
                     className={`voice-action ${soundboardOpen ? 'sharing' : ''}`}
@@ -3363,7 +3262,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           )}
 
           {activeServerId && (!voice.connected || voiceMembersOpen) && (
-            <MemberList serverId={activeServerId} ownId={session.id} onOpenProfile={openUserProfile} />
+            <MemberList data={memberData} ownId={session.id} ownStatus={session.presenceStatus} onOpenProfile={openUserProfile} />
           )}
         </div>
         </>

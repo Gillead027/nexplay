@@ -8,6 +8,8 @@ import { MarkdownText } from './Markdown';
 import { Avatar } from './Workspace';
 import { CheckIcon, CopyIcon, EditIcon, ForwardIcon, TrashIcon } from './Icons';
 import { copyLabel, useCopyFeedback } from '../useCopyFeedback';
+import { TypingIndicator } from './TypingIndicator';
+import { useTypingIndicator, useTypingSender } from '../useTypingIndicator';
 
 // Mesma ideia de applyIncomingMessage em TextChannels.tsx, só que essa cópia
 // pequena é deliberada (ver plano) — DM não precisa de reação/pin/anexo, e
@@ -106,6 +108,8 @@ export function DmChannelView({
   const copyFeedback = useCopyFeedback();
   const endRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const typingNames = useTypingIndicator({ kind: 'dm', dmChannelId: channel.id }, session.id);
+  const notifyTyping = useTypingSender(channel.id, () => api.sendDmTyping(channel.id), session.presenceStatus === 'invisible');
 
   useEffect(() => {
     let active = true;
@@ -307,6 +311,7 @@ export function DmChannelView({
           <span>Você bloqueou {other.displayName} — desbloqueie pra continuar a conversa.</span>
         </div>
       )}
+      <TypingIndicator names={typingNames} />
       <form className="text-channel-form" onSubmit={submitMessage}>
         <label className="sr-only" htmlFor="dm-message">Mensagem para {other.displayName}</label>
         <textarea
@@ -316,7 +321,10 @@ export function DmChannelView({
           maxLength={CHAT_MESSAGE_MAX_LENGTH}
           value={draft}
           disabled={composerDisabled}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value);
+            notifyTyping(event.target.value);
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {
               event.preventDefault();
