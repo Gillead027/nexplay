@@ -52,7 +52,7 @@ const result = copy.prepare("PRAGMA integrity_check").get();
 const value = Object.values(result)[0];
 if (value !== "ok") { console.error("integrity_check:", value); process.exit(2); }
 console.log("banco copiado e íntegro (" + copy.prepare("SELECT COUNT(*) AS n FROM users").get().n + " contas)");
-'
+' </dev/null
 mv "$data_dir/$snapshot" "$work/nexplay.db"
 
 mkdir -p "$work/minio" "$work/config"

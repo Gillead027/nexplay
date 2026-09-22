@@ -45,7 +45,7 @@ rm -f "$TARBALL"
 set -euo pipefail
 cd "$APP_DIR"
 echo "==> Backup antes de trocar"
-if [ -x scripts/vps/backup.sh ]; then bash scripts/vps/backup.sh; else echo "(backup.sh ainda não existe nesta VPS; pulando)"; fi
+if [ -x scripts/vps/backup.sh ]; then bash scripts/vps/backup.sh </dev/null; else echo "(backup.sh ainda não existe nesta VPS; pulando)"; fi
 echo "==> Guardando as imagens atuais como '$LABEL'"
 docker tag nexplay-api:latest "nexplay-api-rollback:$LABEL"
 docker tag nexplay-web:latest "nexplay-web-rollback:$LABEL"
