@@ -39,6 +39,11 @@ services:
     volumes:
       - api_data:/app/data
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 768M
     healthcheck:
       test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))" ]
       interval: 15s
@@ -61,6 +66,11 @@ services:
     volumes:
       - minio_data:/data
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
   caddy:
     image: caddy:2.10.2-alpine
     depends_on:
@@ -80,6 +90,11 @@ services:
       - '0.0.0.0:80:80'
       - '0.0.0.0:443:443'
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
     healthcheck:
       test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1:2019/config/" ]
       interval: 15s
@@ -108,6 +123,11 @@ services:
     volumes:
       - ./secrets:/run/music-secrets:ro
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1024M
     healthcheck:
       test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:4100/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))" ]
       interval: 15s
@@ -119,6 +139,11 @@ services:
   pot-provider:
     image: brainicism/bgutil-ytdlp-pot-provider:2.0.0
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
     healthcheck:
       test: [ "CMD", "node", "-e", "fetch('http://127.0.0.1:4416/').then(r=>process.exit(r.status>=500?1:0)).catch(()=>process.exit(1))" ]
       interval: 15s
@@ -149,6 +174,10 @@ services:
           auto_create: true
           empty_timeout: 300
           departure_timeout: 20
+          # Teto global por sala (independente do limite por canal já aplicado
+          # na API): rede de segurança contra um canal com userLimit=0 (o
+          # padrão, sem limite) lotar e derrubar a VPS de 2 vCPU.
+          max_participants: 60
         webhook:
           api_key: "${LIVEKIT_API_KEY:?Defina LIVEKIT_API_KEY}"
           urls:
@@ -157,6 +186,11 @@ services:
       - '0.0.0.0:7881:7881/tcp'
       - '0.0.0.0:7882:7882/udp'
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2048M
     healthcheck:
       test: [ "CMD-SHELL", "wget -S -O /dev/null http://127.0.0.1:7880/ 2>&1 | grep -q 'HTTP/'" ]
       interval: 10s
@@ -168,6 +202,11 @@ services:
       context: .
       dockerfile: apps/web/Dockerfile
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
     healthcheck:
       test: [ "CMD", "wget", "-q", "--spider", "http://127.0.0.1/" ]
       interval: 15s

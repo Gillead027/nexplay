@@ -330,6 +330,18 @@ const dmMessageLimiter = rateLimit({
   message: { error: 'Você está enviando mensagens rápido demais.' },
 });
 
+// Emitir token do LiveKit é o que efetivamente abre uma sessão de voz/vídeo
+// na sala (custa CPU no LiveKit) — sem limite aqui, um cliente com bug ou mal
+// intencionado poderia bater nessa rota em loop e sobrecarregar o servidor
+// de mídia, que é o recurso mais escasso na VPS.
+const voiceTokenLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Muitas tentativas de entrar na chamada. Aguarde um instante.' },
+});
+
 // Envolve o middleware do multer manualmente pra devolver um erro amigável
 // (413 com o teto real) em vez de cair no handler de erro genérico do fim
 // do arquivo — multer chama next(error) em vez de lançar, e um MulterError
@@ -2849,6 +2861,7 @@ app.post(
   '/api/servers/:serverId/livekit/token',
   requireSession,
   requireServerMembership,
+  voiceTokenLimiter,
   async (request, response) => {
   const serverId = currentServerId(response);
   const body = tokenSchema.safeParse(request.body);
