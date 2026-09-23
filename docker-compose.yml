@@ -41,6 +41,10 @@ services:
       KYC_API_BASE_URL: "${KYC_API_BASE_URL:-}"
       KYC_WEBHOOK_SECRET: "${KYC_WEBHOOK_SECRET:-}"
       IDENTITY_VERIFICATION_REQUIRED: "${IDENTITY_VERIFICATION_REQUIRED:-false}"
+      SELF_HARM_VENDOR: "${SELF_HARM_VENDOR:-none}"
+      SELF_HARM_API_KEY: "${SELF_HARM_API_KEY:-}"
+      SELF_HARM_API_BASE_URL: "${SELF_HARM_API_BASE_URL:-}"
+      SUPPORT_RESOURCE_TEXT: "${SUPPORT_RESOURCE_TEXT:-CVV: 188 (ligação gratuita, 24h) — https://www.cvv.org.br}"
     volumes:
       - api_data:/app/data
     restart: unless-stopped
