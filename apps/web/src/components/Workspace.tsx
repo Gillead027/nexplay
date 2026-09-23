@@ -172,7 +172,12 @@ declare global {
       windowAction?: (action: 'minimize' | 'toggle-maximize' | 'close') => void;
       // Novos no desktop 0.2.17: bandeja do sistema (fechar minimiza) e iniciar com o Windows.
       getDesktopSettings?: () => Promise<DesktopSettingsView>;
-      setDesktopSettings?: (patch: Partial<Pick<DesktopSettingsView, 'closeToTray' | 'launchAtLogin' | 'startMinimized'>>) => Promise<DesktopSettingsView>;
+      setDesktopSettings?: (
+        patch: Partial<Pick<DesktopSettingsView, 'closeToTray' | 'launchAtLogin' | 'startMinimized' | 'globalMuteHotkey' | 'globalDeafenHotkey'>>,
+      ) => Promise<DesktopSettingsView>;
+      // Novos no desktop 0.2.18: atalhos globais de mutar/ensurdecer, funcionam com o NexPlay em segundo plano.
+      onGlobalMuteHotkey?: (listener: () => void) => (() => void);
+      onGlobalDeafenHotkey?: (listener: () => void) => (() => void);
     };
   }
 }

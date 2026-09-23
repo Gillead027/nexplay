@@ -18,16 +18,25 @@ test('sem arquivo ou com arquivo estragado, valem os padrões (X esconde na band
 });
 
 test('cada opção é lida sozinha, e valor que não é verdadeiro/falso cai no padrão daquela opção', () => {
-  assert.deepEqual(parseDesktopSettings('{"closeToTray":false,"launchAtLogin":true}'), { closeToTray: false, launchAtLogin: true, startMinimized: true });
+  assert.deepEqual(parseDesktopSettings('{"closeToTray":false,"launchAtLogin":true}'), {
+    closeToTray: false, launchAtLogin: true, startMinimized: true, globalMuteHotkey: '', globalDeafenHotkey: '',
+  });
   assert.deepEqual(parseDesktopSettings('{"closeToTray":"não","startMinimized":0}'), DEFAULT_DESKTOP_SETTINGS);
 });
 
-test('o que a página pode mudar: só as três opções, só com verdadeiro ou falso', () => {
+test('atalho global é lido como texto; valor que não é texto cai no padrão (desativado)', () => {
+  assert.deepEqual(parseDesktopSettings('{"globalMuteHotkey":"Control+Shift+M"}'), { ...DEFAULT_DESKTOP_SETTINGS, globalMuteHotkey: 'Control+Shift+M' });
+  assert.deepEqual(parseDesktopSettings('{"globalMuteHotkey":123}'), DEFAULT_DESKTOP_SETTINGS);
+});
+
+test('o que a página pode mudar: só as cinco opções, cada uma com o tipo certo', () => {
   assert.deepEqual(sanitizeSettingsPatch({ closeToTray: false }), { closeToTray: false });
   assert.deepEqual(sanitizeSettingsPatch({ launchAtLogin: true, startMinimized: false }), { launchAtLogin: true, startMinimized: false });
+  assert.deepEqual(sanitizeSettingsPatch({ globalMuteHotkey: 'F13' }), { globalMuteHotkey: 'F13' });
   assert.deepEqual(sanitizeSettingsPatch({}), {});
   assert.deepEqual(sanitizeSettingsPatch({ inventada: true, closeToTray: true }), { closeToTray: true });
   assert.equal(sanitizeSettingsPatch({ closeToTray: 'sim' }), null);
+  assert.equal(sanitizeSettingsPatch({ globalMuteHotkey: true }), null);
   assert.equal(sanitizeSettingsPatch(null), null);
   assert.equal(sanitizeSettingsPatch([true]), null);
   assert.equal(sanitizeSettingsPatch('closeToTray'), null);

@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   desktopCapturer,
   dialog,
+  globalShortcut,
   ipcMain,
   Menu,
   nativeImage,
@@ -514,6 +515,33 @@ function applyLaunchAtLogin(): void {
   }
 }
 
+// ---- Atalhos globais (mutar/ensurdecer mesmo com o NexPlay em segundo plano) ----
+// globalShortcut.register nunca lança por causa de outro app já ter registrado a mesma
+// combinação — só falha silenciosamente (só lança se o formato do Accelerator for inválido).
+// Por isso confere com isRegistered() depois de cada tentativa, pra currentSettingsView() poder
+// avisar a pessoa que um atalho configurado não está realmente ativo.
+function registerGlobalHotkeys(): void {
+  globalShortcut.unregisterAll();
+  for (const [accelerator, channel] of [
+    [desktopSettings.globalMuteHotkey, 'global-hotkey:mute-toggle'],
+    [desktopSettings.globalDeafenHotkey, 'global-hotkey:deafen-toggle'],
+  ] as const) {
+    if (!accelerator) continue;
+    try {
+      globalShortcut.register(accelerator, () => {
+        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+          mainWindow.webContents.send(channel);
+        }
+      });
+      if (!globalShortcut.isRegistered(accelerator)) {
+        debugLog(`atalho global "${accelerator}" não registrou: já está em uso por outro programa.`);
+      }
+    } catch (error) {
+      debugLog(`atalho global "${accelerator}" é inválido: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+}
+
 function currentSettingsView() {
   return {
     ...desktopSettings,
@@ -521,6 +549,9 @@ function currentSettingsView() {
     launchAtLogin: canLaunchAtLogin() ? app.getLoginItemSettings().openAtLogin : false,
     launchAtLoginAvailable: canLaunchAtLogin(),
     trayAvailable: tray !== null,
+    // false quando configurado mas não registrou de verdade (outro programa já usa a combinação).
+    globalMuteHotkeyActive: desktopSettings.globalMuteHotkey ? globalShortcut.isRegistered(desktopSettings.globalMuteHotkey) : true,
+    globalDeafenHotkeyActive: desktopSettings.globalDeafenHotkey ? globalShortcut.isRegistered(desktopSettings.globalDeafenHotkey) : true,
   };
 }
 
@@ -540,6 +571,7 @@ function installSettingsIpc(): void {
       debugLog(`não gravou as preferências: ${error instanceof Error ? error.message : String(error)}`);
     }
     if (patch.launchAtLogin !== undefined) applyLaunchAtLogin();
+    if (patch.globalMuteHotkey !== undefined || patch.globalDeafenHotkey !== undefined) registerGlobalHotkeys();
     debugLog(`preferências: ${JSON.stringify(desktopSettings)}`);
     return currentSettingsView();
   });
@@ -885,6 +917,7 @@ if (hasSingleInstanceLock) {
       mainWindow.once('closed', () => {
         mainWindow = null;
       });
+      registerGlobalHotkeys();
       createTray();
       const { startActivityMonitor } = await import('./activity.js');
       stopActivityMonitor = startActivityMonitor((activity) => {
@@ -921,6 +954,9 @@ app.on('before-quit', () => {
   stopActivityMonitor?.();
   stopActivityMonitor = null;
 });
-app.on('will-quit', () => debugLog('will-quit'));
+app.on('will-quit', () => {
+  debugLog('will-quit');
+  globalShortcut.unregisterAll();
+});
 app.on('quit', (_event, exitCode) => debugLog(`quit exitCode=${exitCode}`));
 app.on('child-process-gone', (_event, details) => debugLog(`child-process-gone: ${JSON.stringify(details)}`));

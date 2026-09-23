@@ -8,13 +8,22 @@ export interface DesktopSettings {
   launchAtLogin: boolean;
   // Quando abre sozinho com o Windows, fica escondido na bandeja em vez de abrir a janela.
   startMinimized: boolean;
+  // Atalhos globais (formato Accelerator do Electron, ex. "ControlRight" ou "Control+Shift+M"):
+  // funcionam mesmo com o NexPlay em segundo plano (jogando, por exemplo). '' = desativado.
+  globalMuteHotkey: string;
+  globalDeafenHotkey: string;
 }
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
   closeToTray: true,
   launchAtLogin: false,
   startMinimized: true,
+  globalMuteHotkey: '',
+  globalDeafenHotkey: '',
 };
+
+const BOOLEAN_SETTINGS_KEYS = ['closeToTray', 'launchAtLogin', 'startMinimized'] as const;
+const STRING_SETTINGS_KEYS = ['globalMuteHotkey', 'globalDeafenHotkey'] as const;
 
 /** Argumento que o Windows passa ao NexPlay quando ele abre sozinho no início da sessão. */
 export const HIDDEN_LAUNCH_ARGUMENT = '--hidden';
@@ -24,21 +33,36 @@ export function parseDesktopSettings(raw: string | null | undefined): DesktopSet
   if (!raw) return { ...DEFAULT_DESKTOP_SETTINGS };
   try {
     const parsed = JSON.parse(raw) as Partial<Record<keyof DesktopSettings, unknown>> | null;
-    const pick = (key: keyof DesktopSettings): boolean => (typeof parsed?.[key] === 'boolean' ? (parsed[key] as boolean) : DEFAULT_DESKTOP_SETTINGS[key]);
-    return { closeToTray: pick('closeToTray'), launchAtLogin: pick('launchAtLogin'), startMinimized: pick('startMinimized') };
+    const pickBoolean = (key: (typeof BOOLEAN_SETTINGS_KEYS)[number]): boolean =>
+      typeof parsed?.[key] === 'boolean' ? (parsed[key] as boolean) : DEFAULT_DESKTOP_SETTINGS[key];
+    const pickString = (key: (typeof STRING_SETTINGS_KEYS)[number]): string =>
+      typeof parsed?.[key] === 'string' ? (parsed[key] as string) : DEFAULT_DESKTOP_SETTINGS[key];
+    return {
+      closeToTray: pickBoolean('closeToTray'),
+      launchAtLogin: pickBoolean('launchAtLogin'),
+      startMinimized: pickBoolean('startMinimized'),
+      globalMuteHotkey: pickString('globalMuteHotkey'),
+      globalDeafenHotkey: pickString('globalDeafenHotkey'),
+    };
   } catch {
     return { ...DEFAULT_DESKTOP_SETTINGS };
   }
 }
 
-/** Valida o que a página mandou mudar: só as chaves conhecidas, só com valor verdadeiro ou falso. */
+/** Valida o que a página mandou mudar: só as chaves conhecidas, com o tipo certo pra cada uma. */
 export function sanitizeSettingsPatch(input: unknown): Partial<DesktopSettings> | null {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) return null;
   const patch: Partial<DesktopSettings> = {};
-  for (const key of ['closeToTray', 'launchAtLogin', 'startMinimized'] as const) {
+  for (const key of BOOLEAN_SETTINGS_KEYS) {
     const value = (input as Record<string, unknown>)[key];
     if (value === undefined) continue;
     if (typeof value !== 'boolean') return null;
+    patch[key] = value;
+  }
+  for (const key of STRING_SETTINGS_KEYS) {
+    const value = (input as Record<string, unknown>)[key];
+    if (value === undefined) continue;
+    if (typeof value !== 'string') return null;
     patch[key] = value;
   }
   return patch;

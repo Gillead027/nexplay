@@ -52,4 +52,16 @@ contextBridge.exposeInMainWorld('desktop', {
     return () => ipcRenderer.removeListener('activity:changed', wrapped);
   },
   getCurrentActivity: (): Promise<Activity | null> => ipcRenderer.invoke('activity:get-current'),
+  // Atalhos globais de mutar/ensurdecer (Configurações > Aplicativo) — disparam mesmo com o
+  // NexPlay em segundo plano, registrados no processo principal via globalShortcut.
+  onGlobalMuteHotkey: (listener: () => void): (() => void) => {
+    const wrapped = () => listener();
+    ipcRenderer.on('global-hotkey:mute-toggle', wrapped);
+    return () => ipcRenderer.removeListener('global-hotkey:mute-toggle', wrapped);
+  },
+  onGlobalDeafenHotkey: (listener: () => void): (() => void) => {
+    const wrapped = () => listener();
+    ipcRenderer.on('global-hotkey:deafen-toggle', wrapped);
+    return () => ipcRenderer.removeListener('global-hotkey:deafen-toggle', wrapped);
+  },
 });

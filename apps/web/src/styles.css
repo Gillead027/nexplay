@@ -897,6 +897,7 @@ button:disabled { cursor: default; opacity: .45; }
 .save-profile-button:disabled { opacity: .6; }
 .ptt-key-button { max-width: 200px; height: 34px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--panel-raised); cursor: pointer; font-size: var(--fs-sm); font-weight: 600; }
 .ptt-key-button:hover { border-color: var(--accent); }
+.hotkey-row-controls { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 
 .test-toggle-button { height: 32px; padding: 0 14px; border: 1px solid var(--border-light); border-radius: var(--radius-sm); color: var(--text-primary); background: var(--panel-raised); cursor: pointer; font-size: var(--fs-xs); font-weight: 600; transition: background-color 120ms; }
 .test-toggle-button:hover { background: var(--selected); }

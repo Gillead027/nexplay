@@ -744,6 +744,13 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
     }
   }, [deafened, room, syncRoom]);
 
+  // Atalhos globais (app desktop, Configurações > Aplicativo): disparam mesmo com o NexPlay em
+  // segundo plano, via globalShortcut no processo principal — diferente do push-to-talk acima,
+  // que só funciona com a janela em foco. Sem window.desktop (navegador), os métodos não existem
+  // e o efeito não faz nada.
+  useEffect(() => window.desktop?.onGlobalMuteHotkey?.(() => void toggleMicrophone()), [toggleMicrophone]);
+  useEffect(() => window.desktop?.onGlobalDeafenHotkey?.(() => void toggleDeafen()), [toggleDeafen]);
+
   const setInputMode = useCallback(
     (mode: InputMode) => {
       voiceSettingsStore.setInputMode(mode);
