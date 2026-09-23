@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import { PRESENCE_STATUSES, parseImageDataUrl, type AccentColor, type AvatarFrame, type PresenceStatus } from '@nexplay/shared';
+import {
+  PRESENCE_STATUSES,
+  parseImageDataUrl,
+  type AccentColor,
+  type AvatarFrame,
+  type IdentityVerificationStatus,
+  type PresenceStatus,
+} from '@nexplay/shared';
 import { db } from './db.js';
 
 export interface UserRecord {
@@ -18,6 +25,9 @@ export interface UserRecord {
   presenceStatus: PresenceStatus;
   assetsRev: number;
   timeoutUntil: number | null;
+  identityVerificationStatus: IdentityVerificationStatus;
+  identityVerifiedAt: number | null;
+  identityVerificationRef: string;
 }
 
 interface UserRow {
@@ -35,7 +45,13 @@ interface UserRow {
   presence_status: string;
   assets_rev: number;
   timeout_until: number | null;
+  identity_verification_status: string;
+  identity_verified_at: number | null;
+  identity_verification_ref: string;
 }
+
+const asIdentityVerificationStatus = (value: string): IdentityVerificationStatus =>
+  value === 'pending' || value === 'verified' || value === 'rejected' ? value : 'unverified';
 
 const asPresenceStatus = (value: string): PresenceStatus =>
   (PRESENCE_STATUSES as readonly string[]).includes(value) ? (value as PresenceStatus) : 'online';
@@ -56,6 +72,9 @@ function toRecord(row: UserRow): UserRecord {
     presenceStatus: asPresenceStatus(row.presence_status),
     assetsRev: row.assets_rev,
     timeoutUntil: row.timeout_until,
+    identityVerificationStatus: asIdentityVerificationStatus(row.identity_verification_status),
+    identityVerifiedAt: row.identity_verified_at,
+    identityVerificationRef: row.identity_verification_ref,
   };
 }
 
@@ -69,6 +88,9 @@ const updateProfileStatement = db.prepare(
     banner_animated = ?, assets_rev = ? WHERE id = ?`,
 );
 const updateTimeoutStatement = db.prepare('UPDATE users SET timeout_until = ? WHERE id = ?');
+const updateIdentityVerificationStatement = db.prepare(
+  'UPDATE users SET identity_verification_status = ?, identity_verified_at = ?, identity_verification_ref = ? WHERE id = ?',
+);
 const updatePresenceStatusStatement = db.prepare('UPDATE users SET presence_status = ? WHERE id = ?');
 const selectServerLayoutStatement = db.prepare('SELECT server_layout FROM users WHERE id = ?');
 const updateServerLayoutStatement = db.prepare('UPDATE users SET server_layout = ? WHERE id = ?');
@@ -93,11 +115,25 @@ export function createUser(username: string, password: string, accentColor: Acce
     presenceStatus: 'online',
     assetsRev: 0,
     timeoutUntil: null,
+    identityVerificationStatus: 'unverified',
+    identityVerifiedAt: null,
+    identityVerificationRef: '',
   };
 }
 
 export function setUserPresenceStatus(id: string, status: PresenceStatus): void {
   updatePresenceStatusStatement.run(status, id);
+}
+
+// Chamada só pelo fluxo de verificação de identidade (ver identityVerification.ts): 'pending'
+// ao iniciar, 'verified'/'rejected' quando o webhook do vendor resolve a tentativa.
+export function setIdentityVerificationStatus(
+  id: string,
+  status: IdentityVerificationStatus,
+  verifiedAt: number | null,
+  ref: string,
+): void {
+  updateIdentityVerificationStatement.run(status, verifiedAt, ref, id);
 }
 
 // A organização da lista de servidores fica como JSON opaco aqui; quem valida o formato é a rota (serverLayout.ts).

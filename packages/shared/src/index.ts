@@ -299,6 +299,10 @@ export function normalizeServerLayout(layout: ServerLayout, memberServerIds: rea
   return { items };
 }
 
+// 'unverified' (nunca tentou) | 'pending' (voltou do fluxo do vendor, aguardando o webhook) |
+// 'verified' | 'rejected'. Nunca guarda documento, selfie ou biometria — só esse resultado.
+export type IdentityVerificationStatus = 'unverified' | 'pending' | 'verified' | 'rejected';
+
 export interface UserSession {
   id: string;
   displayName: string;
@@ -312,6 +316,7 @@ export interface UserSession {
   bannerUrl: string;
   bannerAnimated: boolean;
   presenceStatus: PresenceStatus;
+  identityVerificationStatus: IdentityVerificationStatus;
 }
 
 // 'default' = normal; 'spoiler' e 'age_restricted' só guardam o selo visual e
@@ -711,6 +716,10 @@ export interface RoomSummary extends VoiceChannel {
 // GET /api/servers/:serverId/channels (ver Channel acima).
 export interface PublicConfig {
   livekitUrl: string;
+  // Se o vendor de KYC está configurado (mostrar a tela de verificação) e se câmera/tela
+  // exigem verificação de fato (ver IDENTITY_VERIFICATION_REQUIRED) — os dois falsos por
+  // padrão, então uma instância sem vendor configurado não muda em nada pra ninguém.
+  identityVerification: { vendorEnabled: boolean; required: boolean };
 }
 
 // Visão geral da instância pro painel de administração (GET /api/admin/overview).
@@ -1090,6 +1099,7 @@ export type RealtimeEvent =
   | { type: 'MEMBER_LEAVE'; serverId: string; userId: string }
   | { type: 'MEMBER_BANNED'; userId: string }
   | { type: 'MEMBER_UNBANNED'; userId: string }
+  | { type: 'IDENTITY_VERIFICATION_UPDATE'; userId: string; status: IdentityVerificationStatus }
   // Quem tem o app aberto (ao menos um WebSocket conectado). Vai só pra quem divide
   // servidor com a pessoa; o estado inicial vem de GET /api/servers/:id/presence.
   // "status" é o que a pessoa escolheu mostrar (só vem quando ela está online e visível).

@@ -47,6 +47,20 @@ const envSchema = z.object({
   // novo não traz ganho visível (nunca aparece pro usuário) e só adiciona
   // risco de anexo quebrado no meio da cópia.
   MINIO_BUCKET: z.string().default('sausixudos-attachments'),
+  // Verificação de idade/identidade (KYC): 'none' desativa o recurso inteiro — nenhuma
+  // verificação é exigida e a tela de verificação nem aparece pro usuário. As credenciais
+  // só são obrigatórias quando um vendor real é escolhido (ver kycAdapter.ts).
+  KYC_VENDOR: z.enum(['none', 'unico', 'caf', 'veriff', 'persona']).default('none'),
+  KYC_API_KEY: z.string().min(1).optional(),
+  KYC_API_BASE_URL: z.string().url().optional(),
+  KYC_WEBHOOK_SECRET: z.string().min(16).optional(),
+  // Com o vendor configurado mas isto em false, a verificação fica disponível mas opcional
+  // (só o selo/gate de UI); em true, o webhook do LiveKit muta câmera/tela de quem não
+  // verificou. Falso por padrão — só passa a valer depois de um admin ligar de propósito.
+  IDENTITY_VERIFICATION_REQUIRED: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
 });
 
 const parsed = envSchema.safeParse(process.env);

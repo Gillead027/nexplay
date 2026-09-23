@@ -195,7 +195,12 @@ function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promi
   });
 }
 
-export function useVoiceRoom() {
+// canPublishVideo: false esconde a possibilidade de ligar câmera/tela pra quem não passou pela
+// verificação de identidade (ver Configurações > Conta e segurança). É só a primeira camada —
+// o servidor também muta a faixa se um cliente adulterado ignorar isso (ver o webhook do
+// LiveKit em apps/api/src/index.ts). Omitir o parâmetro mantém o comportamento de sempre.
+export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
+  const canPublishVideo = options.canPublishVideo ?? true;
   const processorRef = useRef<NexPlayVoiceProcessor | null>(null);
   const neuralFailedRef = useRef(false);
   const applyMicCaptureOptionsRef = useRef<() => Promise<void>>(async () => undefined);
@@ -812,6 +817,11 @@ export function useVoiceRoom() {
 
   const toggleCamera = useCallback(async () => {
     setError('');
+    // Só bloqueia ao LIGAR — desligar a própria câmera nunca deve ficar preso atrás disso.
+    if (!room.localParticipant.isCameraEnabled && !canPublishVideo) {
+      setError('Verifique sua identidade em Configurações > Conta e segurança pra usar a câmera.');
+      return;
+    }
     try {
       await room.localParticipant.setCameraEnabled(!room.localParticipant.isCameraEnabled, {
         resolution: VideoPresets.h1080.resolution,
@@ -823,11 +833,16 @@ export function useVoiceRoom() {
     } catch (mediaError) {
       await reportMediaError(mediaError, 'camera');
     }
-  }, [room, syncRoom]);
+  }, [room, syncRoom, canPublishVideo]);
 
   const toggleScreenShare = useCallback(
     async (quality: ShareQuality, shareAudio = true) => {
       setError('');
+      // Só bloqueia ao LIGAR — parar de compartilhar nunca deve ficar preso atrás disso.
+      if (!room.localParticipant.isScreenShareEnabled && !canPublishVideo) {
+        setError('Verifique sua identidade em Configurações > Conta e segurança pra compartilhar a tela.');
+        return;
+      }
       try {
         if (room.localParticipant.isScreenShareEnabled) {
           await room.localParticipant.setScreenShareEnabled(false);
@@ -867,7 +882,7 @@ export function useVoiceRoom() {
         syncRoom();
       }
     },
-    [room, syncRoom],
+    [room, syncRoom, canPublishVideo],
   );
 
   // Troca a qualidade da transmissão de tela com ela no ar, sem parar nem escolher a tela de novo: a captura passa a entregar a

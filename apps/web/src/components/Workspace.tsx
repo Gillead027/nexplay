@@ -761,6 +761,7 @@ function SettingsModal({
   onClose,
   returnFocusRef,
   session,
+  identityVerification,
   quality,
   setQuality,
   screenEnabled,
@@ -821,6 +822,7 @@ function SettingsModal({
   onClose: () => void;
   returnFocusRef: RefObject<HTMLButtonElement | null>;
   session: UserSession;
+  identityVerification: PublicConfig['identityVerification'];
   quality: ShareQuality;
   setQuality: (quality: ShareQuality) => void;
   screenEnabled: boolean;
@@ -890,6 +892,22 @@ function SettingsModal({
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
+  const [verificationStarting, setVerificationStarting] = useState(false);
+  const [verificationError, setVerificationError] = useState('');
+
+  async function startVerification() {
+    setVerificationError('');
+    setVerificationStarting(true);
+    try {
+      const { redirectUrl } = await api.startIdentityVerification();
+      window.location.href = redirectUrl;
+    } catch (err) {
+      setVerificationError(
+        err instanceof Error && err.message ? err.message : 'Não foi possível iniciar a verificação agora.',
+      );
+      setVerificationStarting(false);
+    }
+  }
 
   async function submitPasswordChange(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1231,6 +1249,41 @@ function SettingsModal({
           {section === 'security' && (
             <div className="settings-pane">
               <h2>Conta e segurança</h2>
+
+              {identityVerification.vendorEnabled && (
+                <>
+                  <h3>Verificação de identidade</h3>
+                  {session.identityVerificationStatus === 'verified' && (
+                    <p className="settings-hint">Sua identidade está verificada. Câmera e compartilhamento de tela estão liberados.</p>
+                  )}
+                  {session.identityVerificationStatus === 'pending' && (
+                    <p className="settings-hint">Verificação em andamento. Assim que o resultado chegar, você será avisado aqui.</p>
+                  )}
+                  {(session.identityVerificationStatus === 'unverified' || session.identityVerificationStatus === 'rejected') && (
+                    <>
+                      <p className="settings-page-description">
+                        {session.identityVerificationStatus === 'rejected'
+                          ? 'Sua verificação anterior não foi aprovada. Você pode tentar de novo.'
+                          : 'Confirme sua identidade pra liberar câmera e compartilhamento de tela.'}{' '}
+                        {identityVerification.required
+                          ? 'É exigida pra usar câmera ou compartilhar tela.'
+                          : 'É opcional nesta instância, mas recomendada.'}
+                      </p>
+                      {verificationError && <p className="form-error" role="alert">{verificationError}</p>}
+                      <button
+                        type="button"
+                        className="primary-button"
+                        style={{ marginBottom: 14 }}
+                        disabled={verificationStarting}
+                        onClick={() => void startVerification()}
+                      >
+                        {verificationStarting ? 'Abrindo verificação…' : 'Verificar identidade'}
+                      </button>
+                    </>
+                  )}
+                </>
+              )}
+
               <p className="settings-page-description">Troque sua senha de acesso.</p>
               <form onSubmit={(event) => void submitPasswordChange(event)}>
                 <label htmlFor="current-password">Senha atual</label>
@@ -1605,7 +1658,10 @@ function SettingsModal({
 }
 
 export function Workspace({ session, config, onSignOut, onProfileUpdated }: WorkspaceProps) {
-  const voice = useVoiceRoom();
+  // Sem IDENTITY_VERIFICATION_REQUIRED ligado nesta instância, câmera/tela seguem liberadas
+  // pra todo mundo — o gate só entra em vigor quando um admin ativa a exigência de propósito.
+  const canPublishVideo = !config.identityVerification.required || session.identityVerificationStatus === 'verified';
+  const voice = useVoiceRoom({ canPublishVideo });
   const connectivity = useConnectivity();
   const newVersion = useNewVersion();
   const [inviteMessage, setInviteMessage] = useState<{ text: string; failed: boolean } | null>(null);
@@ -1859,6 +1915,11 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       onRealtimeEvent((event) => {
         if (event.type === 'PRESENCE_STATUS_CHOICE' && event.status !== session.presenceStatus) {
           onProfileUpdated({ ...session, presenceStatus: event.status });
+        }
+        // sendToUser já garante que só a própria pessoa recebe este evento (ver realtime.ts) —
+        // sem isso, a UI de câmera/tela só liberaria depois de recarregar a página.
+        if (event.type === 'IDENTITY_VERIFICATION_UPDATE' && event.status !== session.identityVerificationStatus) {
+          onProfileUpdated({ ...session, identityVerificationStatus: event.status });
         }
       }),
     [session, onProfileUpdated],
@@ -2521,6 +2582,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         onClose={closeSettings}
         returnFocusRef={settingsButtonRef}
         session={session}
+        identityVerification={config.identityVerification}
         quality={quality}
         setQuality={changeShareQuality}
         screenEnabled={voice.screenEnabled}

@@ -36,6 +36,11 @@ services:
       MINIO_ACCESS_KEY: "${MINIO_ROOT_USER:?Defina MINIO_ROOT_USER no arquivo .env}"
       MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD:?Defina MINIO_ROOT_PASSWORD no arquivo .env}"
       MINIO_BUCKET: sausixudos-attachments
+      KYC_VENDOR: "${KYC_VENDOR:-none}"
+      KYC_API_KEY: "${KYC_API_KEY:-}"
+      KYC_API_BASE_URL: "${KYC_API_BASE_URL:-}"
+      KYC_WEBHOOK_SECRET: "${KYC_WEBHOOK_SECRET:-}"
+      IDENTITY_VERIFICATION_REQUIRED: "${IDENTITY_VERIFICATION_REQUIRED:-false}"
     volumes:
       - api_data:/app/data
     restart: unless-stopped

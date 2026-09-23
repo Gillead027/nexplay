@@ -320,7 +320,29 @@ ensureColumns('users', [
   ['assets_rev', 'INTEGER NOT NULL DEFAULT 0'],
   ['banner_data_url', "TEXT NOT NULL DEFAULT ''"],
   ['timeout_until', 'INTEGER'],
+  // Verificação de idade/identidade (KYC) — desnormalizado aqui (em vez de só na tabela de
+  // tentativas abaixo) porque é lido a cada publicação de câmera/tela no webhook do LiveKit,
+  // e um JOIN nessa checagem custaria caro nesse caminho. Nunca guarda documento/biometria,
+  // só o resultado do vendor e uma referência opaca pra correlacionar com o webhook.
+  ['identity_verification_status', "TEXT NOT NULL DEFAULT 'unverified'"],
+  ['identity_verified_at', 'INTEGER'],
+  ['identity_verification_ref', "TEXT NOT NULL DEFAULT ''"],
 ]);
+
+db.exec(`
+  CREATE TABLE IF NOT EXISTS identity_verification_attempts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    vendor TEXT NOT NULL,
+    vendor_session_ref TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','rejected','expired')),
+    failure_reason TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_identity_verification_attempts_user
+    ON identity_verification_attempts(user_id, created_at DESC);
+`);
 
 ensureColumns('text_messages', [
   ['edited_at', 'INTEGER'],

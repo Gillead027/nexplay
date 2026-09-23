@@ -57,6 +57,7 @@ import {
   type Channel,
   type PresenceStatus,
   type ForwardedFromMeta,
+  type IdentityVerificationStatus,
   type LiveKitTokenResponse,
   parseParticipantMetadata,
   readSelfDeafened,
@@ -82,6 +83,7 @@ import {
   getUserById,
   getUserByUsername,
   getUserServerLayoutJson,
+  setIdentityVerificationStatus,
   setUserPresenceStatus,
   setUserServerLayoutJson,
   updateUserPassword,
@@ -89,6 +91,9 @@ import {
   verifyPassword,
   type UserRecord,
 } from './users.js';
+import { createVerificationAttempt, getAttemptByVendorRef, resolveAttempt } from './identityVerification.js';
+import { getKycAdapter, KycDisabledError } from './kycAdapter.js';
+import { shouldMuteUnverifiedTrackPublish } from './trackPublishPolicy.js';
 import {
   createForwardedTextMessage,
   deleteMusicBotTextMessage,
@@ -372,6 +377,16 @@ const voiceTokenLimiter = rateLimit({
   message: { error: 'Muitas tentativas de entrar na chamada. Aguarde um instante.' },
 });
 
+// Iniciar uma verificação chama a API paga do vendor de KYC — limite por conta evita que um
+// bug de cliente (ou alguém testando burlar) gere sessões de verificação em loop.
+const identityVerificationLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Muitas tentativas de verificação. Tente novamente mais tarde.' },
+});
+
 // Envolve o middleware do multer manualmente pra devolver um erro amigável
 // (413 com o teto real) em vez de cair no handler de erro genérico do fim
 // do arquivo — multer chama next(error) em vez de lançar, e um MulterError
@@ -632,6 +647,16 @@ function requireServerPermission(flag: number) {
   };
 }
 
+// Eixo de autorização separado do Permission por servidor: admin de instância vem de
+// ADMIN_USERNAMES (ver isInstanceAdmin em adminStats.ts), não de cargo nenhum servidor.
+function requireInstanceAdmin(_request: Request, response: Response, next: NextFunction): void {
+  if (!isInstanceAdmin(currentUser(response).username, config.ADMIN_USERNAMES)) {
+    response.status(403).json({ error: 'Você não tem permissão para fazer isso.' });
+    return;
+  }
+  next();
+}
+
 // Esconde canais de uma categoria staffOnly de quem não é staff (ver
 // isStaffTier em packages/shared) — a categoria em si nem aparece na lista
 // de categorias pra esse usuário (ver rota GET categories).
@@ -743,6 +768,7 @@ function toUserSession(user: UserRecord): UserSession {
     bannerUrl: user.bannerDataUrl ? `/api/users/${user.id}/banner?v=${user.assetsRev}` : '',
     bannerAnimated: user.bannerAnimated,
     presenceStatus: user.presenceStatus,
+    identityVerificationStatus: user.identityVerificationStatus,
   };
 }
 
@@ -953,16 +979,82 @@ app.get('/api/users/:id/profile', requireSession, (request, response) => {
   response.json({ user: toUserSession(user) });
 });
 
+// Verificação de idade/identidade (KYC). Nenhum dado sensível (documento, selfie, biometria)
+// passa por aqui nem fica salvo — só o resultado do vendor e uma referência opaca pra
+// correlacionar o webhook de volta com quem iniciou a tentativa (ver kycAdapter.ts).
+app.post('/api/identity-verification/start', requireSession, identityVerificationLimiter, async (_request, response) => {
+  const user = currentUser(response);
+  if (user.identityVerificationStatus === 'verified') {
+    response.status(409).json({ error: 'Sua identidade já está verificada.' });
+    return;
+  }
+  let adapter;
+  try {
+    adapter = getKycAdapter();
+  } catch (error) {
+    console.error('Vendor de KYC configurado sem adapter implementado:', error);
+    response.status(500).json({ error: 'Verificação de identidade mal configurada nesta instância.' });
+    return;
+  }
+  try {
+    const result = await adapter.startVerification({ userId: user.id, username: user.username });
+    createVerificationAttempt(user.id, adapter.vendor, result.vendorSessionRef);
+    setIdentityVerificationStatus(user.id, 'pending', null, result.vendorSessionRef);
+    response.json({ redirectUrl: result.redirectUrl });
+  } catch (error) {
+    if (error instanceof KycDisabledError) {
+      response.status(501).json({ error: 'Verificação de identidade não está disponível nesta instância.' });
+      return;
+    }
+    console.error('Falha ao iniciar verificação de identidade:', error);
+    response.status(502).json({ error: 'Não foi possível iniciar a verificação agora. Tente novamente.' });
+  }
+});
+
+app.get('/api/identity-verification/status', requireSession, (_request, response) => {
+  const user = currentUser(response);
+  response.json({ status: user.identityVerificationStatus, verifiedAt: user.identityVerifiedAt });
+});
+
+// Chamado pelo vendor de KYC, sem sessão — a assinatura do adapter é a única proteção,
+// igual ao webhook do LiveKit logo abaixo (Caddy expõe /api/* inteiro publicamente).
+app.post('/api/identity-verification/webhook', express.raw({ type: '*/*' }), (request, response) => {
+  let adapter;
+  try {
+    adapter = getKycAdapter();
+  } catch {
+    response.status(404).end();
+    return;
+  }
+  const rawBody = request.body as Buffer;
+  if (!adapter.verifyWebhookSignature(rawBody, request.headers)) {
+    response.status(401).end();
+    return;
+  }
+  const event = adapter.parseWebhookEvent(rawBody);
+  if (!event) {
+    response.status(400).end();
+    return;
+  }
+  const attempt = getAttemptByVendorRef(event.vendorSessionRef);
+  if (!attempt) {
+    response.status(404).end();
+    return;
+  }
+  resolveAttempt(attempt.id, event.status, event.failureReason);
+  const status: IdentityVerificationStatus = event.status;
+  const verifiedAt = status === 'verified' ? Date.now() : null;
+  setIdentityVerificationStatus(attempt.userId, status, verifiedAt, event.vendorSessionRef);
+  sendToUser(attempt.userId, { type: 'IDENTITY_VERIFICATION_UPDATE', userId: attempt.userId, status });
+  response.status(200).end();
+});
+
 // Painel de administração da instância: só os usuários de ADMIN_USERNAMES.
 app.get('/api/admin/access', requireSession, (_request, response) => {
   response.json({ admin: isInstanceAdmin(currentUser(response).username, config.ADMIN_USERNAMES) });
 });
 
-app.get('/api/admin/overview', requireSession, async (_request, response) => {
-  if (!isInstanceAdmin(currentUser(response).username, config.ADMIN_USERNAMES)) {
-    response.status(403).json({ error: 'Você não tem permissão para fazer isso.' });
-    return;
-  }
+app.get('/api/admin/overview', requireSession, requireInstanceAdmin, async (_request, response) => {
   // Quem está em call agora, direto do LiveKit (o bot de música não conta como pessoa).
   let voice: LiveVoiceStats | null = null;
   try {
@@ -994,6 +1086,10 @@ app.get('/api/admin/overview', requireSession, async (_request, response) => {
 app.get('/api/config', requireSession, (_request, response) => {
   const payload: PublicConfig = {
     livekitUrl: config.LIVEKIT_PUBLIC_URL,
+    identityVerification: {
+      vendorEnabled: config.KYC_VENDOR !== 'none',
+      required: config.IDENTITY_VERIFICATION_REQUIRED,
+    },
   };
   response.json(payload);
 });
@@ -2906,6 +3002,27 @@ app.post('/api/livekit/webhook', express.raw({ type: '*/*' }), async (request, r
     console.error('Webhook do LiveKit rejeitado:', error);
     response.status(401).end();
     return;
+  }
+
+  // Linha de defesa contra cliente adulterado: a UI já esconde os botões de câmera/tela pra
+  // quem não verificou, mas isso só vale pro cliente oficial. Aqui, no lado do servidor, a
+  // publicação de câmera/compartilhamento de tela por alguém não verificado é mutada na hora
+  // — voz continua liberada, só o vídeo é cortado. Mesmo roomService já usado por
+  // forceDisconnectFromVoice/removeParticipant, agora com mutePublishedTrack pela primeira vez.
+  if (event.event === 'track_published' && event.room?.name && event.participant?.identity && event.track?.sid) {
+    const publisher = getUserById(event.participant.identity);
+    const shouldMute = shouldMuteUnverifiedTrackPublish({
+      identityVerificationRequired: config.IDENTITY_VERIFICATION_REQUIRED,
+      isCameraOrScreenShare: event.track.source === TrackSource.CAMERA || event.track.source === TrackSource.SCREEN_SHARE,
+      publisherStatus: publisher?.identityVerificationStatus,
+    });
+    if (shouldMute) {
+      try {
+        await roomService.mutePublishedTrack(event.room.name, event.participant.identity, event.track.sid, true);
+      } catch (error) {
+        console.error('Falha ao mutar faixa de vídeo de conta não verificada:', error);
+      }
+    }
   }
 
   const roomName = event.room?.name;

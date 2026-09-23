@@ -12,6 +12,7 @@ import type {
   ForwardDestination,
   FriendRequestSummary,
   FriendSummary,
+  IdentityVerificationStatus,
   Invite,
   LiveKitTokenResponse,
   MemberSummary,
@@ -138,6 +139,11 @@ export const api = {
   getUserAvatar: (userId: string) => request<{ avatarUrl: string; avatarFrame?: AvatarFrame | '' }>(`/api/users/${userId}/avatar`),
   getUserProfile: (userId: string) => request<{ user: UserSession }>(`/api/users/${userId}/profile`),
   getConfig: () => request<PublicConfig>('/api/config'),
+
+  // Verificação de idade/identidade (KYC). 501 quando a instância não tem vendor configurado.
+  startIdentityVerification: () => request<{ redirectUrl: string }>('/api/identity-verification/start', { method: 'POST' }),
+  getIdentityVerificationStatus: () =>
+    request<{ status: IdentityVerificationStatus; verifiedAt: number | null }>('/api/identity-verification/status'),
 
   // Servidores — fundação de múltiplos servidores (ver DISCORD_PARITY_PLAN.md).
   getServers: () => request<{ servers: Server[] }>('/api/servers'),
