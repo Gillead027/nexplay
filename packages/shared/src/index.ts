@@ -53,6 +53,9 @@ export const MESSAGE_SEARCH_QUERY_MIN_LENGTH = 2;
 export const MESSAGE_SEARCH_QUERY_MAX_LENGTH = CHAT_MESSAGE_MAX_LENGTH;
 export const MESSAGE_SEARCH_RESULTS_LIMIT = 50;
 export const ATTACHMENT_MAX_SIZE_BYTES = 15 * 1024 * 1024; // 15MB — teto razoável pra uma VPS pequena.
+// Foto de documento/selfie da verificação manual de identidade — bem menor que um anexo
+// qualquer porque é sempre uma foto única, nunca um arquivo grande.
+export const IDENTITY_DOCUMENT_MAX_SIZE_BYTES = 8 * 1024 * 1024; // 8MB
 export const ATTACHMENT_MAX_PER_MESSAGE = 5;
 export const ATTACHMENT_FILENAME_MAX_LENGTH = 200;
 // Únicos tipos servidos com Content-Disposition: inline (renderizados como
@@ -716,10 +719,37 @@ export interface RoomSummary extends VoiceChannel {
 // GET /api/servers/:serverId/channels (ver Channel acima).
 export interface PublicConfig {
   livekitUrl: string;
-  // Se o vendor de KYC está configurado (mostrar a tela de verificação) e se câmera/tela
-  // exigem verificação de fato (ver IDENTITY_VERIFICATION_REQUIRED) — os dois falsos por
-  // padrão, então uma instância sem vendor configurado não muda em nada pra ninguém.
-  identityVerification: { vendorEnabled: boolean; required: boolean };
+  // 'off' = recurso desligado (nada muda pra ninguém); 'manual' = revisão humana (documento +
+  // selfie, sem vendor); 'hosted' = vendor pago de verdade (fluxo com redirecionamento).
+  // `required` só importa fora de 'off': se true, o webhook do LiveKit também aplica o gate.
+  identityVerification: { mode: 'off' | 'hosted' | 'manual'; required: boolean };
+}
+
+// Categorias/prioridade/status compartilhados pela fila de confiança e segurança
+// (moderation_incidents) — hoje só autolesão em texto alimenta isso; nudez/CSAM por vídeo
+// entram aqui sem mudar esses tipos quando forem implementados.
+export type ModerationIncidentCategory = 'self_harm' | 'nudity' | 'csam';
+export type ModerationIncidentPriority = 'normal' | 'high';
+export type ModerationIncidentStatus = 'open' | 'confirmed' | 'dismissed';
+
+export interface ModerationIncidentSummary {
+  id: string;
+  category: ModerationIncidentCategory;
+  priority: ModerationIncidentPriority;
+  status: ModerationIncidentStatus;
+  serverId: string | null;
+  channelId: string | null;
+  subjectDisplayName: string | null;
+  createdAt: number;
+}
+
+// Uma tentativa de verificação manual pendente de revisão — só o suficiente pro admin decidir
+// (quem enviou, quando); as imagens em si vêm por rota própria, nunca embutidas aqui.
+export interface PendingIdentityVerification {
+  id: string;
+  userId: string;
+  displayName: string;
+  createdAt: number;
 }
 
 // Visão geral da instância pro painel de administração (GET /api/admin/overview).
@@ -1100,6 +1130,9 @@ export type RealtimeEvent =
   | { type: 'MEMBER_BANNED'; userId: string }
   | { type: 'MEMBER_UNBANNED'; userId: string }
   | { type: 'IDENTITY_VERIFICATION_UPDATE'; userId: string; status: IdentityVerificationStatus }
+  // Privado, nunca público: mostra o recurso de apoio (CVV por padrão) discretamente pra quem
+  // mandou uma mensagem classificada com risco alto — nunca corta nem expõe a ninguém.
+  | { type: 'SUPPORT_RESOURCE_PROMPT'; resourceText: string }
   // Quem tem o app aberto (ao menos um WebSocket conectado). Vai só pra quem divide
   // servidor com a pessoa; o estado inicial vem de GET /api/servers/:id/presence.
   // "status" é o que a pessoa escolheu mostrar (só vem quando ela está online e visível).

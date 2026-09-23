@@ -17,9 +17,11 @@ import type {
   LiveKitTokenResponse,
   MemberSummary,
   MessageAttachment,
+  ModerationIncidentSummary,
   MusicCommandResponse,
   NotificationMode,
   AdminOverview,
+  PendingIdentityVerification,
   PresenceStatus,
   PublicConfig,
   Role,
@@ -101,6 +103,20 @@ async function uploadFile<T>(path: string, file: File): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+// Igual uploadFile, mas pra verificação manual de identidade (documento + selfie num só envio).
+async function uploadTwoFiles<T>(path: string, fields: { document: File; selfie: File }): Promise<T> {
+  const body = new FormData();
+  body.append('document', fields.document);
+  body.append('selfie', fields.selfie);
+  const response = await networkFetch(path, { method: 'POST', credentials: 'include', body });
+  if (!response.ok) {
+    reportIfSessionRejected(path, response.status);
+    const responseBody = (await response.json().catch(() => ({}))) as ApiErrorBody;
+    throw new Error(responseBody.error || `Falha no envio dos arquivos (${response.status}).`);
+  }
+  return response.json() as Promise<T>;
+}
+
 const s = (serverId: string) => `/api/servers/${encodeURIComponent(serverId)}`;
 
 export const api = {
@@ -144,6 +160,29 @@ export const api = {
   startIdentityVerification: () => request<{ redirectUrl: string }>('/api/identity-verification/start', { method: 'POST' }),
   getIdentityVerificationStatus: () =>
     request<{ status: IdentityVerificationStatus; verifiedAt: number | null }>('/api/identity-verification/status'),
+  // Verificação manual (revisão humana) — só disponível quando identityVerification.mode === 'manual'.
+  submitManualIdentityVerification: (document: File, selfie: File) =>
+    uploadTwoFiles<{ status: 'pending' }>('/api/identity-verification/manual/submit', { document, selfie }),
+  getPendingIdentityVerifications: () =>
+    request<{ pending: PendingIdentityVerification[] }>('/api/admin/identity-verification/pending'),
+  // URL pra <img src>, não um fetch — a rota exige sessão de admin; o navegador manda o
+  // cookie de sessão sozinho numa requisição de imagem de mesma origem.
+  identityVerificationImageUrl: (attemptId: string, kind: 'document' | 'selfie') =>
+    `/api/admin/identity-verification/${encodeURIComponent(attemptId)}/${kind}`,
+  decideIdentityVerification: (attemptId: string, decision: 'verified' | 'rejected', reason?: string) =>
+    request<void>(`/api/admin/identity-verification/${encodeURIComponent(attemptId)}/decide`, {
+      method: 'POST',
+      body: JSON.stringify({ decision, reason }),
+    }),
+
+  // Fila de confiança e segurança (hoje: autolesão em texto).
+  getModerationIncidents: (status: 'open' | 'confirmed' | 'dismissed' = 'open') =>
+    request<{ incidents: ModerationIncidentSummary[] }>(`/api/admin/moderation/incidents?status=${status}`),
+  resolveModerationIncident: (incidentId: string, decision: 'confirmed' | 'dismissed') =>
+    request<void>(`/api/admin/moderation/incidents/${encodeURIComponent(incidentId)}/resolve`, {
+      method: 'POST',
+      body: JSON.stringify({ decision }),
+    }),
 
   // Servidores — fundação de múltiplos servidores (ver DISCORD_PARITY_PLAN.md).
   getServers: () => request<{ servers: Server[] }>('/api/servers'),

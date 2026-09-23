@@ -110,6 +110,7 @@ import { ForwardMessageModal, type ForwardSource } from './ForwardMessage';
 import { AboutPane } from './AboutPane';
 import type { UpdateCheckOutcome } from '../aboutInfo';
 import { AdminOverviewPane } from './AdminOverview';
+import { TrustSafetyPane } from './TrustSafety';
 import { StatusNotices } from './StatusNotices';
 import { useNewVersion } from '../useNewVersion';
 import { ConnectionSignal } from './ConnectionSignal';
@@ -696,7 +697,7 @@ function RoomSkeleton() {
   );
 }
 
-type SettingsSection = 'profile' | 'security' | 'privacy' | 'voice' | 'notifications' | 'app' | 'appearance' | 'about' | 'admin';
+type SettingsSection = 'profile' | 'security' | 'privacy' | 'voice' | 'notifications' | 'app' | 'appearance' | 'about' | 'admin' | 'trust-safety';
 
 function CameraPreview({ deviceId }: { deviceId: string }) {
   const [testing, setTesting] = useState(false);
@@ -894,6 +895,9 @@ function SettingsModal({
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [verificationStarting, setVerificationStarting] = useState(false);
   const [verificationError, setVerificationError] = useState('');
+  const [verificationDocument, setVerificationDocument] = useState<File | null>(null);
+  const [verificationSelfie, setVerificationSelfie] = useState<File | null>(null);
+  const [verificationSubmitted, setVerificationSubmitted] = useState(false);
 
   async function startVerification() {
     setVerificationError('');
@@ -905,6 +909,23 @@ function SettingsModal({
       setVerificationError(
         err instanceof Error && err.message ? err.message : 'Não foi possível iniciar a verificação agora.',
       );
+      setVerificationStarting(false);
+    }
+  }
+
+  async function submitManualVerification() {
+    if (!verificationDocument || !verificationSelfie) {
+      setVerificationError('Selecione as duas fotos: documento e selfie.');
+      return;
+    }
+    setVerificationError('');
+    setVerificationStarting(true);
+    try {
+      await api.submitManualIdentityVerification(verificationDocument, verificationSelfie);
+      setVerificationSubmitted(true);
+    } catch (err) {
+      setVerificationError(err instanceof Error && err.message ? err.message : 'Não foi possível enviar os arquivos agora.');
+    } finally {
       setVerificationStarting(false);
     }
   }
@@ -1100,6 +1121,9 @@ function SettingsModal({
               <button type="button" className={section === 'admin' ? 'active' : ''} onClick={() => setSection('admin')}>
                 <span className="nav-glyph">▤</span> Visão geral
               </button>
+              <button type="button" className={section === 'trust-safety' ? 'active' : ''} onClick={() => setSection('trust-safety')}>
+                <span className="nav-glyph">⚑</span> Confiança e segurança
+              </button>
             </>
           )}
           <span className="settings-nav-divider" />
@@ -1113,6 +1137,7 @@ function SettingsModal({
           {section === 'notifications' && <NotificationsPane />}
           {section === 'app' && window.desktop?.getDesktopSettings && <DesktopPane />}
           {section === 'admin' && isInstanceAdmin && <AdminOverviewPane />}
+          {section === 'trust-safety' && isInstanceAdmin && <TrustSafetyPane />}
           {section === 'profile' && (
             <div className="settings-pane two-column">
               <div className="settings-pane-main">
@@ -1250,16 +1275,23 @@ function SettingsModal({
             <div className="settings-pane">
               <h2>Conta e segurança</h2>
 
-              {identityVerification.vendorEnabled && (
+              {identityVerification.mode !== 'off' && (
                 <>
                   <h3>Verificação de identidade</h3>
                   {session.identityVerificationStatus === 'verified' && (
                     <p className="settings-hint">Sua identidade está verificada. Câmera e compartilhamento de tela estão liberados.</p>
                   )}
                   {session.identityVerificationStatus === 'pending' && (
-                    <p className="settings-hint">Verificação em andamento. Assim que o resultado chegar, você será avisado aqui.</p>
+                    <p className="settings-hint">
+                      {identityVerification.mode === 'manual'
+                        ? 'Seus arquivos foram enviados e aguardam revisão. Assim que houver uma decisão, você será avisado aqui.'
+                        : 'Verificação em andamento. Assim que o resultado chegar, você será avisado aqui.'}
+                    </p>
                   )}
-                  {(session.identityVerificationStatus === 'unverified' || session.identityVerificationStatus === 'rejected') && (
+                  {verificationSubmitted && (
+                    <p className="settings-hint">Seus arquivos foram enviados e aguardam revisão. Assim que houver uma decisão, você será avisado aqui.</p>
+                  )}
+                  {!verificationSubmitted && (session.identityVerificationStatus === 'unverified' || session.identityVerificationStatus === 'rejected') && (
                     <>
                       <p className="settings-page-description">
                         {session.identityVerificationStatus === 'rejected'
@@ -1270,15 +1302,47 @@ function SettingsModal({
                           : 'É opcional nesta instância, mas recomendada.'}
                       </p>
                       {verificationError && <p className="form-error" role="alert">{verificationError}</p>}
-                      <button
-                        type="button"
-                        className="primary-button"
-                        style={{ marginBottom: 14 }}
-                        disabled={verificationStarting}
-                        onClick={() => void startVerification()}
-                      >
-                        {verificationStarting ? 'Abrindo verificação…' : 'Verificar identidade'}
-                      </button>
+                      {identityVerification.mode === 'hosted' && (
+                        <button
+                          type="button"
+                          className="primary-button"
+                          style={{ marginBottom: 14 }}
+                          disabled={verificationStarting}
+                          onClick={() => void startVerification()}
+                        >
+                          {verificationStarting ? 'Abrindo verificação…' : 'Verificar identidade'}
+                        </button>
+                      )}
+                      {identityVerification.mode === 'manual' && (
+                        <div className="manual-verification-form">
+                          <p className="settings-hint">
+                            Uma pessoa da equipe vai olhar as duas fotos pra confirmar sua identidade e apagar os arquivos logo em seguida.
+                          </p>
+                          <label htmlFor="verification-document">Foto do documento</label>
+                          <input
+                            id="verification-document"
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => setVerificationDocument(event.target.files?.[0] ?? null)}
+                          />
+                          <label htmlFor="verification-selfie">Selfie (com o rosto visível)</label>
+                          <input
+                            id="verification-selfie"
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => setVerificationSelfie(event.target.files?.[0] ?? null)}
+                          />
+                          <button
+                            type="button"
+                            className="primary-button"
+                            style={{ marginTop: 10, marginBottom: 14 }}
+                            disabled={verificationStarting || !verificationDocument || !verificationSelfie}
+                            onClick={() => void submitManualVerification()}
+                          >
+                            {verificationStarting ? 'Enviando…' : 'Enviar pra revisão'}
+                          </button>
+                        </div>
+                      )}
                     </>
                   )}
                 </>
@@ -1716,6 +1780,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const openUserProfile = (userId: string, event: { currentTarget: HTMLElement }) =>
     setProfileTarget({ userId, rect: event.currentTarget.getBoundingClientRect() });
   const [friendActionError, setFriendActionError] = useState('');
+  // Privado, só pra própria pessoa — nunca aparece pra mais ninguém no canal/servidor.
+  const [supportResourcePrompt, setSupportResourcePrompt] = useState('');
 
   function openDmWith(userId: string) {
     setFriendActionError('');
@@ -1920,6 +1986,9 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         // sem isso, a UI de câmera/tela só liberaria depois de recarregar a página.
         if (event.type === 'IDENTITY_VERIFICATION_UPDATE' && event.status !== session.identityVerificationStatus) {
           onProfileUpdated({ ...session, identityVerificationStatus: event.status });
+        }
+        if (event.type === 'SUPPORT_RESOURCE_PROMPT') {
+          setSupportResourcePrompt(event.resourceText);
         }
       }),
     [session, onProfileUpdated],
@@ -2575,6 +2644,12 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         <div className="friend-action-toast" role="alert">
           <span>{friendActionError}</span>
           <button type="button" onClick={() => setFriendActionError('')} aria-label="Fechar aviso">×</button>
+        </div>
+      )}
+      {supportResourcePrompt && (
+        <div className="friend-action-toast" role="status">
+          <span>{supportResourcePrompt}</span>
+          <button type="button" onClick={() => setSupportResourcePrompt('')} aria-label="Fechar aviso">×</button>
         </div>
       )}
       <SettingsModal

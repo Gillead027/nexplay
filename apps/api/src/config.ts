@@ -48,9 +48,10 @@ const envSchema = z.object({
   // risco de anexo quebrado no meio da cópia.
   MINIO_BUCKET: z.string().default('sausixudos-attachments'),
   // Verificação de idade/identidade (KYC): 'none' desativa o recurso inteiro — nenhuma
-  // verificação é exigida e a tela de verificação nem aparece pro usuário. As credenciais
-  // só são obrigatórias quando um vendor real é escolhido (ver kycAdapter.ts).
-  KYC_VENDOR: z.enum(['none', 'unico', 'caf', 'veriff', 'persona']).default('none'),
+  // verificação é exigida e a tela de verificação nem aparece pro usuário. 'manual' é revisão
+  // humana (documento + selfie, sem custo, sem vendor — ver identityVerification.ts); os
+  // outros exigem um vendor pago real configurado via as credenciais abaixo (kycAdapter.ts).
+  KYC_VENDOR: z.enum(['none', 'manual', 'unico', 'caf', 'veriff', 'persona']).default('none'),
   KYC_API_KEY: z.string().min(1).optional(),
   KYC_API_BASE_URL: z.string().url().optional(),
   KYC_WEBHOOK_SECRET: z.string().min(16).optional(),
@@ -61,6 +62,14 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
+  // Classificador de autolesão/risco de suicídio em mensagens de texto. 'none' desativa (nada
+  // é chamado). Azure Content Safety tem nível grátis (F0, 5000 textos/mês) — ver selfHarmAdapter.ts.
+  SELF_HARM_VENDOR: z.enum(['none', 'azure-content-safety']).default('none'),
+  SELF_HARM_API_KEY: z.string().min(1).optional(),
+  SELF_HARM_API_BASE_URL: z.string().url().optional(),
+  // Mostrado em privado pra quem for identificado por uma mensagem preocupante — configurável
+  // porque uma instância fora do Brasil vai querer outro recurso de apoio que não o CVV.
+  SUPPORT_RESOURCE_TEXT: z.string().default('CVV: 188 (ligação gratuita, 24h) — https://www.cvv.org.br'),
 });
 
 const parsed = envSchema.safeParse(process.env);

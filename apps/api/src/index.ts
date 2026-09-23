@@ -30,6 +30,7 @@ import {
   DISPLAY_NAME_MAX_LENGTH,
   DISPLAY_NAME_MIN_LENGTH,
   hasPermission,
+  IDENTITY_DOCUMENT_MAX_SIZE_BYTES,
   PRESENCE_STATUSES,
   isStaffTier,
   MESSAGE_SEARCH_QUERY_MAX_LENGTH,
@@ -59,7 +60,9 @@ import {
   type ForwardedFromMeta,
   type IdentityVerificationStatus,
   type LiveKitTokenResponse,
+  type ModerationIncidentSummary,
   parseParticipantMetadata,
+  type PendingIdentityVerification,
   readSelfDeafened,
   readSelfMuted,
   type HumanParticipantMetadata,
@@ -91,9 +94,24 @@ import {
   verifyPassword,
   type UserRecord,
 } from './users.js';
-import { createVerificationAttempt, getAttemptByVendorRef, resolveAttempt } from './identityVerification.js';
+import {
+  createManualVerificationAttempt,
+  createVerificationAttempt,
+  getAttemptById,
+  getAttemptByVendorRef,
+  listPendingManualAttempts,
+  resolveAttempt,
+  resolveManualAttempt,
+} from './identityVerification.js';
 import { getKycAdapter, KycDisabledError } from './kycAdapter.js';
 import { shouldMuteUnverifiedTrackPublish } from './trackPublishPolicy.js';
+import {
+  createModerationIncident,
+  getModerationIncidentById,
+  listModerationIncidentsByStatus,
+  resolveModerationIncident,
+} from './moderationIncidents.js';
+import { getSelfHarmAdapter } from './selfHarmAdapter.js';
 import {
   createForwardedTextMessage,
   deleteMusicBotTextMessage,
@@ -402,6 +420,30 @@ function handleAttachmentUpload(request: Request, response: Response, next: Next
       return;
     }
     response.status(400).json({ error: 'Não foi possível processar o arquivo enviado.' });
+  });
+}
+
+// Upload de 2 arquivos nomeados (documento + selfie) pra verificação manual de identidade —
+// mesmo motivo de handleAttachmentUpload acima (multer chama next(error) em vez de lançar).
+const identityDocumentUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: IDENTITY_DOCUMENT_MAX_SIZE_BYTES, files: 2 },
+}).fields([
+  { name: 'document', maxCount: 1 },
+  { name: 'selfie', maxCount: 1 },
+]);
+
+function handleIdentityDocumentUpload(request: Request, response: Response, next: NextFunction): void {
+  identityDocumentUpload(request, response, (error: unknown) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error instanceof MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      response.status(413).json({ error: `Arquivo muito grande — máximo de ${Math.floor(IDENTITY_DOCUMENT_MAX_SIZE_BYTES / 1024 / 1024)}MB.` });
+      return;
+    }
+    response.status(400).json({ error: 'Não foi possível processar os arquivos enviados.' });
   });
 }
 
@@ -1049,6 +1091,180 @@ app.post('/api/identity-verification/webhook', express.raw({ type: '*/*' }), (re
   response.status(200).end();
 });
 
+// Verificação manual (revisão humana, sem vendor pago — ver README/plano de segurança).
+// As imagens passam pelo MinIO exatamente como um anexo de mensagem (uploadAttachmentObject/
+// deleteAttachmentObject já usados acima) e são apagadas de verdade assim que um admin decide,
+// nunca retidas além disso.
+app.post(
+  '/api/identity-verification/manual/submit',
+  requireSession,
+  identityVerificationLimiter,
+  handleIdentityDocumentUpload,
+  async (request, response) => {
+    if (config.KYC_VENDOR !== 'manual') {
+      response.status(404).json({ error: 'Verificação manual não está disponível nesta instância.' });
+      return;
+    }
+    const user = currentUser(response);
+    if (user.identityVerificationStatus === 'verified') {
+      response.status(409).json({ error: 'Sua identidade já está verificada.' });
+      return;
+    }
+    const files = request.files as { document?: Express.Multer.File[]; selfie?: Express.Multer.File[] } | undefined;
+    const document = files?.document?.[0];
+    const selfie = files?.selfie?.[0];
+    if (!document || !selfie) {
+      response.status(400).json({ error: 'Envie a foto do documento e uma selfie.' });
+      return;
+    }
+    const documentKey = `identity-verification/${randomUUID()}/document`;
+    const selfieKey = `identity-verification/${randomUUID()}/selfie`;
+    try {
+      await uploadAttachmentObject(documentKey, document.buffer, document.mimetype || 'application/octet-stream');
+      await uploadAttachmentObject(selfieKey, selfie.buffer, selfie.mimetype || 'application/octet-stream');
+    } catch (error) {
+      console.error('Falha ao enviar documentos de verificação para o storage:', error);
+      response.status(503).json({ error: 'Não foi possível enviar os arquivos agora. Tente novamente.' });
+      return;
+    }
+    const attempt = createManualVerificationAttempt(
+      user.id,
+      { objectKey: documentKey, contentType: document.mimetype || 'application/octet-stream' },
+      { objectKey: selfieKey, contentType: selfie.mimetype || 'application/octet-stream' },
+    );
+    setIdentityVerificationStatus(user.id, 'pending', null, attempt.id);
+    response.status(201).json({ status: 'pending' });
+  },
+);
+
+app.get('/api/admin/identity-verification/pending', requireSession, requireInstanceAdmin, (_request, response) => {
+  const pending: PendingIdentityVerification[] = listPendingManualAttempts().map((attempt) => ({
+    id: attempt.id,
+    userId: attempt.userId,
+    displayName: getUserById(attempt.userId)?.username ?? '(conta removida)',
+    createdAt: attempt.createdAt,
+  }));
+  response.json({ pending });
+});
+
+app.get(
+  '/api/admin/identity-verification/:attemptId/:kind',
+  requireSession,
+  requireInstanceAdmin,
+  async (request, response) => {
+    const { attemptId, kind } = request.params;
+    if (kind !== 'document' && kind !== 'selfie') {
+      response.status(404).json({ error: 'Não encontrado.' });
+      return;
+    }
+    const attempt = typeof attemptId === 'string' ? getAttemptById(attemptId) : undefined;
+    const objectKey = kind === 'document' ? attempt?.documentObjectKey : attempt?.selfieObjectKey;
+    const contentType = kind === 'document' ? attempt?.documentContentType : attempt?.selfieContentType;
+    if (!attempt || attempt.vendor !== 'manual' || attempt.status !== 'pending' || !objectKey) {
+      response.status(404).json({ error: 'Não encontrado.' });
+      return;
+    }
+    try {
+      const objectStream = await getAttachmentObjectStream(objectKey);
+      response.setHeader('Content-Type', contentType || 'application/octet-stream');
+      response.setHeader('X-Content-Type-Options', 'nosniff');
+      // Nunca cacheado: a imagem some do storage assim que a tentativa é decidida.
+      response.setHeader('Cache-Control', 'private, no-store');
+      objectStream.on('error', (error) => {
+        console.error(`Falha ao ler imagem de verificação ${objectKey} do storage:`, error);
+        if (!response.headersSent) response.status(503).end();
+      });
+      objectStream.pipe(response);
+    } catch (error) {
+      console.error(`Falha ao buscar imagem de verificação ${objectKey} no storage:`, error);
+      response.status(503).json({ error: 'Não foi possível carregar a imagem agora.' });
+    }
+  },
+);
+
+const identityVerificationDecisionSchema = z.object({
+  decision: z.enum(['verified', 'rejected']),
+  reason: z.string().trim().max(BAN_REASON_MAX_LENGTH).default(''),
+});
+
+app.post(
+  '/api/admin/identity-verification/:attemptId/decide',
+  requireSession,
+  requireInstanceAdmin,
+  async (request, response) => {
+    const attemptId = request.params.attemptId;
+    const body = identityVerificationDecisionSchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Decisão inválida.' });
+      return;
+    }
+    const attempt = typeof attemptId === 'string' ? getAttemptById(attemptId) : undefined;
+    if (!attempt || attempt.vendor !== 'manual' || attempt.status !== 'pending') {
+      response.status(404).json({ error: 'Tentativa não encontrada ou já decidida.' });
+      return;
+    }
+    // Apaga as duas imagens antes de responder — decisão registrada sem nenhuma cópia retida,
+    // nem em caso de o cliente nunca receber a resposta.
+    await Promise.all([
+      attempt.documentObjectKey ? deleteAttachmentObject(attempt.documentObjectKey).catch((error) => {
+        console.error(`Falha ao apagar documento de verificação ${attempt.documentObjectKey}:`, error);
+      }) : undefined,
+      attempt.selfieObjectKey ? deleteAttachmentObject(attempt.selfieObjectKey).catch((error) => {
+        console.error(`Falha ao apagar selfie de verificação ${attempt.selfieObjectKey}:`, error);
+      }) : undefined,
+    ]);
+    resolveManualAttempt(attempt.id, body.data.decision, body.data.reason);
+    const verifiedAt = body.data.decision === 'verified' ? Date.now() : null;
+    setIdentityVerificationStatus(attempt.userId, body.data.decision, verifiedAt, attempt.id);
+    sendToUser(attempt.userId, { type: 'IDENTITY_VERIFICATION_UPDATE', userId: attempt.userId, status: body.data.decision });
+    response.status(204).end();
+  },
+);
+
+// Fila de confiança e segurança — hoje só alimentada por autolesão em texto (ver hooks em
+// createTextMessage/createDmMessage mais abaixo); nudez/CSAM por vídeo, quando forem
+// implementados, usam a mesma tabela/rotas.
+const moderationIncidentStatusSchema = z.enum(['open', 'confirmed', 'dismissed']);
+
+app.get('/api/admin/moderation/incidents', requireSession, requireInstanceAdmin, (request, response) => {
+  const statusParam = moderationIncidentStatusSchema.safeParse(request.query.status ?? 'open');
+  const status = statusParam.success ? statusParam.data : 'open';
+  const incidents: ModerationIncidentSummary[] = listModerationIncidentsByStatus(status).map((incident) => ({
+    id: incident.id,
+    category: incident.category,
+    priority: incident.priority,
+    status: incident.status,
+    serverId: incident.serverId,
+    channelId: incident.channelId,
+    subjectDisplayName: incident.subjectUserId ? (getUserById(incident.subjectUserId)?.username ?? '(conta removida)') : null,
+    createdAt: incident.createdAt,
+  }));
+  response.json({ incidents });
+});
+
+const moderationIncidentResolveSchema = z.object({ decision: z.enum(['confirmed', 'dismissed']) });
+
+app.post(
+  '/api/admin/moderation/incidents/:id/resolve',
+  requireSession,
+  requireInstanceAdmin,
+  (request, response) => {
+    const incidentId = request.params.id;
+    const body = moderationIncidentResolveSchema.safeParse(request.body);
+    if (!body.success) {
+      response.status(400).json({ error: 'Decisão inválida.' });
+      return;
+    }
+    const incident = typeof incidentId === 'string' ? getModerationIncidentById(incidentId) : undefined;
+    if (!incident || incident.status !== 'open') {
+      response.status(404).json({ error: 'Incidente não encontrado ou já resolvido.' });
+      return;
+    }
+    resolveModerationIncident(incident.id, currentUser(response).id, body.data.decision);
+    response.status(204).end();
+  },
+);
+
 // Painel de administração da instância: só os usuários de ADMIN_USERNAMES.
 app.get('/api/admin/access', requireSession, (_request, response) => {
   response.json({ admin: isInstanceAdmin(currentUser(response).username, config.ADMIN_USERNAMES) });
@@ -1087,7 +1303,7 @@ app.get('/api/config', requireSession, (_request, response) => {
   const payload: PublicConfig = {
     livekitUrl: config.LIVEKIT_PUBLIC_URL,
     identityVerification: {
-      vendorEnabled: config.KYC_VENDOR !== 'none',
+      mode: config.KYC_VENDOR === 'none' ? 'off' : config.KYC_VENDOR === 'manual' ? 'manual' : 'hosted',
       required: config.IDENTITY_VERIFICATION_REQUIRED,
     },
   };
@@ -1539,6 +1755,41 @@ app.post(
   },
 );
 
+// Severidade 0-7 do Azure Content Safety — 4 já é "médio" na escala deles; escolhido pra
+// pegar risco real sem alertar por qualquer menção casual do assunto.
+const SELF_HARM_SEVERITY_THRESHOLD = 4;
+
+// Nunca bloqueia nem atrasa o envio da mensagem: dispara depois de já ter respondido, sem
+// aguardar. Falha de rede/vendor vira "não detectou nada" (ver selfHarmAdapter.ts) — segurança
+// de conteúdo não pode ser motivo de mensagem não entregue.
+function checkSelfHarmAndNotify(input: {
+  text: string;
+  authorId: string;
+  serverId: string | null;
+  channelId: string;
+  sourceType: 'text_message' | 'dm_message';
+}): void {
+  if (config.SELF_HARM_VENDOR === 'none' || !input.text.trim()) return;
+  void (async () => {
+    try {
+      const classification = await getSelfHarmAdapter().classifyText(input.text);
+      if (!classification || classification.severity < SELF_HARM_SEVERITY_THRESHOLD) return;
+      createModerationIncident({
+        category: 'self_harm',
+        sourceType: input.sourceType,
+        serverId: input.serverId,
+        channelId: input.channelId,
+        subjectUserId: input.authorId,
+        confidence: classification.severity / 7,
+        priority: 'high',
+      });
+      sendToUser(input.authorId, { type: 'SUPPORT_RESOURCE_PROMPT', resourceText: config.SUPPORT_RESOURCE_TEXT });
+    } catch (error) {
+      console.error('Falha ao checar risco de autolesão na mensagem:', error);
+    }
+  })();
+}
+
 app.post(
   '/api/servers/:serverId/text-channels/:channelId/messages',
   requireSession,
@@ -1584,6 +1835,13 @@ app.post(
     );
     sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_CREATE', serverId, channelId: channelId as string, message });
     response.status(201).json({ message });
+    checkSelfHarmAndNotify({
+      text: body.data.text,
+      authorId: currentUser(response).id,
+      serverId,
+      channelId: channelId as string,
+      sourceType: 'text_message',
+    });
 
     // NexDex: um comando do jogo ("!pokemon", "!capturar"...) ganha a resposta do bot logo depois da mensagem da pessoa.
     if (isPokemonCommand(body.data.text) && !body.data.attachmentIds?.length) {
@@ -2691,6 +2949,13 @@ app.post('/api/dm-channels/:dmChannelId/messages', requireSession, dmMessageLimi
   const message = createDmMessage(channel.id, body.data.text, user);
   sendToUsers([user.id, other.id], { type: 'DM_MESSAGE_CREATE', dmChannelId: channel.id, message });
   response.status(201).json({ message });
+  checkSelfHarmAndNotify({
+    text: body.data.text,
+    authorId: user.id,
+    serverId: null,
+    channelId: channel.id,
+    sourceType: 'dm_message',
+  });
 });
 
 app.patch('/api/dm-channels/:dmChannelId/messages/:messageId', requireSession, dmMessageLimiter, (request, response) => {

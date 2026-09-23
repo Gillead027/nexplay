@@ -342,7 +342,37 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_identity_verification_attempts_user
     ON identity_verification_attempts(user_id, created_at DESC);
+
+  -- Fila compartilhada de confiança e segurança (autolesão em texto hoje;
+  -- nudez/CSAM por vídeo entram aqui sem mudar o schema quando forem
+  -- implementados). De propósito sem coluna de texto/miniatura — o card do
+  -- incidente aponta pro canal de verdade, não duplica conteúdo sensível.
+  CREATE TABLE IF NOT EXISTS moderation_incidents (
+    id TEXT PRIMARY KEY,
+    category TEXT NOT NULL CHECK (category IN ('self_harm', 'nudity', 'csam')),
+    source_type TEXT NOT NULL CHECK (source_type IN ('text_message', 'dm_message', 'camera_track', 'screen_track')),
+    server_id TEXT REFERENCES servers(id) ON DELETE SET NULL,
+    channel_id TEXT,
+    subject_user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+    confidence REAL NOT NULL,
+    priority TEXT NOT NULL DEFAULT 'normal' CHECK (priority IN ('normal', 'high')),
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'confirmed', 'dismissed')),
+    reviewed_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+    reviewed_at INTEGER,
+    created_at INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_moderation_incidents_status ON moderation_incidents(status, created_at DESC);
 `);
+
+ensureColumns('identity_verification_attempts', [
+  // Só preenchidas quando vendor='manual' (revisão humana): guardam o objeto no MinIO
+  // enquanto a tentativa está pending — apagados de verdade (deleteAttachmentObject) no
+  // instante em que um admin decide, nunca ficam retidos além disso.
+  ['document_object_key', "TEXT NOT NULL DEFAULT ''"],
+  ['selfie_object_key', "TEXT NOT NULL DEFAULT ''"],
+  ['document_content_type', "TEXT NOT NULL DEFAULT ''"],
+  ['selfie_content_type', "TEXT NOT NULL DEFAULT ''"],
+]);
 
 ensureColumns('text_messages', [
   ['edited_at', 'INTEGER'],
