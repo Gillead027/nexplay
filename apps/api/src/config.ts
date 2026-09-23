@@ -4,6 +4,12 @@ import { parseVoiceChannels } from '@nexplay/shared';
 
 loadEnv({ path: new URL('../../../.env', import.meta.url), quiet: true });
 
+// docker-compose.yml passa variável opcional não definida como string vazia
+// ("${VAR:-}"), nunca omite a chave — sem isso, .optional() sozinho rejeitava
+// "" contra um .min(1)/.url() em vez de tratar como "não configurado".
+const optionalString = (schema: z.ZodString) =>
+  z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   PORT: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -52,9 +58,9 @@ const envSchema = z.object({
   // humana (documento + selfie, sem custo, sem vendor — ver identityVerification.ts); os
   // outros exigem um vendor pago real configurado via as credenciais abaixo (kycAdapter.ts).
   KYC_VENDOR: z.enum(['none', 'manual', 'unico', 'caf', 'veriff', 'persona']).default('none'),
-  KYC_API_KEY: z.string().min(1).optional(),
-  KYC_API_BASE_URL: z.string().url().optional(),
-  KYC_WEBHOOK_SECRET: z.string().min(16).optional(),
+  KYC_API_KEY: optionalString(z.string().min(1)),
+  KYC_API_BASE_URL: optionalString(z.string().url()),
+  KYC_WEBHOOK_SECRET: optionalString(z.string().min(16)),
   // Com o vendor configurado mas isto em false, a verificação fica disponível mas opcional
   // (só o selo/gate de UI); em true, o webhook do LiveKit muta câmera/tela de quem não
   // verificou. Falso por padrão — só passa a valer depois de um admin ligar de propósito.
@@ -65,8 +71,8 @@ const envSchema = z.object({
   // Classificador de autolesão/risco de suicídio em mensagens de texto. 'none' desativa (nada
   // é chamado). Azure Content Safety tem nível grátis (F0, 5000 textos/mês) — ver selfHarmAdapter.ts.
   SELF_HARM_VENDOR: z.enum(['none', 'azure-content-safety']).default('none'),
-  SELF_HARM_API_KEY: z.string().min(1).optional(),
-  SELF_HARM_API_BASE_URL: z.string().url().optional(),
+  SELF_HARM_API_KEY: optionalString(z.string().min(1)),
+  SELF_HARM_API_BASE_URL: optionalString(z.string().url()),
   // Mostrado em privado pra quem for identificado por uma mensagem preocupante — configurável
   // porque uma instância fora do Brasil vai querer outro recurso de apoio que não o CVV.
   SUPPORT_RESOURCE_TEXT: z.string().default('CVV: 188 (ligação gratuita, 24h) — https://www.cvv.org.br'),
