@@ -81,7 +81,10 @@ function HeroTile({
   const isRemote = view.participant instanceof RemoteParticipant;
   const name = view.participant.name || view.participant.identity;
 
-  useEffect(() => attachVideo(view, videoRef.current), [view]);
+  // Depende só do id estável, não do objeto `view` (recriado a cada syncRoom() mesmo quando a
+  // faixa não muda) — senão o efeito roda de novo em qualquer evento não relacionado da sala
+  // (silenciar, entrar/sair, mudança de atividade), forçando um detach+attach que pisca o vídeo.
+  useEffect(() => attachVideo(view, videoRef.current), [view.id]);
 
   return (
     <article className="watch-hero">

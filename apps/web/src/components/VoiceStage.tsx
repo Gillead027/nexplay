@@ -135,7 +135,9 @@ function Tile({
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  useEffect(() => (entry.camera ? attachVideo(entry.camera, videoRef.current) : undefined), [entry.camera]);
+  // Mesmo motivo de WatchStage.tsx: depender do objeto inteiro (recriado a cada syncRoom())
+  // em vez do id estável causava um detach+attach (e a piscada) em qualquer evento da sala.
+  useEffect(() => (entry.camera ? attachVideo(entry.camera, videoRef.current) : undefined), [entry.camera?.id]);
 
   return (
     <article

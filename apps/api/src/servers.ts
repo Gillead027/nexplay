@@ -28,6 +28,7 @@ const listServersForUserStatement = db.prepare(`
   WHERE server_members.user_id = ?
   ORDER BY servers.created_at ASC
 `);
+const listAllServersStatement = db.prepare('SELECT * FROM servers ORDER BY created_at ASC');
 const insertServerStatement = db.prepare(
   'INSERT INTO servers (id, name, description, icon_data_url, owner_id, created_at) VALUES (?, ?, ?, ?, ?, ?)',
 );
@@ -67,6 +68,13 @@ export function getServerById(id: string): Server | undefined {
 
 export function listServersForUser(userId: string): Server[] {
   return (listServersForUserStatement.all(userId) as unknown as ServerRow[]).map(toServer);
+}
+
+// Todo servidor da instância, sem filtro de membro — usado só pela visão de
+// segurança do admin (ver requireInstanceAdmin em index.ts), nunca por uma
+// conta comum.
+export function listAllServers(): Server[] {
+  return (listAllServersStatement.all() as unknown as ServerRow[]).map(toServer);
 }
 
 // Qualquer usuário autenticado pode criar um servidor (igual Discord real,

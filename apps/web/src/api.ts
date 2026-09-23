@@ -184,6 +184,13 @@ export const api = {
       body: JSON.stringify({ decision }),
     }),
 
+  // Visão de segurança do admin: só leitura, nunca posta/reage/gerencia — dá pra ver qualquer
+  // servidor da instância mesmo sem ser membro dele.
+  getAllServersForAdmin: () => request<{ servers: Server[] }>('/api/admin/servers'),
+  getServerChannelsForAdmin: (serverId: string) => request<{ channels: Channel[] }>(`/api/admin/servers/${encodeURIComponent(serverId)}/channels`),
+  getChannelMessagesForAdmin: (serverId: string, channelId: string) =>
+    request<{ messages: TextMessage[] }>(`/api/admin/servers/${encodeURIComponent(serverId)}/text-channels/${encodeURIComponent(channelId)}/messages`),
+
   // Servidores — fundação de múltiplos servidores (ver DISCORD_PARITY_PLAN.md).
   getServers: () => request<{ servers: Server[] }>('/api/servers'),
   createServer: (name: string, description: string) =>

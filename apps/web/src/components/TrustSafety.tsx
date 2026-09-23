@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import type { ModerationIncidentSummary, PendingIdentityVerification } from '@nexplay/shared';
+import type { Channel, ModerationIncidentSummary, PendingIdentityVerification, Server, TextMessage } from '@nexplay/shared';
 import { api } from '../api';
+import { MarkdownText } from './Markdown';
+import { MessageAttachments } from './TextChannels';
 
 const REFRESH_MS = 30_000;
 
 const date = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+const time = new Intl.DateTimeFormat('pt-BR', { hour: '2-digit', minute: '2-digit' });
 
 const CATEGORY_LABEL: Record<ModerationIncidentSummary['category'], string> = {
   self_harm: 'Autolesão/suicídio',
@@ -13,8 +16,28 @@ const CATEGORY_LABEL: Record<ModerationIncidentSummary['category'], string> = {
 };
 
 // Painel de confiança e segurança (só ADMIN_USERNAMES): verificações de identidade manuais
-// aguardando revisão e a fila de incidentes (hoje: autolesão em texto). Atualiza sozinho.
+// aguardando revisão, a fila de incidentes (hoje: autolesão em texto), e a visão só-leitura de
+// qualquer servidor da instância. Atualiza sozinho.
 export function TrustSafetyPane() {
+  const [tab, setTab] = useState<'queue' | 'servers'>('queue');
+
+  return (
+    <div className="settings-pane admin-pane">
+      <h2>Confiança e segurança</h2>
+      <div className="trust-safety-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === 'queue'} className={tab === 'queue' ? 'active' : ''} onClick={() => setTab('queue')}>
+          Fila de revisão
+        </button>
+        <button type="button" role="tab" aria-selected={tab === 'servers'} className={tab === 'servers' ? 'active' : ''} onClick={() => setTab('servers')}>
+          Servidores da instância
+        </button>
+      </div>
+      {tab === 'queue' ? <ReviewQueue /> : <ServerBrowser />}
+    </div>
+  );
+}
+
+function ReviewQueue() {
   const [pending, setPending] = useState<PendingIdentityVerification[] | null>(null);
   const [incidents, setIncidents] = useState<ModerationIncidentSummary[] | null>(null);
   const [error, setError] = useState('');
@@ -65,8 +88,7 @@ export function TrustSafetyPane() {
   }
 
   return (
-    <div className="settings-pane admin-pane">
-      <h2>Confiança e segurança</h2>
+    <>
       <p className="settings-page-description">Verificações de identidade e incidentes aguardando revisão. Só quem está em ADMIN_USERNAMES vê esta tela.</p>
       {error && <p className="form-error" role="alert">{error}</p>}
 
@@ -131,6 +153,113 @@ export function TrustSafetyPane() {
           <a href="https://new.safernet.org.br/denuncie" target="_blank" rel="noreferrer">SaferNet Brasil</a> ou pelo Disque 100.
         </p>
       )}
-    </div>
+    </>
+  );
+}
+
+// Visão só-leitura de qualquer servidor da instância, mesmo sem ser membro — nunca posta,
+// reage nem gerencia nada por aqui (ver /api/admin/servers* em index.ts). Navegação simples em
+// 3 níveis: servidores -> canais -> mensagens de um canal de texto.
+function ServerBrowser() {
+  const [servers, setServers] = useState<Server[] | null>(null);
+  const [selectedServer, setSelectedServer] = useState<Server | null>(null);
+  const [channels, setChannels] = useState<Channel[] | null>(null);
+  const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
+  const [messages, setMessages] = useState<TextMessage[] | null>(null);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.getAllServersForAdmin()
+      .then(({ servers }) => setServers(servers))
+      .catch((requestError) => setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar os servidores.'));
+  }, []);
+
+  function openServer(server: Server) {
+    setSelectedServer(server);
+    setChannels(null);
+    setSelectedChannel(null);
+    setMessages(null);
+    setError('');
+    api.getServerChannelsForAdmin(server.id)
+      .then(({ channels }) => setChannels(channels))
+      .catch((requestError) => setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar os canais.'));
+  }
+
+  function openChannel(channel: Channel) {
+    if (!selectedServer || channel.type !== 'TEXT') return;
+    setSelectedChannel(channel);
+    setMessages(null);
+    setError('');
+    api.getChannelMessagesForAdmin(selectedServer.id, channel.id)
+      .then(({ messages }) => setMessages(messages))
+      .catch((requestError) => setError(requestError instanceof Error ? requestError.message : 'Não foi possível carregar as mensagens.'));
+  }
+
+  return (
+    <>
+      <p className="settings-page-description">
+        Visualização só-leitura, pra prevenir e responder a abuso — não dá pra postar, reagir nem gerenciar nada por aqui.
+      </p>
+      {error && <p className="form-error" role="alert">{error}</p>}
+
+      <div className="trust-safety-breadcrumb">
+        <button type="button" className="trust-safety-crumb" onClick={() => { setSelectedServer(null); setSelectedChannel(null); }}>
+          Servidores
+        </button>
+        {selectedServer && (
+          <>
+            <span>/</span>
+            <button type="button" className="trust-safety-crumb" onClick={() => setSelectedChannel(null)}>{selectedServer.name}</button>
+          </>
+        )}
+        {selectedChannel && (
+          <>
+            <span>/</span>
+            <span>{selectedChannel.name}</span>
+          </>
+        )}
+      </div>
+
+      {!selectedServer && (
+        <ul className="trust-safety-list">
+          {servers?.map((server) => (
+            <li key={server.id} className="trust-safety-item trust-safety-item-clickable" onClick={() => openServer(server)}>
+              <strong>{server.name}</strong>
+              <span className="settings-hint">criado em {date.format(server.createdAt)}</span>
+            </li>
+          ))}
+          {servers?.length === 0 && <p className="settings-hint">Nenhum servidor criado ainda.</p>}
+        </ul>
+      )}
+
+      {selectedServer && !selectedChannel && (
+        <ul className="trust-safety-list">
+          {channels?.filter((channel) => channel.type === 'TEXT').map((channel) => (
+            <li key={channel.id} className="trust-safety-item trust-safety-item-clickable" onClick={() => openChannel(channel)}>
+              <strong># {channel.name}</strong>
+            </li>
+          ))}
+          {channels && channels.filter((channel) => channel.type === 'TEXT').length === 0 && (
+            <p className="settings-hint">Este servidor não tem canal de texto.</p>
+          )}
+        </ul>
+      )}
+
+      {selectedChannel && (
+        <div className="trust-safety-messages">
+          {messages?.length === 0 && <p className="settings-hint">Nenhuma mensagem neste canal.</p>}
+          {messages?.map((message) => (
+            <div key={message.id} className="trust-safety-message">
+              <div className="trust-safety-message-header">
+                <strong>{message.senderName}</strong>
+                <span className="settings-hint">{time.format(message.sentAt)}</span>
+              </div>
+              {message.text && <MarkdownText text={message.text} />}
+              {message.attachments?.length ? <MessageAttachments attachments={message.attachments} /> : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 }

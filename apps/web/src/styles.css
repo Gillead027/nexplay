@@ -1744,3 +1744,19 @@ body { letter-spacing: -.01em; }
 .trust-safety-images { display: flex; gap: 10px; margin-bottom: 10px; }
 .trust-safety-images img { width: 160px; height: 160px; object-fit: cover; border-radius: var(--radius-sm); border: 1px solid var(--border-light); }
 .trust-safety-actions { display: flex; gap: 8px; }
+
+.trust-safety-tabs { display: flex; gap: 4px; margin: 10px 0 16px; border-bottom: 1px solid var(--border-light); }
+.trust-safety-tabs button { padding: 8px 14px; border: 0; background: none; color: var(--text-muted); font-size: var(--fs-sm); font-weight: 600; cursor: pointer; border-bottom: 2px solid transparent; }
+.trust-safety-tabs button:hover { color: var(--text-primary); }
+.trust-safety-tabs button.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+
+.trust-safety-breadcrumb { display: flex; align-items: center; gap: 6px; margin-bottom: 14px; font-size: var(--fs-sm); color: var(--text-muted); }
+.trust-safety-crumb { padding: 0; border: 0; background: none; color: var(--accent); font-size: var(--fs-sm); cursor: pointer; }
+.trust-safety-crumb:hover { text-decoration: underline; }
+
+.trust-safety-item-clickable { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.trust-safety-item-clickable:hover { background: var(--hover); }
+
+.trust-safety-messages { display: flex; flex-direction: column; gap: 10px; }
+.trust-safety-message { border: 1px solid var(--border-light); border-radius: var(--radius-sm); padding: 10px 12px; }
+.trust-safety-message-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }

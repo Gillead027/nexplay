@@ -309,7 +309,7 @@ function isInlineImageAttachment(attachment: MessageAttachment): boolean {
   return (ATTACHMENT_INLINE_IMAGE_TYPES as readonly string[]).includes(attachment.contentType);
 }
 
-function MessageAttachments({ attachments }: { attachments: MessageAttachment[] }) {
+export function MessageAttachments({ attachments }: { attachments: MessageAttachment[] }) {
   return (
     <div className="message-attachments">
       {attachments.map((attachment) =>

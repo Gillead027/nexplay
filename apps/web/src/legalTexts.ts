@@ -14,9 +14,9 @@ export interface LegalDocument {
 // conferida no código). Se o comportamento mudar, este texto precisa mudar junto.
 export const PRIVACY_POLICY: LegalDocument = {
   title: 'Política de privacidade',
-  updatedAt: '21/09/2026',
+  updatedAt: '23/09/2026',
   intro:
-    'O NexPlay é um servidor privado: roda no servidor de quem o administra e não usa serviços de análise, de publicidade nem cookies de terceiros. Este texto explica o que fica guardado sobre você e quem pode ver.',
+    'O NexPlay é um servidor privado: roda no servidor de quem o administra e não usa serviços de análise nem de publicidade. Este texto explica o que fica guardado sobre você e quem pode ver — inclusive quando um serviço externo é usado (marcado abaixo, junto do momento exato em que isso acontece).',
   sections: [
     {
       heading: 'O que fica guardado',
@@ -24,6 +24,20 @@ export const PRIVACY_POLICY: LegalDocument = {
         'Sua conta: nome de usuário, senha (guardada só como hash bcrypt, nunca em texto), cor de destaque, status, bio, pronomes, avatar, banner e a data em que a conta foi criada.',
         'O que você escreve e envia: mensagens em canais e em conversas diretas (com edições, reações e fixações), arquivos anexados (até 15 MB e 5 por mensagem) e os servidores, cargos e convites que você cria.',
         'Relações e moderação: amizades, bloqueios, e os banimentos e timeouts aplicados à sua conta.',
+      ],
+    },
+    {
+      heading: 'Verificação de identidade',
+      paragraphs: [
+        'Se a instância pedir verificação de identidade pra liberar câmera e compartilhamento de tela, o caminho sem custo é revisão humana: você envia uma foto do documento e uma selfie, e uma pessoa da administração aprova ou recusa. As duas fotos ficam guardadas só enquanto a revisão está pendente e são apagadas de verdade do armazenamento no instante em que a decisão é registrada — depois disso, só fica o resultado (verificado ou não) associado à sua conta, nunca as imagens.',
+        'Se a instância configurar um serviço pago de verificação (KYC) no lugar da revisão humana, o próprio serviço faz a checagem do documento e da prova de vida; o NexPlay não recebe nem guarda o documento ou dado biométrico nesse caso — só o resultado que o serviço devolve.',
+      ],
+    },
+    {
+      heading: 'Segurança do conteúdo (opcional, depende da instância)',
+      paragraphs: [
+        'A instância pode ativar uma checagem automática de risco de autolesão/suicídio no texto das mensagens de canal e diretas, usando um serviço externo (hoje: Azure AI Content Safety, da Microsoft) só pra essa finalidade — o texto da mensagem é enviado a esse serviço no momento do envio, além de ficar guardado normalmente no NexPlay como qualquer mensagem. Essa checagem nunca impede a mensagem de ser enviada nem pune a conta automaticamente: quando o risco é alto, ela só avisa a administração em uma fila de revisão e mostra, em privado, um recurso de apoio pra quem escreveu.',
+        'Essa checagem fica desligada por padrão; se a instância que você usa não tiver configurado um serviço pra isso, nenhum texto seu sai do NexPlay por esse motivo.',
       ],
     },
     {
@@ -37,7 +51,7 @@ export const PRIVACY_POLICY: LegalDocument = {
       heading: 'Quem pode ver',
       paragraphs: [
         'Mensagens de um canal são vistas por quem tem acesso ao canal. Conversas diretas são vistas pelas duas pessoas.',
-        'Quem administra o servidor tem acesso técnico ao banco de dados e, por isso, pode ler tudo, inclusive conversas diretas: não há criptografia de ponta a ponta. Quem administra também vê um painel com o número de contas, servidores, mensagens e o consumo do servidor, e a lista de contas com nome de usuário, data de criação, quantidade de servidores e de mensagens.',
+        'Quem administra o servidor tem acesso técnico ao banco de dados e, por isso, pode ler tudo, inclusive conversas diretas: não há criptografia de ponta a ponta. Quem administra também vê um painel com o número de contas, servidores, mensagens e o consumo do servidor, a lista de contas, e — só como medida de segurança contra abuso — pode visualizar (sem postar nem participar) os canais e mensagens de qualquer servidor da instância, mesmo sem ser membro dele.',
       ],
     },
     {
@@ -91,7 +105,10 @@ export const TERMS_OF_USE: LegalDocument = {
     },
     {
       heading: 'Moderação',
-      paragraphs: ['Quem administra e quem tem cargo de moderação pode aplicar timeout, expulsar e banir, e contas podem ser removidas quando as regras não forem seguidas.'],
+      paragraphs: [
+        'Quem administra e quem tem cargo de moderação pode aplicar timeout, expulsar e banir, e contas podem ser removidas quando as regras não forem seguidas.',
+        'Quem administra a instância pode visualizar o conteúdo de qualquer servidor, mesmo sem ser membro dele, só pra prevenir e responder a abuso (como conteúdo ilegal) — nunca pra participar ou postar nesses servidores.',
+      ],
     },
     {
       heading: 'Música',

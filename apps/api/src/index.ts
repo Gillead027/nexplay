@@ -198,7 +198,7 @@ import {
   updateRole,
 } from './roles.js';
 import { authorizeModerationAction, banUser, isBanned, listBans, unbanUser } from './moderation.js';
-import { countServersOwnedBy, createServer, deleteServer, getServerAsset, getServerById, listServersForUser, updateServer } from './servers.js';
+import { countServersOwnedBy, createServer, deleteServer, getServerAsset, getServerById, listAllServers, listServersForUser, updateServer } from './servers.js';
 import {
   getServerMember,
   isServerMember,
@@ -1262,6 +1262,38 @@ app.post(
     }
     resolveModerationIncident(incident.id, currentUser(response).id, body.data.decision);
     response.status(204).end();
+  },
+);
+
+// Visão de segurança do admin: só leitura, nunca posta/reage/gerencia — de
+// propósito uma superfície separada de requireServerMembership, pra nunca
+// dar ao admin permissão de participar de um servidor do qual não é membro,
+// só de enxergar (ver plano de segurança / legalTexts.ts).
+app.get('/api/admin/servers', requireSession, requireInstanceAdmin, (_request, response) => {
+  response.json({ servers: listAllServers() });
+});
+
+app.get('/api/admin/servers/:serverId/channels', requireSession, requireInstanceAdmin, (request, response) => {
+  const serverId = request.params.serverId;
+  if (typeof serverId !== 'string' || !getServerById(serverId)) {
+    response.status(404).json({ error: 'Servidor não encontrado.' });
+    return;
+  }
+  response.json({ channels: listChannelsForServer(serverId) });
+});
+
+app.get(
+  '/api/admin/servers/:serverId/text-channels/:channelId/messages',
+  requireSession,
+  requireInstanceAdmin,
+  (request, response) => {
+    const channelId = request.params.channelId;
+    const channel = typeof channelId === 'string' ? getTextChannelById(channelId) : undefined;
+    if (!channel || channel.serverId !== request.params.serverId) {
+      response.status(404).json({ error: 'Canal de texto não encontrado.' });
+      return;
+    }
+    response.json({ messages: listTextMessages(channelId as string) });
   },
 );
 
