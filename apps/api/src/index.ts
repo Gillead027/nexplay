@@ -155,6 +155,7 @@ import { getPokemonSprite } from './pokemonSprites.js';
 import { fetchMusicThumbnail } from './musicThumbnails.js';
 import { authorizeVoiceDisconnect } from './voiceModeration.js';
 import { deleteAccount, planAccountDeletion } from './accountDeletion.js';
+import { callElapsedMs, endCall } from './callSessions.js';
 import { attachRealtime, broadcast, disconnectUser, presence, refreshPresence, sendToServerMembers, sendToUser, sendToUsers, visiblePresenceStatus } from './realtime.js';
 import { normalizeServerLayout, parseStoredServerLayout, serverLayoutSchema } from './serverLayout.js';
 import {
@@ -2490,8 +2491,15 @@ app.delete(
 // mudou, já que quem entra direto no LiveKit não passa pela nossa API).
 async function computeRoomSummary(channel: VoiceChannel): Promise<RoomSummary> {
   const participants = await roomService.listParticipants(channel.id);
+  // O cronômetro só conta gente de verdade: o bot de música sozinho na sala não é uma chamada.
+  const humanJoinedAtMs = participants
+    .filter((participant) => (parseParticipantMetadata(participant.metadata)?.participantType ?? 'HUMAN') !== 'BOT' && participant.identity !== MUSIC_BOT_IDENTITY)
+    .map((participant) => Number(participant.joinedAtMs) || Number(participant.joinedAt) * 1000);
   return {
     ...channel,
+    // Há quanto tempo a chamada está ativa, medido pelo servidor (o cliente soma o tempo desde que recebeu, sem depender do
+    // relógio do computador dele). Null = ninguém de verdade na sala.
+    callElapsedMs: callElapsedMs(channel.id, humanJoinedAtMs),
     participants: participants.map((participant) => {
       const metadata = parseParticipantMetadata(participant.metadata);
       const microphoneTrack = participant.tracks.find((track) => track.source === TrackSource.MICROPHONE);
@@ -3407,7 +3415,8 @@ app.post('/api/livekit/webhook', express.raw({ type: '*/*' }), async (request, r
   const channel = roomName ? getVoiceChannelById(roomName) : undefined;
   if (channel && ROOM_STATE_WEBHOOK_EVENTS.has(event.event)) {
     try {
-      const room = event.event === 'room_finished' ? { ...channel, participants: [] } : await computeRoomSummary(channel);
+      if (event.event === 'room_finished') endCall(channel.id);
+      const room = event.event === 'room_finished' ? { ...channel, participants: [], callElapsedMs: null } : await computeRoomSummary(channel);
       sendToServerMembers(channel.serverId, { type: 'ROOM_STATE_UPDATE', serverId: channel.serverId, room });
     } catch (error) {
       console.error('Falha ao recalcular estado da sala após webhook:', error);

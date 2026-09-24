@@ -113,6 +113,8 @@ import type { UpdateCheckOutcome } from '../aboutInfo';
 import { AdminOverviewPane } from './AdminOverview';
 import { DeleteAccountDialog } from './DeleteAccountDialog';
 import { CallDiagnosticsPane } from './CallDiagnosticsPane';
+import { CallTimer } from './CallTimer';
+import { stampRoom, type RoomView } from '../callTimer';
 import { TrustSafetyPane } from './TrustSafety';
 import { StatusNotices } from './StatusNotices';
 import { useNewVersion } from '../useNewVersion';
@@ -508,7 +510,7 @@ function ChannelButton({
   onDragStart,
 }: {
   channel: VoiceChannel;
-  summary: RoomSummary | undefined;
+  summary: RoomView | undefined;
   active: boolean;
   loading: boolean;
   onClick: () => void;
@@ -548,7 +550,7 @@ function ChannelButton({
         draggable={draggable} onDragStart={onDragStart}>
         <button
           type="button"
-          className={`channel-button ${active ? 'active' : ''}`}
+          className={`channel-button ${active ? 'active' : ''} ${summary?.callStartedAtLocal != null ? 'has-call-timer' : ''}`}
           onClick={onClick}
           disabled={loading}
           title={channel.description}
@@ -556,6 +558,7 @@ function ChannelButton({
         >
           <VoiceIcon size={16} />
           <span>{channel.name}</span>
+          {summary?.callStartedAtLocal != null && <CallTimer className="channel-call-timer" startedAt={summary.callStartedAtLocal} />}
           <small>{loading ? '...' : summary?.participants.length || ''}</small>
         </button>
         {settings && (
@@ -1760,7 +1763,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const connectivity = useConnectivity();
   const newVersion = useNewVersion();
   const [inviteMessage, setInviteMessage] = useState<{ text: string; failed: boolean } | null>(null);
-  const [rooms, setRooms] = useState<RoomSummary[]>([]);
+  const [rooms, setRooms] = useState<RoomView[]>([]);
   const [livekitAvailable, setLivekitAvailable] = useState(true);
   const [joiningId, setJoiningId] = useState<string | null>(null);
   // Rede de segurança independente do próprio voice.connect(): mesmo com
@@ -2276,7 +2279,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     const refresh = () => {
       void api.getRooms(activeServerId).then((result) => {
         if (!active) return;
-        setRooms(result.rooms);
+        setRooms(result.rooms.map((room) => stampRoom(room)));
         setLivekitAvailable(result.livekitAvailable);
       }).catch(() => active && setLivekitAvailable(false));
     };
@@ -2287,7 +2290,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     const unsubscribeEvent = onRealtimeEvent((event) => {
       if (event.type === 'ROOM_STATE_UPDATE') {
         if (event.serverId !== activeServerId) return;
-        setRooms((current) => current.map((room) => (room.id === event.room.id ? event.room : room)));
+        setRooms((current) => current.map((room) => (room.id === event.room.id ? stampRoom(event.room) : room)));
       } else if (event.type === 'VOICE_CHANNEL_CREATE') {
         if (event.serverId !== activeServerId) return;
         setRooms((current) =>
@@ -3081,7 +3084,10 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
             <div className="voice-status-info">
               <span className="voice-status-dot" />
               <div>
-                <strong>Voz conectada</strong>
+                <strong>
+                  Voz conectada
+                  <CallTimer className="voice-status-timer" startedAt={rooms.find((room) => room.id === voice.currentChannel?.id)?.callStartedAtLocal} />
+                </strong>
                 <span>
                   {voice.currentChannel?.name} /{' '}
                   {serversState.servers.find((server) => server.id === voice.currentChannel?.serverId)?.name ?? '...'}
@@ -3223,7 +3229,12 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           <div className="room-title">
             {activeTextChannel ? <span className="room-title-hash" aria-hidden="true">#</span> : <VoiceIcon size={18} />}
             <div>
-              <h1>{activeTextChannel?.name || voice.currentChannel?.name || 'Nenhum canal selecionado'}</h1>
+              <h1>
+                {activeTextChannel?.name || voice.currentChannel?.name || 'Nenhum canal selecionado'}
+                {!activeTextChannel && voice.connected && (
+                  <CallTimer className="room-call-timer" startedAt={rooms.find((room) => room.id === voice.currentChannel?.id)?.callStartedAtLocal} />
+                )}
+              </h1>
               <p>{activeTextChannel?.description || voice.currentChannel?.description || 'Escolha um canal na lista à esquerda.'}</p>
             </div>
           </div>

@@ -705,3 +705,13 @@ ensureColumns('voice_channels', [
   ['video_quality', "TEXT NOT NULL DEFAULT 'auto'"],
   ['user_limit', 'INTEGER NOT NULL DEFAULT 0'],
 ]);
+
+// Quando a chamada de cada canal de voz começou (a primeira pessoa entrou numa sala vazia). Guardado no banco, e não só na
+// memória, para o cronômetro não zerar quando a API é reiniciada (deploy) no meio de uma chamada. A linha some quando a última
+// pessoa sai. Ver callSessions.ts.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS voice_call_sessions (
+    channel_id TEXT PRIMARY KEY REFERENCES voice_channels(id) ON DELETE CASCADE,
+    started_at INTEGER NOT NULL
+  );
+`);

@@ -713,6 +713,9 @@ export interface RoomParticipantSummary {
 
 export interface RoomSummary extends VoiceChannel {
   participants: RoomParticipantSummary[];
+  // Há quanto tempo (ms) a chamada deste canal está ativa, medido pelo servidor; null quando não há ninguém de verdade na sala.
+  // Opcional: servidores mais antigos não mandam.
+  callElapsedMs?: number | null;
 }
 
 // Canais deixaram de vir daqui — cada servidor tem os seus, buscados via
