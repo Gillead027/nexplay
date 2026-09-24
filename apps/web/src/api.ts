@@ -1,3 +1,4 @@
+import type { AccountDeletionPreview } from './components/DeleteAccountDialog';
 import type {
   AccentColor,
   AvatarFrame,
@@ -134,6 +135,13 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   deleteSession: () => request<void>('/api/session', { method: 'DELETE' }),
+  // Excluir a própria conta (confirmada com a senha) e ver antes o que acontece com os servidores dela.
+  getMyDeletionPreview: () => request<AccountDeletionPreview>('/api/me/deletion-preview'),
+  deleteMyAccount: (password: string) => request<void>('/api/me', { method: 'DELETE', body: JSON.stringify({ password }) }),
+  // Admin da instância apagando a conta de outra pessoa.
+  getAdminDeletionPreview: (userId: string) =>
+    request<AccountDeletionPreview>(`/api/admin/users/${encodeURIComponent(userId)}/deletion-preview`),
+  deleteUserAsAdmin: (userId: string) => request<void>(`/api/admin/users/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
   changePassword: (currentPassword: string, newPassword: string) =>
     request<void>('/api/auth/password', {
       method: 'PATCH',

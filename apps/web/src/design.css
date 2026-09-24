@@ -965,3 +965,12 @@ img.server-settings-avatar { object-fit: contain; background: var(--panel-raised
 .voice-tile-status { display: inline-flex; }
 .voice-tile-deafened { color: var(--danger); }
 .voice-tile-label { gap: 6px; }
+
+/* Excluir conta: lista do que acontece com cada servidor da conta */
+.account-deletion-list { margin: 6px 0 14px; padding-left: 18px; display: grid; gap: 6px; color: var(--text-secondary); font-size: var(--fs-sm); }
+.delete-server-confirm .form-error { margin: 8px 0 0; }
+
+/* Diagnóstico da chamada (Configurações > Voz e vídeo) */
+.call-diagnostics { display: grid; gap: 10px; margin-top: 18px; }
+.call-diagnostics-hints { margin: 0; padding-left: 18px; display: grid; gap: 6px; color: var(--text-primary); font-size: var(--fs-sm); }
+.call-diagnostics-table td:first-child { white-space: nowrap; }

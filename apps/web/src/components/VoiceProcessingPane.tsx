@@ -16,7 +16,7 @@ const NOISE_LABELS: Record<NoiseSuppressionLevel, { title: string; hint: string 
   off: { title: 'Nenhuma', hint: 'O microfone passa como está, com todo o ruído do ambiente.' },
   standard: { title: 'Padrão', hint: 'A supressão do navegador: boa contra ventilador e ruído constante, mais fraca contra teclado.' },
   high: { title: 'Alta (IA)', hint: 'Rede neural (RNNoise) rodando aqui no seu computador: tira ruído de fundo, ventilador e a maior parte do teclado.' },
-  max: { title: 'Máxima (IA)', hint: 'A rede neural mais forte (GTCRN): também derruba digitação, cliques, respiração e sopro no microfone.' },
+  max: { title: 'Máxima (IA)', hint: 'A rede neural mais forte (GTCRN): também derruba digitação, cliques, respiração e sopro. Em contrapartida pode abafar vozes baixas e cortar o fim das palavras; use só em lugar muito barulhento.' },
 };
 
 const COMPRESSOR_LABELS: Record<CompressorLevel, { title: string; hint: string }> = {
@@ -27,7 +27,7 @@ const COMPRESSOR_LABELS: Record<CompressorLevel, { title: string; hint: string }
 };
 
 const PROFILE_CARDS: Array<{ profile: MicProfile; title: string; text: string; icon: 'mic' | 'speaker' | 'settings' }> = [
-  { profile: 'isolamento', title: 'Isolamento de voz', text: 'Só a sua voz: supressão de ruído por IA no nível máximo, cancelamento de eco e controle automático de ganho.', icon: 'mic' },
+  { profile: 'isolamento', title: 'Isolamento de voz', text: 'Só a sua voz: supressão de ruído por IA (mantém a voz natural), cancelamento de eco e controle automático de ganho.', icon: 'mic' },
   { profile: 'estudio', title: 'Estúdio', text: 'Áudio puro: o microfone sem nenhum tratamento (só a sensibilidade de entrada continua valendo).', icon: 'speaker' },
   { profile: 'personalizado', title: 'Personalizado', text: 'Escolha cada tratamento: supressão de ruído, eco, ganho, compressor de voz e volume de entrada.', icon: 'settings' },
 ];

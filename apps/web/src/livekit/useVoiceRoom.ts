@@ -109,21 +109,11 @@ const SCREEN_SHARE_AUDIO_PUBLISH = {
 // Reforça, no próprio RTCRtpSender (o padrão WebRTC, não só a dica do captureStream), que sob pressão o codificador
 // deve priorizar manter os quadros por segundo — reduzindo a resolução antes de deixar a transmissão travar. Sem
 // isso o navegador tende ao padrão oposto (segurar a resolução) para conteúdo de tela.
-// O DOM lib do TypeScript ainda não conhece este campo, embora todo navegador com WebRTC o suporte de verdade.
-type EncodingWithDegradation = RTCRtpEncodingParameters & { degradationPreference?: 'maintain-framerate' | 'maintain-resolution' | 'balanced' };
-
-function applyFramerateDegradation(track: LocalVideoTrack): void {
-  const sender = track.sender;
-  if (!sender) return;
-  try {
-    const parameters = sender.getParameters();
-    if (!parameters.encodings || parameters.encodings.length === 0) parameters.encodings = [{}];
-    for (const layer of parameters.encodings as EncodingWithDegradation[]) layer.degradationPreference = 'maintain-framerate';
-    void sender.setParameters(parameters).catch(() => {});
-  } catch {
-    // Sem isso a transmissão ainda funciona, só sem essa reforço extra — o contentHint 'motion' já ajuda sozinho.
-  }
-}
+// Câmera em 720p a 30 quadros: numa chamada os quadradinhos são pequenos (no máximo ~1000 px de largura), então 1080p só gastava
+// processador (a codificação é por software) e banda de subida — que é o que fazia a câmera "congelar" em quem joga e chama ao
+// mesmo tempo. Com simulcast, quem assiste recebe a camada que a própria rede dele aguenta.
+const CAMERA_RESOLUTION = VideoPresets.h720.resolution;
+const CAMERA_ENCODING = VideoPresets.h720.encoding;
 
 const shareSettings: Record<
   ShareQuality,
@@ -219,6 +209,16 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
       dynacast: true,
       disconnectOnPageLeave: true,
       audioCaptureDefaults: { ...nativeCaptureConstraints(config, false), channelCount: 1 },
+      videoCaptureDefaults: { resolution: CAMERA_RESOLUTION },
+      publishDefaults: {
+        // DTX (parar de enviar pacotes no silêncio) só economiza banda e, junto do gate de sensibilidade do próprio app, cortava o
+        // começo de frases de quem fala baixo e dava "engasgos" na volta do silêncio. Numa chamada de amigos a banda que ele
+        // economiza não importa; o áudio contínuo é mais estável.
+        dtx: false,
+        red: true,
+        videoEncoding: CAMERA_ENCODING,
+        simulcast: true,
+      },
     });
   });
   const [currentChannel, setCurrentChannel] = useState<VoiceChannel | null>(null);
@@ -830,12 +830,18 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
       return;
     }
     try {
-      await room.localParticipant.setCameraEnabled(!room.localParticipant.isCameraEnabled, {
-        resolution: VideoPresets.h1080.resolution,
+      const enabling = !room.localParticipant.isCameraEnabled;
+      await room.localParticipant.setCameraEnabled(enabling, {
+        resolution: CAMERA_RESOLUTION,
       }, {
-        videoEncoding: VideoPresets.h1080.encoding,
+        videoEncoding: CAMERA_ENCODING,
         simulcast: true,
       });
+      if (enabling) {
+        // Sob pressão de processador ou de rede a câmera perde resolução antes de perder fluidez (em vez de congelar).
+        const cameraTrack = room.localParticipant.getTrackPublication(Track.Source.Camera)?.videoTrack;
+        if (cameraTrack && 'contentHint' in cameraTrack.mediaStreamTrack) cameraTrack.mediaStreamTrack.contentHint = 'motion';
+      }
       syncRoom();
     } catch (mediaError) {
       await reportMediaError(mediaError, 'camera');
@@ -861,20 +867,17 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
             { ...settings.capture, audio: shareAudio ? SCREEN_SHARE_AUDIO_CAPTURE : false },
             settings.publish,
           );
-          // "motion" pede pro navegador priorizar manter os quadros por segundo, mesmo perdendo nitidez, ao
-          // codificar. Media com "detail" (nitidez em primeiro lugar): sob pressão de CPU ou de banda — exatamente
-          // o caso de jogar E transmitir ao mesmo tempo — o navegador escolhe segurar a resolução e deixar os
-          // quadros por segundo despencarem, e é isso que sentia como "agarrada" na transmissão. Medido: com
-          // "detail" a 1080p60/12Mbps sob carga pesada, caía para ~15 quadros por segundo; com "motion" (e o
-          // degradationPreference logo abaixo, que reforça a mesma prioridade no nível do WebRTC), ~60 quadros por
-          // segundo, com a resolução caindo primeiro se precisar. Sharpness só importa de verdade pra texto parado;
-          // suavidade importa sempre, e principalmente pra jogos.
+          // "motion" pede pro navegador priorizar manter os quadros por segundo, mesmo perdendo nitidez, ao codificar. Com
+          // "detail" (nitidez em primeiro lugar), sob pressão de CPU ou de banda — exatamente o caso de jogar E transmitir ao mesmo
+          // tempo — o navegador segura a resolução e deixa os quadros por segundo despencarem: era a "agarrada" da transmissão.
+          // Medido no Chromium (1080p60, 12 Mbps, cena de jogo): "detail" ~13 quadros por segundo; "motion" ~60, com a resolução
+          // caindo primeiro se precisar. (O parâmetro degradationPreference do sender NÃO muda isso neste Chromium: medido, sem
+          // efeito algum — só a dica da faixa vale.) Nitidez só importa de verdade para texto parado; suavidade importa sempre.
           const screenTrack = room.localParticipant.getTrackPublication(Track.Source.ScreenShare)?.videoTrack;
           const mediaStreamTrack = screenTrack?.mediaStreamTrack;
           if (mediaStreamTrack && 'contentHint' in mediaStreamTrack) {
             mediaStreamTrack.contentHint = 'motion';
           }
-          if (screenTrack instanceof LocalVideoTrack) applyFramerateDegradation(screenTrack);
           const audioPublished = Boolean(
             room.localParticipant.getTrackPublication(Track.Source.ScreenShareAudio),
           );
@@ -914,11 +917,9 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
         if (sender && encoding) {
           const parameters = sender.getParameters();
           if (!parameters.encodings || parameters.encodings.length === 0) parameters.encodings = [{}];
-          for (const layer of parameters.encodings as EncodingWithDegradation[]) {
+          for (const layer of parameters.encodings) {
             layer.maxBitrate = encoding.maxBitrate;
             if (encoding.maxFramerate) layer.maxFramerate = encoding.maxFramerate;
-            // Reafirma a cada troca de qualidade: manter os quadros por segundo vem antes de manter a resolução.
-            layer.degradationPreference = 'maintain-framerate';
           }
           await sender.setParameters(parameters);
         }

@@ -60,6 +60,8 @@ async function createNeuralNode(context: AudioContext, kind: NeuralKind): Promis
 
 export interface VoiceGraphOptions {
   source: VoiceMeterSource;
+  // Só para medições: o tamanho do buffer de áudio do contexto ('interactive' é o menor possível; um número é em segundos).
+  latencyHint?: AudioContextLatencyCategory | number;
   // Chamado quando um modelo de IA não pôde ser carregado (o app cai para a supressão nativa do navegador).
   onNeuralFailure?: (kind: NeuralKind, error: unknown) => void;
 }
@@ -146,11 +148,12 @@ export class VoiceGraph {
 
   /** Monta o grafo para a faixa de microfone `track` e já o deixa no estado de `config` (modelos de IA carregados, se pedidos). */
   static async create(track: MediaStreamTrack, config: VoiceProcessingConfig, options: VoiceGraphOptions): Promise<VoiceGraph> {
+    const latencyHint = options.latencyHint ?? 'interactive';
     let context: AudioContext;
     try {
-      context = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint: 'interactive' });
+      context = new AudioContext({ sampleRate: SAMPLE_RATE, latencyHint });
     } catch {
-      context = new AudioContext({ latencyHint: 'interactive' });
+      context = new AudioContext({ latencyHint });
     }
     const graph = new VoiceGraph(context, config, options);
     try {

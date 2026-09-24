@@ -22,7 +22,7 @@ const memoryStore = (initial: Record<string, string> = {}): KeyValueStore & { da
 test('cada perfil resolve os ajustes como o Discord: Isolamento tudo ligado, Estúdio nada, Personalizado o que a pessoa escolheu', () => {
   const custom: VoiceSettings = { ...DEFAULT_VOICE_SETTINGS, profile: 'personalizado', noiseLevel: 'standard', echoCancellation: false, autoGain: false, compressor: 'strong', inputVolume: 130 };
   const isolation = resolveVoiceProcessing({ ...custom, profile: 'isolamento' }, 'voice');
-  assert.deepEqual([isolation.noiseLevel, isolation.echoCancellation, isolation.autoGain, isolation.highPass], ['max', true, true, true]);
+  assert.deepEqual([isolation.noiseLevel, isolation.echoCancellation, isolation.autoGain, isolation.highPass], ['high', true, true, true]);
   const studio = resolveVoiceProcessing({ ...custom, profile: 'estudio' }, 'voice');
   assert.deepEqual([studio.noiseLevel, studio.echoCancellation, studio.autoGain, studio.compressor, studio.highPass], ['off', false, false, 'off', false]);
   const own = resolveVoiceProcessing(custom, 'voice');

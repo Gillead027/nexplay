@@ -29,6 +29,7 @@ import {
   LocalParticipant,
   RemoteParticipant,
   Track,
+  type Room,
   type TrackPublication,
 } from 'livekit-client';
 import { AVATAR_DATA_URL_MAX_LENGTH, AVATAR_FRAME_IDS, AVATAR_FRAME_LABELS, USER_BANNER_DATA_URL_MAX_LENGTH, USER_BANNER_MAX_BYTES, type AvatarFrame } from '@nexplay/shared';
@@ -110,6 +111,8 @@ import { ForwardMessageModal, type ForwardSource } from './ForwardMessage';
 import { AboutPane } from './AboutPane';
 import type { UpdateCheckOutcome } from '../aboutInfo';
 import { AdminOverviewPane } from './AdminOverview';
+import { DeleteAccountDialog } from './DeleteAccountDialog';
+import { CallDiagnosticsPane } from './CallDiagnosticsPane';
 import { TrustSafetyPane } from './TrustSafety';
 import { StatusNotices } from './StatusNotices';
 import { useNewVersion } from '../useNewVersion';
@@ -771,6 +774,8 @@ function SettingsModal({
   quality,
   setQuality,
   screenEnabled,
+  callRoom,
+  callConnected,
   perfMode,
   choosePerfMode,
   messageStyle,
@@ -832,6 +837,8 @@ function SettingsModal({
   quality: ShareQuality;
   setQuality: (quality: ShareQuality) => void;
   screenEnabled: boolean;
+  callRoom: Room;
+  callConnected: boolean;
   perfMode: PerfMode;
   choosePerfMode: (mode: PerfMode) => void;
   messageStyle: MessageStyle;
@@ -896,6 +903,7 @@ function SettingsModal({
   const [newPasswordInput, setNewPasswordInput] = useState('');
   const [confirmPasswordInput, setConfirmPasswordInput] = useState('');
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false);
   const [passwordError, setPasswordError] = useState('');
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [verificationStarting, setVerificationStarting] = useState(false);
@@ -1141,7 +1149,7 @@ function SettingsModal({
           {section === 'about' && <AboutPane />}
           {section === 'notifications' && <NotificationsPane />}
           {section === 'app' && window.desktop?.getDesktopSettings && <DesktopPane />}
-          {section === 'admin' && isInstanceAdmin && <AdminOverviewPane />}
+          {section === 'admin' && isInstanceAdmin && <AdminOverviewPane ownUserId={session.id} />}
           {section === 'trust-safety' && isInstanceAdmin && <TrustSafetyPane />}
           {section === 'profile' && (
             <div className="settings-pane two-column">
@@ -1373,6 +1381,22 @@ function SettingsModal({
                   {passwordSaving ? 'Salvando…' : 'Trocar senha'}
                 </button>
               </form>
+
+              <h3 style={{ marginTop: 32 }}>Excluir conta</h3>
+              <p className="settings-page-description">
+                Apaga sua conta, suas mensagens e suas amizades pra sempre. Os servidores que você criou continuam com quem está neles.
+              </p>
+              <button type="button" className="danger-button" onClick={() => setDeleteAccountOpen(true)}>Excluir minha conta</button>
+              {deleteAccountOpen && (
+                <DeleteAccountDialog
+                  mode="self"
+                  targetName={session.displayName}
+                  loadPreview={() => api.getMyDeletionPreview()}
+                  onConfirm={(password) => api.deleteMyAccount(password)}
+                  onClose={() => setDeleteAccountOpen(false)}
+                  onDeleted={() => { setDeleteAccountOpen(false); onSignOut(); }}
+                />
+              )}
             </div>
           )}
 
@@ -1477,6 +1501,8 @@ function SettingsModal({
                 )}
 
                 <VoiceProcessingPane micDeviceId={selectedMicId} search={matchesSearch} />
+
+                {matchesSearch('diagnóstico da chamada') && <CallDiagnosticsPane room={callRoom} connected={callConnected} />}
 
                 {matchesSearch('modo de entrada') && (
                   <>
@@ -2666,6 +2692,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         quality={quality}
         setQuality={changeShareQuality}
         screenEnabled={voice.screenEnabled}
+        callRoom={voice.room}
+        callConnected={voice.connected}
         perfMode={perfMode}
         choosePerfMode={choosePerfMode}
         messageStyle={messageStyle}

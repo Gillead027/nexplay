@@ -128,8 +128,8 @@ Tudo roda dentro do próprio app (Web Audio), em tempo real, e vale igual para a
 microfone -> mono -> filtro de graves -> supressão de ruído por IA -> gate de sensibilidade -> compressor -> volume -> limitador -> chamada
 ```
 
-- **Perfis**, como no Discord: Isolamento de voz (IA máxima, eco e ganho automático), Estúdio (áudio puro) e Personalizado (cada opção).
-- **Supressão de ruído**: Nenhuma; Padrão (a do navegador); Alta (RNNoise, rede neural rápida); Máxima (GTCRN, a mais forte contra digitação, cliques e sopro no microfone). Os modelos são WebAssembly (~150 a 200 KB), baixados só quando escolhidos, e rodam localmente. Medido no Chromium com fala real (TTS) misturada a teclado, sopro e ruído de ambiente: a Máxima derruba digitação em cerca de -50 dB, o sopro em cerca de -40 dB e o ambiente em cerca de -40 dB, com a voz preservada.
+- **Perfis**, como no Discord: Isolamento de voz (IA RNNoise, eco e ganho automático), Estúdio (áudio puro) e Personalizado (cada opção).
+- **Supressão de ruído**: Nenhuma; Padrão (a do navegador); Alta (RNNoise, rede neural rápida); Máxima (GTCRN, a mais forte contra digitação, cliques e sopro no microfone, mas que em medições com fala real distorceu mais a voz e cortou mais sílabas baixas que o RNNoise — por isso não é o padrão do Isolamento, só uma escolha em Personalizado). Os modelos são WebAssembly (~150 a 200 KB), baixados só quando escolhidos, e rodam localmente. Medido no Chromium com fala real (TTS) misturada a teclado, sopro e ruído de ambiente: a Máxima derruba digitação em cerca de -50 dB, o sopro em cerca de -40 dB e o ambiente em cerca de -40 dB, com a voz preservada.
 - **Sensibilidade de entrada** (só em Voz ativa): gate com atraso de 6 ms (não engole o começo da fala), tempo de espera e fechamento suave. No modo automático aprende o ruído do ambiente sozinho. O medidor das configurações mostra o nível já tratado e o limite.
 - **Compressor de voz** (Leve, Médio, Forte), **volume de entrada** de 0 a 200% e **limitador** de segurança contra estouro.
 - Cancelamento de eco e controle automático de ganho são os do navegador, aplicados ao vivo.

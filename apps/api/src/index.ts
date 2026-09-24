@@ -154,6 +154,7 @@ import { defaultRng, handlePokemonCommand, isPokemonCommand } from './pokemon.js
 import { getPokemonSprite } from './pokemonSprites.js';
 import { fetchMusicThumbnail } from './musicThumbnails.js';
 import { authorizeVoiceDisconnect } from './voiceModeration.js';
+import { deleteAccount, planAccountDeletion } from './accountDeletion.js';
 import { attachRealtime, broadcast, disconnectUser, presence, refreshPresence, sendToServerMembers, sendToUser, sendToUsers, visiblePresenceStatus } from './realtime.js';
 import { normalizeServerLayout, parseStoredServerLayout, serverLayoutSchema } from './serverLayout.js';
 import {
@@ -918,6 +919,86 @@ app.patch('/api/auth/password', requireSession, authLimiter, (request, response)
     return;
   }
   updateUserPassword(user.id, body.data.newPassword);
+  response.status(204).end();
+});
+
+// ---- Excluir conta: a própria pessoa (com a senha) ou um admin da instância. Ver accountDeletion.ts sobre o que acontece
+// com servidores de que a pessoa é dona e com os arquivos guardados fora do banco.
+const deleteAccountSchema = z.object({ password: z.string().min(1).max(PASSWORD_MAX_LENGTH) });
+
+async function removeAccountEverywhere(userId: string): Promise<void> {
+  // Tira da chamada de voz antes de apagar (depois não haveria mais como saber em que sala a pessoa está).
+  await forceDisconnectFromVoice(userId).catch(() => undefined);
+  const result = deleteAccount(userId);
+  disconnectUser(userId);
+
+  for (const { serverId, newOwnerId } of result.transferred) {
+    const server = getServerById(serverId);
+    if (server) sendToServerMembers(serverId, { type: 'SERVER_UPDATE', server });
+    sendToServerMembers(serverId, { type: 'MEMBER_ROLES_UPDATE', serverId, userId: newOwnerId, roleIds: getUserRoleIds(newOwnerId, serverId) });
+  }
+  for (const serverId of result.leftServerIds) sendToServerMembers(serverId, { type: 'MEMBER_LEAVE', serverId, userId });
+  for (const friendId of result.friendIds) {
+    sendToUser(friendId, { type: 'FRIENDSHIP_UPDATE', participantIds: [friendId, userId], status: 'NONE', requestedBy: null });
+  }
+  // Anexos e fotos de verificação da conta: apagados do armazenamento (o banco já não aponta mais para eles).
+  for (const key of result.objectKeys) {
+    deleteAttachmentObject(key).catch((error: unknown) => {
+      console.error(`Falha ao apagar o arquivo ${key} de uma conta excluída:`, error);
+    });
+  }
+}
+
+const INSTANCE_ADMIN_DELETE_ERROR =
+  'Contas de administrador da instância não podem ser excluídas por aqui. Tire o nome de ADMIN_USERNAMES antes.';
+
+// O que vai acontecer com os servidores da própria pessoa, para a tela de confirmação mostrar antes.
+app.get('/api/me/deletion-preview', requireSession, (_request, response) => {
+  const user = currentUser(response);
+  response.json({ servers: planAccountDeletion(user.id), blocked: isInstanceAdmin(user.username, config.ADMIN_USERNAMES) });
+});
+
+app.delete('/api/me', requireSession, authLimiter, async (request, response) => {
+  const body = deleteAccountSchema.safeParse(request.body);
+  if (!body.success) {
+    response.status(400).json({ error: 'Informe sua senha para confirmar.' });
+    return;
+  }
+  const user = currentUser(response);
+  if (isInstanceAdmin(user.username, config.ADMIN_USERNAMES)) {
+    response.status(403).json({ error: INSTANCE_ADMIN_DELETE_ERROR });
+    return;
+  }
+  if (!verifyPassword(user, body.data.password)) {
+    // 403 e não 401: fora de /api/auth/ o cliente lê 401 como "sessão expirada" e deslogaria a pessoa por errar a senha.
+    response.status(403).json({ error: 'Senha incorreta.' });
+    return;
+  }
+  await removeAccountEverywhere(user.id);
+  clearSessionCookie(response);
+  response.status(204).end();
+});
+
+app.get('/api/admin/users/:userId/deletion-preview', requireSession, requireInstanceAdmin, (request, response) => {
+  const target = getUserById(String(request.params.userId));
+  if (!target) {
+    response.status(404).json({ error: 'Conta não encontrada.' });
+    return;
+  }
+  response.json({ username: target.username, servers: planAccountDeletion(target.id), blocked: isInstanceAdmin(target.username, config.ADMIN_USERNAMES) });
+});
+
+app.delete('/api/admin/users/:userId', requireSession, requireInstanceAdmin, moderationLimiter, async (request, response) => {
+  const target = getUserById(String(request.params.userId));
+  if (!target) {
+    response.status(404).json({ error: 'Conta não encontrada.' });
+    return;
+  }
+  if (isInstanceAdmin(target.username, config.ADMIN_USERNAMES)) {
+    response.status(403).json({ error: INSTANCE_ADMIN_DELETE_ERROR });
+    return;
+  }
+  await removeAccountEverywhere(target.id);
   response.status(204).end();
 });
 

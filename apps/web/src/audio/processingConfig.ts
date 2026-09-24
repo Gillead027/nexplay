@@ -31,7 +31,9 @@ export interface VoiceSettings {
 
 export const DEFAULT_VOICE_SETTINGS: VoiceSettings = {
   profile: 'isolamento',
-  noiseLevel: 'max',
+  // RNNoise ("Alta"): mantém a voz natural. O GTCRN ("Máxima") tira mais ruído, mas em medições com fala real distorceu mais a voz
+  // (sílabas baixas e finais de palavra cortados, voz baixa "abafada"), então fica só como escolha em Personalizado.
+  noiseLevel: 'high',
   echoCancellation: true,
   autoGain: true,
   compressor: 'off',
@@ -61,8 +63,8 @@ export function resolveVoiceProcessing(settings: VoiceSettings, inputMode: Input
   };
   switch (settings.profile) {
     case 'isolamento':
-      // Como o Isolamento do Discord: a voz sozinha, com tudo que ajuda ligado.
-      return { noiseLevel: 'max', echoCancellation: true, autoGain: true, compressor: 'off', inputVolume: clampVolume(settings.inputVolume), highPass: true, gate };
+      // Como o Isolamento do Discord: a voz sozinha, com tudo que ajuda ligado (a IA é o RNNoise, que preserva a voz; ver acima).
+      return { noiseLevel: 'high', echoCancellation: true, autoGain: true, compressor: 'off', inputVolume: clampVolume(settings.inputVolume), highPass: true, gate };
     case 'estudio':
       // Áudio puro, sem nenhum tratamento (o gate segue a sensibilidade escolhida, como no Discord).
       return { noiseLevel: 'off', echoCancellation: false, autoGain: false, compressor: 'off', inputVolume: clampVolume(settings.inputVolume), highPass: false, gate };

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import type { AdminOverview } from '@nexplay/shared';
 import { api } from '../api';
 import { formatBytes, formatUptime, percent } from '../adminFormat';
+import { DeleteAccountDialog } from './DeleteAccountDialog';
 
 const REFRESH_MS = 30_000;
 
@@ -36,8 +37,9 @@ function Meter({ label, used, total }: { label: string; used: number; total: num
 
 // Visão geral da instância (só pra quem está em ADMIN_USERNAMES): pessoas, servidores
 // criados, atividade e o consumo da máquina. Atualiza sozinha enquanto está aberta.
-export function AdminOverviewPane() {
+export function AdminOverviewPane({ ownUserId }: { ownUserId: string }) {
   const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [accountToDelete, setAccountToDelete] = useState<{ id: string; username: string } | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -141,7 +143,7 @@ export function AdminOverviewPane() {
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
-                <tr><th>Usuário</th><th>Criada em</th><th>Servidores</th><th>Mensagens</th><th>Situação</th></tr>
+                <tr><th>Usuário</th><th>Criada em</th><th>Servidores</th><th>Mensagens</th><th>Situação</th><th /></tr>
               </thead>
               <tbody>
                 {overview.people.accounts.map((account) => (
@@ -151,12 +153,29 @@ export function AdminOverviewPane() {
                     <td>{account.servers}</td>
                     <td>{number.format(account.messages)}</td>
                     <td>{account.online ? 'Online' : 'Offline'}{account.testLooking ? ' · teste' : ''}</td>
+                    <td>
+                      {account.id !== ownUserId && (
+                        <button type="button" className="secondary-pill danger-pill" onClick={() => setAccountToDelete({ id: account.id, username: account.username })}>
+                          Excluir
+                        </button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
         </>
+      )}
+      {accountToDelete && (
+        <DeleteAccountDialog
+          mode="admin"
+          targetName={accountToDelete.username}
+          loadPreview={() => api.getAdminDeletionPreview(accountToDelete.id)}
+          onConfirm={() => api.deleteUserAsAdmin(accountToDelete.id)}
+          onClose={() => setAccountToDelete(null)}
+          onDeleted={() => { setAccountToDelete(null); void load(); }}
+        />
       )}
     </div>
   );
