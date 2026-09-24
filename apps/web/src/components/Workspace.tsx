@@ -76,6 +76,7 @@ import {
   HeadphonesOffIcon,
   ImageIcon,
   LeaveIcon,
+  EyeIcon,
   MessageIcon,
   PhoneIcon,
   MicIcon,
@@ -117,6 +118,8 @@ import { DeleteAccountDialog } from './DeleteAccountDialog';
 import { CallDiagnosticsPane } from './CallDiagnosticsPane';
 import { CallTimer } from './CallTimer';
 import { IncomingDmCall } from './IncomingDmCall';
+import { playViewerJoinSound, playViewerLeaveSound } from '../sounds';
+import { nextViewerBaseline, remoteViewersByStreamer, viewerCount, viewerCountLabel, watchingByIdentity, type ViewerParticipant } from '../streamViewers';
 import { dmCallChannel, finishedCallNotice, isDmCallChannel, useDmCalls } from '../dmCallsState';
 import { stampRoom, type RoomView } from '../callTimer';
 import { TrustSafetyPane } from './TrustSafety';
@@ -509,6 +512,7 @@ function ChannelButton({
   onParticipantContextMenu,
   liveMuted,
   liveDeafened,
+  liveWatching,
   accentByIdentity,
   draggable,
   onDragStart,
@@ -543,6 +547,8 @@ function ChannelButton({
   liveMuted?: Map<string, boolean> | undefined;
   // Fone desligado ao vivo (mesma regra do mute).
   liveDeafened?: Map<string, boolean> | undefined;
+  // Quem está assistindo alguma transmissão ao vivo (olhinho ao lado do nome; mesma regra do mute).
+  liveWatching?: Map<string, boolean> | undefined;
   // Cor do perfil de cada pessoa da sala em que você está (vem do LiveKit); nas outras salas a cor sai do nome.
   accentByIdentity?: Map<string, AccentColor> | undefined;
   draggable?: boolean;
@@ -628,6 +634,7 @@ function ChannelButton({
               {participant.isSharingScreen && <span className="live-badge live-badge-inline">AO VIVO</span>}
               {!isBot && (liveMuted?.get(participant.identity) ?? participant.isMuted) && <MicOffIcon className="channel-user-muted" size={12} />}
               {!isBot && (liveDeafened?.get(participant.identity) ?? participant.isDeafened ?? false) && <HeadphonesOffIcon className="channel-user-muted" size={12} />}
+              {!isBot && (liveWatching?.get(participant.identity) ?? participant.isWatching ?? false) && <span className="channel-user-status" title="Assistindo a uma transmissão"><EyeIcon className="channel-user-watching" size={12} /></span>}
             </button>
             {canDisconnect && (
               <button
@@ -2670,6 +2677,9 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const typedParticipants = voice.participants as (LocalParticipant | RemoteParticipant)[];
   const liveMuted = liveMutedByIdentity(typedParticipants, voice.micMuted);
   const liveDeafened = liveDeafenedByIdentity(typedParticipants, voice.deafened);
+  // Quem assiste cada transmissão: o olhinho ao lado do nome, a contagem e (abaixo) os sons de entrar e sair.
+  const remoteViewers = remoteViewersByStreamer(typedParticipants as ViewerParticipant[]);
+  const liveWatching = watchingByIdentity(typedParticipants as ViewerParticipant[], watchedIdentities.size > 0);
   const accentByIdentity = new Map<string, AccentColor>();
   for (const participant of typedParticipants) {
     const metadata = parseParticipantMetadata(participant.metadata);
@@ -2678,6 +2688,11 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const unreadChat = chatOpen ? 0 : voice.messages.slice(chatSeenCount).filter((message) => message.senderId !== session.id).length;
   const cameraViews = voice.screenTracks.filter((view) => view.publication.source === Track.Source.Camera && !view.publication.isMuted);
   const shareViews = voice.screenTracks.filter((view) => view.publication.source === Track.Source.ScreenShare);
+  const viewerCounts = new Map(
+    shareViews.map((view) => [view.participant.identity, viewerCount(view.participant.identity, remoteViewers, watchedIdentities.has(view.participant.identity))] as const),
+  );
+  // Sua própria transmissão: quantas pessoas estão assistindo agora (o dono não conta assistindo a própria tela).
+  const ownViewers = viewerCount(session.id, remoteViewers, false);
   const watchingStream = shareViews.some((view) => watchingScreenIds.has(view.id));
   const chromeHidden = watchingStream && callChromeHidden;
   // Quem gerencia o servidor pode convidar direto da sala de voz (o convite é do servidor inteiro).
@@ -2744,6 +2759,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       speakingIds={voice.speakers}
       liveMuted={liveMuted}
       liveDeafened={liveDeafened}
+      liveWatching={liveWatching}
+      viewerCounts={viewerCounts}
       channelName={voice.currentChannel?.name ?? 'este canal'}
       renderAvatar={(entry) => <StageAvatar entry={entry} ownIdentity={session.id} ownAvatarUrl={session.avatarUrl} ownAvatarFrame={session.avatarFrame} />}
       onParticipantContextMenu={openParticipantVolumeMenu}
@@ -2751,6 +2768,32 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       copyInvite={isDmCallChannel(voice.currentChannel) ? undefined : copyServerInvite}
     />
   );
+
+  // Publica quais transmissões de tela eu abri (só as que existem agora; se a transmissão acaba, sai daqui sozinha): é assim que quem
+  // transmite sabe quantos assistem.
+  const watchedKey = [...watchedIdentities].sort().join(',');
+  useEffect(() => {
+    if (voice.connected) voice.setWatching([...watchedIdentities]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice.connected, watchedKey, voice.setWatching]);
+
+  // Sons: alguém passou a assistir (ou parou de assistir) a minha transmissão ou uma que eu assisto. Quem já assistia antes de eu
+  // chegar, ou de eu abrir a transmissão, não faz barulho (a primeira leitura só marca o ponto de partida).
+  const viewerBaselineRef = useRef<Map<string, string[]>>(new Map());
+  useEffect(() => {
+    if (!voice.connected) {
+      viewerBaselineRef.current = new Map();
+      return;
+    }
+    const relevant = new Set(watchedIdentities);
+    if (voice.screenEnabled) relevant.add(session.id);
+    const inCall = new Set(voice.participants.map((participant) => participant.identity));
+    const result = nextViewerBaseline(viewerBaselineRef.current, remoteViewersByStreamer(voice.participants as ViewerParticipant[]), relevant, (identity) => inCall.has(identity));
+    viewerBaselineRef.current = result.baseline;
+    if (result.joined > 0) playViewerJoinSound(getOutputVolume());
+    if (result.left > 0) playViewerLeaveSound(getOutputVolume());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [voice.participants, voice.connected, voice.screenEnabled, watchedKey]);
 
   // Há quanto tempo a chamada em que estou está ativa: a da sala (canal de voz) ou a da ligação individual.
   const currentCallStartedAt = isDmCallChannel(voice.currentChannel)
@@ -2806,6 +2849,11 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                   >
                     <ShareIcon />
                   </button>
+                  {voice.screenEnabled && (
+                    <span className="share-viewers" title={viewerCountLabel(ownViewers, true) ?? ''} aria-label={viewerCountLabel(ownViewers, true) ?? ''}>
+                      <EyeIcon size={13} /> {ownViewers}
+                    </span>
+                  )}
                   {voice.screenEnabled && <ShareQualityMenu value={quality} onSelect={changeShareQuality} />}
                 </div>
                 {!dm && (
@@ -3245,6 +3293,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                     onParticipantContextMenu={openParticipantVolumeMenu}
                     liveMuted={voice.currentChannel?.id === room.id && voice.connected ? liveMuted : undefined}
                     liveDeafened={voice.currentChannel?.id === room.id && voice.connected ? liveDeafened : undefined}
+                    liveWatching={voice.currentChannel?.id === room.id && voice.connected ? liveWatching : undefined}
                     accentByIdentity={accentByIdentity}
                   />
                 ));

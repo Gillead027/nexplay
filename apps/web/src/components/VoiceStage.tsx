@@ -13,6 +13,7 @@ import type { LocalParticipant, RemoteParticipant } from 'livekit-client';
 import { ACCENT_COLORS, MUSIC_BOT_IDENTITY, parseParticipantMetadata } from '@nexplay/shared';
 import type { ScreenTrackView } from '../livekit/useVoiceRoom';
 import { attachVideo, WatchStage } from './WatchStage';
+import { viewerCountLabel } from '../streamViewers';
 import { EyeIcon, HeadphonesOffIcon, MicOffIcon, ShareIcon, UserPlusIcon } from './Icons';
 
 export interface StageEntry {
@@ -25,6 +26,8 @@ export interface StageEntry {
   muted: boolean;
   // Fone desligado: a pessoa não está ouvindo a call.
   deafened: boolean;
+  // Está assistindo a transmissão de tela de alguém (olhinho ao lado do nome).
+  watching: boolean;
   speaking: boolean;
   camera: ScreenTrackView | null;
 }
@@ -52,6 +55,7 @@ function buildEntries(
   speakingIds: Set<string>,
   liveMuted: Map<string, boolean>,
   liveDeafened: Map<string, boolean>,
+  liveWatching: Map<string, boolean>,
 ): StageEntry[] {
   const entries = participants.map((participant) => {
     const metadata = parseParticipantMetadata(participant.metadata);
@@ -66,6 +70,7 @@ function buildEntries(
       colorIndex: accent >= 0 ? accent : colorFromName(name),
       muted: !isBot && (liveMuted.get(participant.identity) ?? false),
       deafened: !isBot && (liveDeafened.get(participant.identity) ?? false),
+      watching: !isBot && (liveWatching.get(participant.identity) ?? false),
       speaking: speakingIds.has(participant.identity),
       camera: cameras.find((view) => view.participant.identity === participant.identity) ?? null,
     } satisfies StageEntry;
@@ -160,6 +165,7 @@ function Tile({
       <div className="voice-tile-label">
         {entry.muted && <span className="voice-tile-status" title="Microfone desligado"><MicOffIcon className="voice-tile-muted" size={13} /></span>}
         {entry.deafened && <span className="voice-tile-status" title="Fone desligado: não está ouvindo a call"><HeadphonesOffIcon className="voice-tile-muted voice-tile-deafened" size={13} /></span>}
+        {entry.watching && <span className="voice-tile-status" title="Assistindo a uma transmissão"><EyeIcon className="voice-tile-watching" size={13} /></span>}
         <span className="voice-tile-name">{entry.name}</span>
         {entry.isBot && <span className="bot-badge">BOT</span>}
       </div>
@@ -167,12 +173,14 @@ function Tile({
   );
 }
 
-function StreamTile({ entry, onWatch }: { entry: StreamEntry; onWatch: () => void }) {
+function StreamTile({ entry, viewers, onWatch }: { entry: StreamEntry; viewers: number; onWatch: () => void }) {
   const label = entry.isLocal ? 'Ver minha transmissão' : 'Assista à transmissão';
+  const viewersLabel = viewerCountLabel(viewers, entry.isLocal);
   return (
     <article className={`voice-tile stream-tile tile-color-${entry.colorIndex}`} onClick={onWatch}>
       <ShareIcon className="stream-tile-art" size={64} />
       <span className="watch-live">AO VIVO</span>
+      {viewersLabel && <span className="stream-viewers"><EyeIcon size={13} /> {viewersLabel}</span>}
       <button type="button" className="stream-watch-button" onClick={(event) => { event.stopPropagation(); onWatch(); }} title={label}>
         <EyeIcon size={16} /> <span>{label}</span>
       </button>
@@ -198,6 +206,8 @@ export function VoiceStage({
   speakingIds,
   liveMuted,
   liveDeafened,
+  liveWatching,
+  viewerCounts,
   channelName,
   renderAvatar,
   onParticipantContextMenu,
@@ -218,6 +228,10 @@ export function VoiceStage({
   speakingIds: Set<string>;
   liveMuted: Map<string, boolean>;
   liveDeafened: Map<string, boolean>;
+  // Quem está assistindo alguma transmissão agora (olhinho ao lado do nome).
+  liveWatching: Map<string, boolean>;
+  // Quantas pessoas assistem a transmissão de cada pessoa (chave: quem transmite).
+  viewerCounts: Map<string, number>;
   channelName: string;
   renderAvatar: (entry: StageEntry) => ReactNode;
   onParticipantContextMenu: (event: ReactMouseEvent<HTMLElement>, participant: { identity: string; name: string }) => void;
@@ -225,7 +239,7 @@ export function VoiceStage({
   // Copia o link de convite do servidor. Só existe para quem pode gerenciar o servidor.
   copyInvite?: (() => Promise<boolean>) | undefined;
 }) {
-  const entries = useMemo(() => buildEntries(participants, cameras, speakingIds, liveMuted, liveDeafened), [participants, cameras, speakingIds, liveMuted, liveDeafened]);
+  const entries = useMemo(() => buildEntries(participants, cameras, speakingIds, liveMuted, liveDeafened, liveWatching), [participants, cameras, speakingIds, liveMuted, liveDeafened, liveWatching]);
   const heroes = shares.filter((view) => watchingIds.has(view.id));
   const streams: StreamEntry[] = shares
     .filter((view) => !watchingIds.has(view.id))
@@ -245,7 +259,7 @@ export function VoiceStage({
   const tiles = (
     <>
       {streams.map((entry) => (
-        <StreamTile key={entry.view.id} entry={entry} onWatch={() => onWatch(entry.view.id)} />
+        <StreamTile key={entry.view.id} entry={entry} viewers={viewerCounts.get(entry.view.participant.identity) ?? 0} onWatch={() => onWatch(entry.view.id)} />
       ))}
       {entries.map((entry) => (
         <Tile key={entry.identity} entry={entry} renderAvatar={renderAvatar} onParticipantContextMenu={onParticipantContextMenu} onOpenProfile={onOpenProfile} />
@@ -258,6 +272,7 @@ export function VoiceStage({
       <div className="voice-stage watching">
         <WatchStage
           heroes={heroes}
+          viewerCounts={viewerCounts}
           streamVolumes={streamVolumes}
           setStreamVolume={setStreamVolume}
           onStopWatching={onStopWatching}

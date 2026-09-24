@@ -1,7 +1,8 @@
 import { type ReactNode, type RefObject, useEffect, useRef, useState } from 'react';
 import { LocalVideoTrack, RemoteParticipant, RemoteVideoTrack } from 'livekit-client';
 import type { ScreenTrackView } from '../livekit/useVoiceRoom';
-import { ChevronIcon, EyeOffIcon, FullscreenIcon, SpeakerIcon } from './Icons';
+import { ChevronIcon, EyeIcon, EyeOffIcon, FullscreenIcon, SpeakerIcon } from './Icons';
+import { viewerCountLabel } from '../streamViewers';
 import { useEscapeLayer } from '../escapeLayers';
 
 export function attachVideo(view: ScreenTrackView, element: HTMLVideoElement | null): (() => void) | undefined {
@@ -68,8 +69,11 @@ function HeroTile({
   onStopWatching,
   fullscreen,
   onToggleFullscreen,
+  viewers,
 }: {
   view: ScreenTrackView;
+  // Quantas pessoas assistem esta transmissão (você incluído).
+  viewers: number;
   volume: number;
   setVolume: (value: number) => void;
   onStopWatching: () => void;
@@ -94,6 +98,7 @@ function HeroTile({
       <div className="watch-hero-label">
         <span className="live-dot" />
         {view.participant.isLocal ? 'Sua transmissão' : name}
+        {viewerCountLabel(viewers, view.participant.isLocal) && <span className="watch-hero-viewers"><EyeIcon size={13} /> {viewerCountLabel(viewers, view.participant.isLocal)}</span>}
       </div>
       <div className="watch-hero-actions">
         <button type="button" className="watch-hero-button" onClick={onStopWatching}>
@@ -135,6 +140,7 @@ function HeroTile({
  */
 export function WatchStage({
   heroes,
+  viewerCounts,
   streamVolumes,
   setStreamVolume,
   onStopWatching,
@@ -143,6 +149,7 @@ export function WatchStage({
   onToggleChrome,
 }: {
   heroes: ScreenTrackView[];
+  viewerCounts: Map<string, number>;
   streamVolumes: Record<string, number>;
   setStreamVolume: (identity: string, value: number) => void;
   onStopWatching: (id: string) => void;
@@ -162,6 +169,7 @@ export function WatchStage({
           <HeroTile
             key={view.id}
             view={view}
+            viewers={viewerCounts.get(view.participant.identity) ?? 0}
             volume={streamVolumes[view.participant.identity] ?? 100}
             setVolume={(value) => setStreamVolume(view.participant.identity, value)}
             onStopWatching={() => onStopWatching(view.id)}

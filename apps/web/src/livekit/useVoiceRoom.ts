@@ -31,6 +31,7 @@ import {
   parseParticipantMetadata,
   SOUNDBOARD_ANNOUNCE_TOPIC,
   VOICE_CHAT_TOPIC,
+  WATCHING_ATTRIBUTE,
   type Activity,
   type ChatMessage,
   type SoundboardAnnouncement,
@@ -46,6 +47,7 @@ import { useVoiceSettings, voiceSettingsStore } from '../audio/voiceSettingsStor
 import { deviceAddedMessage, deviceLostMessage, diffDevices, selectionLost, type DeviceKind, type DeviceLite } from '../deviceChanges';
 import { describeMediaError, isPermissionDenied, type MediaAccessKind } from '../mediaAccess';
 import { isMicShownMuted } from '../micState';
+import { serializeWatching } from '../streamViewers';
 import { routeVoiceChatInput } from '../musicCommandRouting';
 import {
   playJoinSound,
@@ -107,9 +109,6 @@ const SCREEN_SHARE_AUDIO_PUBLISH = {
   red: true,
 } as const;
 
-// Reforça, no próprio RTCRtpSender (o padrão WebRTC, não só a dica do captureStream), que sob pressão o codificador
-// deve priorizar manter os quadros por segundo — reduzindo a resolução antes de deixar a transmissão travar. Sem
-// isso o navegador tende ao padrão oposto (segurar a resolução) para conteúdo de tela.
 // Câmera em 720p a 30 quadros: numa chamada os quadradinhos são pequenos (no máximo ~1000 px de largura), então 1080p só gastava
 // processador (a codificação é por software) e banda de subida — que é o que fazia a câmera "congelar" em quem joga e chama ao
 // mesmo tempo. Com simulcast, quem assiste recebe a camada que a própria rede dele aguenta.
@@ -309,6 +308,7 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
   // você conectar — sem isso, entrar numa call cheia tocaria um bipe pra
   // cada pessoa já presente, tudo de uma vez.
   const suppressPresenceSoundsRef = useRef(true);
+  const publishedWatchingRef = useRef('');
   inputModeRef.current = inputMode;
   pttKeyRef.current = pttKey;
   deafenedRef.current = deafened;
@@ -418,6 +418,8 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
     };
     const onStateChanged = (state: ConnectionState) => {
       setConnectionState(state);
+      // Uma conexão nova começa sem o atributo: o que a pessoa assiste precisa ser publicado de novo.
+      if (state !== ConnectionState.Connected) publishedWatchingRef.current = '';
       // A medição vale para a chamada que acabou de começar ou terminar; a próxima leitura chega por evento.
       if (state !== ConnectionState.Connected) setConnectionQuality(ConnectionQuality.Unknown);
       else setConnectionQuality(room.localParticipant.connectionQuality);
@@ -900,6 +902,20 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
   // Troca a qualidade da transmissão de tela com ela no ar, sem parar nem escolher a tela de novo: a captura passa a entregar a
   // nova resolução e taxa de quadros (o navegador reescala a captura na hora) e o codificador recebe o novo limite de bitrate
   // e de quadros por segundo, sem renegociar com o servidor. Devolve false se o navegador não aceitou a mudança ao vivo.
+  // Publica quais transmissões de tela a pessoa abriu ("Ver transmissão"): é como o dono da transmissão sabe quantos assistem.
+  // Só envia quando mudou.
+  const setWatching = useCallback(
+    (identities: readonly string[]) => {
+      const value = serializeWatching(identities);
+      if (value === publishedWatchingRef.current || room.state !== ConnectionState.Connected) return;
+      publishedWatchingRef.current = value;
+      void room.localParticipant.setAttributes({ [WATCHING_ATTRIBUTE]: value }).catch(() => {
+        publishedWatchingRef.current = '';
+      });
+    },
+    [room],
+  );
+
   const changeShareQuality = useCallback(
     async (quality: ShareQuality): Promise<boolean> => {
       const track = room.localParticipant.getTrackPublication(Track.Source.ScreenShare)?.videoTrack;
@@ -1080,6 +1096,7 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
       toggleCamera,
       toggleScreenShare,
       changeShareQuality,
+      setWatching,
       sendMessage,
       playSoundboardSound,
       soundboardEvent,
@@ -1126,6 +1143,7 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
       toggleCamera,
       toggleScreenShare,
       changeShareQuality,
+      setWatching,
       sendMessage,
       playSoundboardSound,
       soundboardEvent,

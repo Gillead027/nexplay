@@ -56,6 +56,28 @@ export function startRingtone(getOutputVolume: () => number): () => void {
   return () => window.clearInterval(timer);
 }
 
+// Alguém abriu ou fechou uma transmissão de tela que você está assistindo (ou a sua): dois toquinhos curtos e agudos, bem diferentes
+// do som de entrar e sair da chamada (que é mais grave e mais longo).
+export function playViewerJoinSound(outputVolume: number): void {
+  playTones(
+    [
+      { frequency: 880, startOffset: 0, duration: 0.06 },
+      { frequency: 1175, startOffset: 0.07, duration: 0.09 },
+    ],
+    outputVolume,
+  );
+}
+
+export function playViewerLeaveSound(outputVolume: number): void {
+  playTones(
+    [
+      { frequency: 1175, startOffset: 0, duration: 0.06 },
+      { frequency: 880, startOffset: 0.07, duration: 0.09 },
+    ],
+    outputVolume,
+  );
+}
+
 export function playJoinSound(outputVolume: number): void {
   playTones(
     [

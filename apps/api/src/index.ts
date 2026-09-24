@@ -67,6 +67,7 @@ import {
   type PendingIdentityVerification,
   readSelfDeafened,
   readSelfMuted,
+  readWatching,
   type HumanParticipantMetadata,
   type MusicCommandResponse,
   type MusicNowPlayingCard,
@@ -2519,6 +2520,7 @@ async function computeRoomSummary(channel: VoiceChannel): Promise<RoomSummary> {
         isSharingScreen: participant.tracks.some((track) => track.source === TrackSource.SCREEN_SHARE),
         isMuted: readSelfMuted(participant.attributes) ?? microphoneTrack?.muted ?? true,
         isDeafened: readSelfDeafened(participant.attributes),
+        isWatching: readWatching(participant.attributes).length > 0,
       };
     }),
   };

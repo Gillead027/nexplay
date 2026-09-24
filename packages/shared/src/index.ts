@@ -470,6 +470,17 @@ export function readSelfDeafened(attributes: Record<string, string> | undefined)
   return attributes?.[DEAFENED_ATTRIBUTE] === '1';
 }
 
+// Quem cada pessoa está assistindo: as identidades de quem transmite tela e que ela abriu ("Ver transmissão"), separadas por vírgula,
+// publicadas como atributo do participante. É assim que o dono da transmissão sabe quantas pessoas assistem e quem entrou ou saiu — o
+// LiveKit sozinho só diz quem RECEBE o vídeo (todo mundo na chamada recebe), não quem de fato abriu. Apps antigos não publicam: contam
+// como "não assistindo".
+export const WATCHING_ATTRIBUTE = 'watching';
+
+export function readWatching(attributes: Record<string, string> | undefined): string[] {
+  const value = attributes?.[WATCHING_ATTRIBUTE];
+  return value ? value.split(',').filter(Boolean) : [];
+}
+
 export function readSelfMuted(attributes: Record<string, string> | undefined): boolean | null {
   const value = attributes?.[MIC_MUTED_ATTRIBUTE];
   if (value === '1') return true;
@@ -709,6 +720,8 @@ export interface RoomParticipantSummary {
   isMuted: boolean;
   // Está com o fone desligado (não ouve a call). Opcional: servidores mais antigos não mandam.
   isDeafened?: boolean;
+  // Está assistindo a transmissão de tela de alguém (olhinho ao lado do nome). Opcional: servidores mais antigos não mandam.
+  isWatching?: boolean;
 }
 
 // Ligações individuais (amigos): o "servidor" fictício dos canais de voz das ligações, o estado que vale enquanto a ligação existe
