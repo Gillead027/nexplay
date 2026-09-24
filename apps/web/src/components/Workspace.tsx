@@ -17,6 +17,7 @@ import {
   type BlockedUserSummary,
   type Category,
   type CategoryPrefs,
+  type DmChannel,
   type PublicConfig,
   type RoomSummary,
   type SoundboardSound,
@@ -76,6 +77,7 @@ import {
   ImageIcon,
   LeaveIcon,
   MessageIcon,
+  PhoneIcon,
   MicIcon,
   MicOffIcon,
   PaletteIcon,
@@ -114,6 +116,8 @@ import { AdminOverviewPane } from './AdminOverview';
 import { DeleteAccountDialog } from './DeleteAccountDialog';
 import { CallDiagnosticsPane } from './CallDiagnosticsPane';
 import { CallTimer } from './CallTimer';
+import { IncomingDmCall } from './IncomingDmCall';
+import { dmCallChannel, finishedCallNotice, isDmCallChannel, useDmCalls } from '../dmCallsState';
 import { stampRoom, type RoomView } from '../callTimer';
 import { TrustSafetyPane } from './TrustSafety';
 import { StatusNotices } from './StatusNotices';
@@ -1971,6 +1975,97 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const [selectedDmChannelId, setSelectedDmChannelId] = useState<string | null>(null);
   const friendsState = useFriendsState(session);
   const selectedDmChannel = friendsState.dmChannels.find((channel) => channel.id === selectedDmChannelId) ?? null;
+
+  // ---- Ligações individuais (voz entre dois amigos, pela aba de amigos). O estado chamando/em andamento vem do servidor; a voz em si
+  // usa o mesmo motor dos canais, numa sala própria da ligação.
+  const otherInDm = (dmChannelId: string) =>
+    friendsState.dmChannels.find((channel) => channel.id === dmChannelId)?.participants.find((participant) => participant.id !== session.id);
+  const dmCalls = useDmCalls(session.id, (finished) => {
+    const notice = finishedCallNotice(finished, session.id, otherInDm(finished.call.dmChannelId)?.displayName ?? 'Seu amigo');
+    if (notice) setFriendActionError(notice);
+    // A ligação em que eu estava conectado acabou (recusaram, desistiram, foi encerrada): sai da sala de voz também.
+    if (isDmCallChannel(voice.currentChannel) && voice.currentChannel?.id === finished.call.dmChannelId) void voice.disconnect();
+  });
+  const [dmCallBusy, setDmCallBusy] = useState(false);
+  // O toque respeita o volume de saída e fica mudo em "Não perturbe" (o aviso na tela continua). Identidade estável para o toque não recomeçar.
+  const presenceRef = useRef(session.presenceStatus);
+  presenceRef.current = session.presenceStatus;
+  const ringVolume = useCallback(() => (presenceRef.current === 'dnd' ? 0 : getOutputVolume()), []);
+  async function connectDmCall(dmChannelId: string) {
+    setJoiningId(dmChannelId);
+    try {
+      await voice.connect(dmCallChannel(dmChannelId, otherInDm(dmChannelId)?.displayName ?? 'amigo'));
+    } finally {
+      setJoiningId(null);
+    }
+  }
+  async function callInDm(dmChannelId: string) {
+    setFriendActionError('');
+    setDmCallBusy(true);
+    try {
+      await dmCalls.start(dmChannelId);
+      setView('friends');
+      setSelectedDmChannelId(dmChannelId);
+      await connectDmCall(dmChannelId);
+    } catch (error) {
+      setFriendActionError(error instanceof Error ? error.message : 'Não foi possível ligar agora.');
+    } finally {
+      setDmCallBusy(false);
+    }
+  }
+  function callFriend(userId: string) {
+    setFriendActionError('');
+    void api
+      .openDmChannel(userId)
+      .then(({ channel }) => callInDm(channel.id))
+      .catch((error) => setFriendActionError(error instanceof Error ? error.message : 'Não foi possível ligar agora.'));
+  }
+  async function answerDmCall(dmChannelId: string) {
+    setFriendActionError('');
+    setDmCallBusy(true);
+    try {
+      await dmCalls.accept(dmChannelId);
+      setView('friends');
+      setSelectedDmChannelId(dmChannelId);
+      await connectDmCall(dmChannelId);
+    } catch (error) {
+      setFriendActionError(error instanceof Error ? error.message : 'Não foi possível atender agora.');
+    } finally {
+      setDmCallBusy(false);
+    }
+  }
+  async function refuseDmCall(dmChannelId: string) {
+    setDmCallBusy(true);
+    try {
+      await dmCalls.decline(dmChannelId);
+    } catch (error) {
+      setFriendActionError(error instanceof Error ? error.message : 'Não foi possível recusar agora.');
+    } finally {
+      setDmCallBusy(false);
+    }
+  }
+  // Sair da chamada de voz. Numa ligação que ainda está chamando, quem ligou desistindo avisa o outro (o toque para).
+  async function leaveVoice() {
+    const channel = voice.currentChannel;
+    if (channel && isDmCallChannel(channel)) {
+      const call = dmCalls.calls[channel.id];
+      if (call && call.status === 'ringing' && call.callerId === session.id) await dmCalls.end(channel.id).catch(() => undefined);
+    }
+    await voice.disconnect();
+  }
+  // Estou (ou estou entrando) na ligação desta conversa: o painel da ligação aparece em cima dela.
+  const dmCallHere = (dmChannelId: string) =>
+    isDmCallChannel(voice.currentChannel) && voice.currentChannel?.id === dmChannelId && (voice.connected || voice.connectionState === ConnectionState.Connecting || joiningId === dmChannelId);
+  // O botão do cabeçalho da conversa conforme a situação da ligação daquela conversa.
+  function dmCallButton(channel: DmChannel): { label: string; onClick: () => void; disabled?: boolean } | undefined {
+    const call = dmCalls.calls[channel.id];
+    const inThisCall = isDmCallChannel(voice.currentChannel) && voice.currentChannel?.id === channel.id;
+    if (inThisCall) return undefined;
+    if (!call) return { label: 'Ligar', onClick: () => void callInDm(channel.id), disabled: dmCallBusy };
+    if (call.status === 'ringing' && call.calleeId === session.id) return { label: 'Atender', onClick: () => void answerDmCall(channel.id), disabled: dmCallBusy };
+    if (call.status === 'ringing') return { label: 'Voltar à chamada', onClick: () => void connectDmCall(channel.id), disabled: dmCallBusy };
+    return { label: 'Entrar na ligação', onClick: () => void connectDmCall(channel.id), disabled: dmCallBusy };
+  }
   const serversState = useServersState(session);
   const [activeServerId, setActiveServerId] = useState<string | null>(null);
   // Servidor ativo por padrão: o primeiro da lista assim que ela carrega —
@@ -2653,8 +2748,176 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       renderAvatar={(entry) => <StageAvatar entry={entry} ownIdentity={session.id} ownAvatarUrl={session.avatarUrl} ownAvatarFrame={session.avatarFrame} />}
       onParticipantContextMenu={openParticipantVolumeMenu}
       onOpenProfile={openUserProfile}
-      copyInvite={copyServerInvite}
+      copyInvite={isDmCallChannel(voice.currentChannel) ? undefined : copyServerInvite}
     />
+  );
+
+  // Há quanto tempo a chamada em que estou está ativa: a da sala (canal de voz) ou a da ligação individual.
+  const currentCallStartedAt = isDmCallChannel(voice.currentChannel)
+    ? dmCalls.calls[voice.currentChannel?.id ?? '']?.startedAtLocal
+    : rooms.find((room) => room.id === voice.currentChannel?.id)?.callStartedAtLocal;
+
+  // O palco da chamada (participantes, controles, chat e membros). `dm` = ligação individual: sem soundboard, sem chat de chamada e sem
+  // lista de membros (a conversa da ligação é o chat da própria conversa, logo abaixo).
+  const renderVoiceRoom = (dm: boolean) => (
+    <div className={`room-content ${dm ? 'dm-call' : ''} ${voice.connected ? 'voice-live' : ''} ${chatOpen && voice.connected ? 'with-chat' : ''} ${voice.connected && voiceMembersOpen ? 'with-members' : ''} ${voice.connected && watchingStream ? 'call-watching' : ''} ${chromeHidden ? 'call-chrome-hidden' : ''}`}>
+          <section className="stage-column">
+            <div className="stage-content">
+              {voice.connected && <SoundboardToast event={voice.soundboardEvent} />}
+              {joiningId || voice.connectionState === ConnectionState.Connecting ? (
+                <RoomSkeleton />
+              ) : voice.connected ? (
+                voiceStage
+              ) : (
+                <div className="disconnected-stage">
+                  <VoiceIcon size={20} />
+                  <h2>Sem canal de voz</h2>
+                  <p>Selecione um canal para entrar na conversa.</p>
+                </div>
+              )}
+            </div>
+
+            {voice.connected && (
+              <div className="voice-toolbar" aria-label="Controles de voz">
+                <div className="voice-split-action">
+                  <button className={`voice-action ${voice.micMuted ? 'danger' : ''}`} type="button" onClick={() => void voice.toggleMicrophone()} disabled={voice.deafened} title={voice.micMuted ? 'Ligar microfone' : 'Desligar microfone'} aria-label={voice.micMuted ? 'Ligar microfone' : 'Desligar microfone'}>
+                    <IconSwap on={!voice.micMuted} onIcon={<MicIcon />} offIcon={<MicOffIcon />} />
+                  </button>
+                  <DeviceMenu devices={voice.audioInputs} selectedId={voice.selectedMicId} onSelect={(deviceId) => void voice.setMicrophoneDevice(deviceId)} label="Escolher microfone" />
+                </div>
+                <div className="voice-split-action">
+                  <button className={`voice-action ${voice.deafened ? 'danger' : ''}`} type="button" onClick={() => void voice.toggleDeafen()} title={voice.deafened ? 'Ativar áudio' : 'Desativar áudio'} aria-label={voice.deafened ? 'Ativar áudio' : 'Desativar áudio'}>
+                    <IconSwap on={!voice.deafened} onIcon={<HeadphonesIcon />} offIcon={<HeadphonesOffIcon />} />
+                  </button>
+                  <DeviceMenu devices={voice.audioOutputs} selectedId={voice.selectedSpeakerId} onSelect={(deviceId) => void voice.setSpeakerDevice(deviceId)} label="Escolher saída de áudio" />
+                </div>
+                <div className="voice-split-action">
+                  <button className={`voice-action ${voice.cameraEnabled ? 'sharing' : ''}`} type="button" onClick={() => void voice.toggleCamera()} title={voice.cameraEnabled ? 'Desligar câmera' : 'Ligar câmera'} aria-label={voice.cameraEnabled ? 'Desligar câmera' : 'Ligar câmera'}>
+                    <IconSwap on={voice.cameraEnabled} onIcon={<CameraIcon />} offIcon={<CameraOffIcon />} />
+                  </button>
+                  <button type="button" className="device-menu-chevron" aria-label="Opções de câmera"><ChevronIcon size={12} /></button>
+                </div>
+                <div className="voice-split-action">
+                  <button
+                    className={`voice-action ${voice.screenEnabled ? 'sharing' : ''}`}
+                    type="button"
+                    onClick={() => void startOrStopScreenShare()}
+                    title={voice.screenEnabled ? 'Parar transmissão' : 'Compartilhar tela'}
+                  >
+                    <ShareIcon />
+                  </button>
+                  {voice.screenEnabled && <ShareQualityMenu value={quality} onSelect={changeShareQuality} />}
+                </div>
+                {!dm && (
+                <div className="soundboard-anchor">
+                  <button
+                    className={`voice-action ${soundboardOpen ? 'sharing' : ''}`}
+                    type="button"
+                    onClick={() => setSoundboardOpen((open) => !open)}
+                    title="Soundboard"
+                    aria-label="Soundboard"
+                  >
+                    <SoundboardIcon />
+                  </button>
+                  <SoundboardPanel
+                    open={soundboardOpen}
+                    serverId={activeServerId ?? ''}
+                    onClose={() => setSoundboardOpen(false)}
+                    sounds={soundboardSounds}
+                    ownUserId={session.id}
+                    onPlay={(sound) => void voice.playSoundboardSound(sound)}
+                    onCreated={(sound) => setSoundboardSounds((current) => current.some((s) => s.id === sound.id) ? current : [...current, sound])}
+                    onDeleted={(soundId) => setSoundboardSounds((current) => current.filter((s) => s.id !== soundId))}
+                  />
+                </div>
+                )}
+                <button className="voice-action leave" type="button" onClick={() => void leaveVoice()} title={dm ? 'Desligar' : 'Sair do canal'}>
+                  <LeaveIcon />
+                </button>
+              </div>
+            )}
+          </section>
+
+          {!dm && chatOpen && voice.connected && (
+          <aside className="chat-panel">
+            <div className="chat-heading">
+              <div className="chat-heading-info">
+                <div><MessageIcon size={16} /><strong>Chat</strong></div>
+                <span>{voice.currentChannel?.name || 'sem canal'}</span>
+              </div>
+              <button type="button" className="chat-close" onClick={() => setChatOpen(false)} aria-label="Fechar chat">
+                <CloseIcon size={14} />
+              </button>
+            </div>
+            <div
+              className={`messages ${messageStyle === 'compact' ? 'compact' : ''} ${messageStyle === 'grouped' ? 'grouped' : ''}`}
+              aria-live="polite"
+            >
+              {voice.messages.length === 0 ? (
+                <div className="empty-chat"><strong>Nenhuma mensagem</strong><span>As mensagens pertencem ao canal atual.</span></div>
+              ) : voice.messages.map((message, index) => {
+                const previous = voice.messages[index - 1];
+                const continued =
+                  messageStyle === 'grouped' &&
+                  previous?.senderId === message.senderId &&
+                  message.sentAt - previous.sentAt < 5 * 60 * 1000;
+                const senderAvatar =
+                  message.senderId === session.id ? session.avatarUrl : remoteAvatarCache.get(message.senderId)?.avatarUrl;
+                const isBotMessage = message.senderId === MUSIC_BOT_IDENTITY;
+                return (
+                  <article className={`message ${continued ? 'continued' : ''}`} key={message.id}>
+                    {isBotMessage ? (
+                      <Avatar name={message.senderName} avatarUrl={senderAvatar} compact />
+                    ) : (
+                      <button
+                        type="button"
+                        className="message-avatar-trigger"
+                        onClick={(event) => openUserProfile(message.senderId, event)}
+                        title={`Ver perfil de ${message.senderName}`}
+                      >
+                        <Avatar name={message.senderName} avatarUrl={senderAvatar} compact />
+                      </button>
+                    )}
+                    <div>
+                      <header>
+                        {isBotMessage ? (
+                          <strong>
+                            {message.senderName}
+                            <span className="bot-badge">BOT</span>
+                          </strong>
+                        ) : (
+                          <button type="button" className="message-name-trigger" onClick={(event) => openUserProfile(message.senderId, event)}>
+                            {message.senderName}
+                          </button>
+                        )}
+                        <time>{new Date(message.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time>
+                      </header>
+                      <p>{message.text}</p>
+                      {message.musicCard && <MusicCard card={message.musicCard} />}
+                    </div>
+                  </article>
+                );
+              })}
+              <div ref={chatEndRef} />
+            </div>
+            <form className="chat-form" onSubmit={submitChat}>
+              <input
+                aria-label="Mensagem"
+                maxLength={500}
+                disabled={!voice.connected}
+                value={chatText}
+                onChange={(event) => setChatText(event.target.value)}
+                placeholder={voice.connected ? 'Enviar mensagem' : 'Entre em um canal'}
+              />
+              <button type="submit" disabled={!voice.connected || !chatText.trim()}>Enviar</button>
+            </form>
+          </aside>
+          )}
+
+          {!dm && activeServerId && (!voice.connected || voiceMembersOpen) && (
+            <MemberList data={memberData} ownId={session.id} ownStatus={session.presenceStatus} onOpenProfile={openUserProfile} />
+          )}
+        </div>
   );
 
   return (
@@ -2674,6 +2937,22 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         onDismissNewVersion={newVersion.dismiss}
         inCall={voice.connected}
       />
+      {dmCalls.incoming && (() => {
+        const caller = otherInDm(dmCalls.incoming.dmChannelId);
+        return (
+          <IncomingDmCall
+            callerName={caller?.displayName ?? 'Um amigo'}
+            accentColor={caller?.accentColor ?? session.accentColor}
+            avatarUrl={caller?.avatarUrl ?? ''}
+            avatarFrame={caller?.avatarFrame ?? ''}
+            alreadyInCall={voice.connected}
+            ringVolume={ringVolume}
+            busy={dmCallBusy}
+            onAccept={() => void answerDmCall(dmCalls.incoming!.dmChannelId)}
+            onDecline={() => void refuseDmCall(dmCalls.incoming!.dmChannelId)}
+          />
+        );
+      })()}
       {friendActionError && (
         <div className="friend-action-toast" role="alert">
           <span>{friendActionError}</span>
@@ -3086,11 +3365,11 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
               <div>
                 <strong>
                   Voz conectada
-                  <CallTimer className="voice-status-timer" startedAt={rooms.find((room) => room.id === voice.currentChannel?.id)?.callStartedAtLocal} />
+                  <CallTimer className="voice-status-timer" startedAt={currentCallStartedAt} />
                 </strong>
                 <span>
-                  {voice.currentChannel?.name} /{' '}
-                  {serversState.servers.find((server) => server.id === voice.currentChannel?.serverId)?.name ?? '...'}
+                  {voice.currentChannel?.name}{' / '}
+                  {isDmCallChannel(voice.currentChannel) ? 'ligação individual' : (serversState.servers.find((server) => server.id === voice.currentChannel?.serverId)?.name ?? '...')}
                 </span>
               </div>
             </div>
@@ -3116,7 +3395,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
               <button
                 type="button"
                 className="icon-button small danger"
-                onClick={() => void voice.disconnect()}
+                onClick={() => void leaveVoice()}
                 title="Sair do canal"
                 aria-label="Sair do canal"
               >
@@ -3189,16 +3468,33 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         </button>
         {view === 'friends' ? (
           selectedDmChannel ? (
-            <DmChannelView
-              channel={selectedDmChannel}
-              session={session}
-              isBlockedByMe={computeIsBlockedByMe(
-                selectedDmChannel.participants.find((participant) => participant.id !== session.id)?.id ?? '',
-                friendsState,
+            <div className={dmCallHere(selectedDmChannel.id) ? 'dm-call-layout' : 'dm-plain-layout'}>
+              {dmCallHere(selectedDmChannel.id) && (
+                <div className="dm-call-panel">
+                  <div className="dm-call-status" aria-live="polite">
+                    <PhoneIcon size={15} />
+                    {voice.connected && dmCalls.calls[selectedDmChannel.id]?.status === 'active' ? (
+                      <span>Em ligação com <strong>{otherInDm(selectedDmChannel.id)?.displayName}</strong></span>
+                    ) : (
+                      <span>Chamando <strong>{otherInDm(selectedDmChannel.id)?.displayName}</strong>…</span>
+                    )}
+                    <CallTimer className="dm-call-timer" startedAt={currentCallStartedAt} />
+                  </div>
+                  {renderVoiceRoom(true)}
+                </div>
               )}
-              onOpenProfile={openUserProfile}
-              onForward={(message) => setForwardingMessage({ kind: 'dm', dmChannelId: selectedDmChannel.id, messageId: message.id })}
-            />
+              <DmChannelView
+                channel={selectedDmChannel}
+                session={session}
+                isBlockedByMe={computeIsBlockedByMe(
+                  selectedDmChannel.participants.find((participant) => participant.id !== session.id)?.id ?? '',
+                  friendsState,
+                )}
+                onOpenProfile={openUserProfile}
+                onForward={(message) => setForwardingMessage({ kind: 'dm', dmChannelId: selectedDmChannel.id, messageId: message.id })}
+                call={dmCallButton(selectedDmChannel)}
+              />
+            </div>
           ) : (
             <FriendsHome
               state={friendsState}
@@ -3206,6 +3502,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
               serverIds={serversState.servers.map((server) => server.id)}
               onOpenProfile={openUserProfile}
               onOpenDm={openDmWith}
+              onCall={callFriend}
               onRefresh={friendsState.refresh}
             />
           )
@@ -3232,7 +3529,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
               <h1>
                 {activeTextChannel?.name || voice.currentChannel?.name || 'Nenhum canal selecionado'}
                 {!activeTextChannel && voice.connected && (
-                  <CallTimer className="room-call-timer" startedAt={rooms.find((room) => room.id === voice.currentChannel?.id)?.callStartedAtLocal} />
+                  <CallTimer className="room-call-timer" startedAt={currentCallStartedAt} />
                 )}
               </h1>
               <p>{activeTextChannel?.description || voice.currentChannel?.description || 'Escolha um canal na lista à esquerda.'}</p>
@@ -3299,162 +3596,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           </div>
         )}
 
-        <div className={`room-content ${voice.connected ? 'voice-live' : ''} ${chatOpen && voice.connected ? 'with-chat' : ''} ${voice.connected && voiceMembersOpen ? 'with-members' : ''} ${voice.connected && watchingStream ? 'call-watching' : ''} ${chromeHidden ? 'call-chrome-hidden' : ''}`}>
-          <section className="stage-column">
-            <div className="stage-content">
-              {voice.connected && <SoundboardToast event={voice.soundboardEvent} />}
-              {joiningId || voice.connectionState === ConnectionState.Connecting ? (
-                <RoomSkeleton />
-              ) : voice.connected ? (
-                voiceStage
-              ) : (
-                <div className="disconnected-stage">
-                  <VoiceIcon size={20} />
-                  <h2>Sem canal de voz</h2>
-                  <p>Selecione um canal para entrar na conversa.</p>
-                </div>
-              )}
-            </div>
-
-            {voice.connected && (
-              <div className="voice-toolbar" aria-label="Controles de voz">
-                <div className="voice-split-action">
-                  <button className={`voice-action ${voice.micMuted ? 'danger' : ''}`} type="button" onClick={() => void voice.toggleMicrophone()} disabled={voice.deafened} title={voice.micMuted ? 'Ligar microfone' : 'Desligar microfone'} aria-label={voice.micMuted ? 'Ligar microfone' : 'Desligar microfone'}>
-                    <IconSwap on={!voice.micMuted} onIcon={<MicIcon />} offIcon={<MicOffIcon />} />
-                  </button>
-                  <DeviceMenu devices={voice.audioInputs} selectedId={voice.selectedMicId} onSelect={(deviceId) => void voice.setMicrophoneDevice(deviceId)} label="Escolher microfone" />
-                </div>
-                <div className="voice-split-action">
-                  <button className={`voice-action ${voice.deafened ? 'danger' : ''}`} type="button" onClick={() => void voice.toggleDeafen()} title={voice.deafened ? 'Ativar áudio' : 'Desativar áudio'} aria-label={voice.deafened ? 'Ativar áudio' : 'Desativar áudio'}>
-                    <IconSwap on={!voice.deafened} onIcon={<HeadphonesIcon />} offIcon={<HeadphonesOffIcon />} />
-                  </button>
-                  <DeviceMenu devices={voice.audioOutputs} selectedId={voice.selectedSpeakerId} onSelect={(deviceId) => void voice.setSpeakerDevice(deviceId)} label="Escolher saída de áudio" />
-                </div>
-                <div className="voice-split-action">
-                  <button className={`voice-action ${voice.cameraEnabled ? 'sharing' : ''}`} type="button" onClick={() => void voice.toggleCamera()} title={voice.cameraEnabled ? 'Desligar câmera' : 'Ligar câmera'} aria-label={voice.cameraEnabled ? 'Desligar câmera' : 'Ligar câmera'}>
-                    <IconSwap on={voice.cameraEnabled} onIcon={<CameraIcon />} offIcon={<CameraOffIcon />} />
-                  </button>
-                  <button type="button" className="device-menu-chevron" aria-label="Opções de câmera"><ChevronIcon size={12} /></button>
-                </div>
-                <div className="voice-split-action">
-                  <button
-                    className={`voice-action ${voice.screenEnabled ? 'sharing' : ''}`}
-                    type="button"
-                    onClick={() => void startOrStopScreenShare()}
-                    title={voice.screenEnabled ? 'Parar transmissão' : 'Compartilhar tela'}
-                  >
-                    <ShareIcon />
-                  </button>
-                  {voice.screenEnabled && <ShareQualityMenu value={quality} onSelect={changeShareQuality} />}
-                </div>
-                <div className="soundboard-anchor">
-                  <button
-                    className={`voice-action ${soundboardOpen ? 'sharing' : ''}`}
-                    type="button"
-                    onClick={() => setSoundboardOpen((open) => !open)}
-                    title="Soundboard"
-                    aria-label="Soundboard"
-                  >
-                    <SoundboardIcon />
-                  </button>
-                  <SoundboardPanel
-                    open={soundboardOpen}
-                    serverId={activeServerId ?? ''}
-                    onClose={() => setSoundboardOpen(false)}
-                    sounds={soundboardSounds}
-                    ownUserId={session.id}
-                    onPlay={(sound) => void voice.playSoundboardSound(sound)}
-                    onCreated={(sound) => setSoundboardSounds((current) => current.some((s) => s.id === sound.id) ? current : [...current, sound])}
-                    onDeleted={(soundId) => setSoundboardSounds((current) => current.filter((s) => s.id !== soundId))}
-                  />
-                </div>
-                <button className="voice-action leave" type="button" onClick={() => void voice.disconnect()} title="Sair do canal">
-                  <LeaveIcon />
-                </button>
-              </div>
-            )}
-          </section>
-
-          {chatOpen && voice.connected && (
-          <aside className="chat-panel">
-            <div className="chat-heading">
-              <div className="chat-heading-info">
-                <div><MessageIcon size={16} /><strong>Chat</strong></div>
-                <span>{voice.currentChannel?.name || 'sem canal'}</span>
-              </div>
-              <button type="button" className="chat-close" onClick={() => setChatOpen(false)} aria-label="Fechar chat">
-                <CloseIcon size={14} />
-              </button>
-            </div>
-            <div
-              className={`messages ${messageStyle === 'compact' ? 'compact' : ''} ${messageStyle === 'grouped' ? 'grouped' : ''}`}
-              aria-live="polite"
-            >
-              {voice.messages.length === 0 ? (
-                <div className="empty-chat"><strong>Nenhuma mensagem</strong><span>As mensagens pertencem ao canal atual.</span></div>
-              ) : voice.messages.map((message, index) => {
-                const previous = voice.messages[index - 1];
-                const continued =
-                  messageStyle === 'grouped' &&
-                  previous?.senderId === message.senderId &&
-                  message.sentAt - previous.sentAt < 5 * 60 * 1000;
-                const senderAvatar =
-                  message.senderId === session.id ? session.avatarUrl : remoteAvatarCache.get(message.senderId)?.avatarUrl;
-                const isBotMessage = message.senderId === MUSIC_BOT_IDENTITY;
-                return (
-                  <article className={`message ${continued ? 'continued' : ''}`} key={message.id}>
-                    {isBotMessage ? (
-                      <Avatar name={message.senderName} avatarUrl={senderAvatar} compact />
-                    ) : (
-                      <button
-                        type="button"
-                        className="message-avatar-trigger"
-                        onClick={(event) => openUserProfile(message.senderId, event)}
-                        title={`Ver perfil de ${message.senderName}`}
-                      >
-                        <Avatar name={message.senderName} avatarUrl={senderAvatar} compact />
-                      </button>
-                    )}
-                    <div>
-                      <header>
-                        {isBotMessage ? (
-                          <strong>
-                            {message.senderName}
-                            <span className="bot-badge">BOT</span>
-                          </strong>
-                        ) : (
-                          <button type="button" className="message-name-trigger" onClick={(event) => openUserProfile(message.senderId, event)}>
-                            {message.senderName}
-                          </button>
-                        )}
-                        <time>{new Date(message.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time>
-                      </header>
-                      <p>{message.text}</p>
-                      {message.musicCard && <MusicCard card={message.musicCard} />}
-                    </div>
-                  </article>
-                );
-              })}
-              <div ref={chatEndRef} />
-            </div>
-            <form className="chat-form" onSubmit={submitChat}>
-              <input
-                aria-label="Mensagem"
-                maxLength={500}
-                disabled={!voice.connected}
-                value={chatText}
-                onChange={(event) => setChatText(event.target.value)}
-                placeholder={voice.connected ? 'Enviar mensagem' : 'Entre em um canal'}
-              />
-              <button type="submit" disabled={!voice.connected || !chatText.trim()}>Enviar</button>
-            </form>
-          </aside>
-          )}
-
-          {activeServerId && (!voice.connected || voiceMembersOpen) && (
-            <MemberList data={memberData} ownId={session.id} ownStatus={session.presenceStatus} onOpenProfile={openUserProfile} />
-          )}
-        </div>
+        {renderVoiceRoom(false)}
         </>
         )}
         </>

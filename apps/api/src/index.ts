@@ -59,6 +59,8 @@ import {
   type PresenceStatus,
   type ForwardedFromMeta,
   type IdentityVerificationStatus,
+  type DmCallEventStatus,
+  type DmCallInfo,
   type LiveKitTokenResponse,
   type ModerationIncidentSummary,
   parseParticipantMetadata,
@@ -156,6 +158,7 @@ import { fetchMusicThumbnail } from './musicThumbnails.js';
 import { authorizeVoiceDisconnect } from './voiceModeration.js';
 import { deleteAccount, planAccountDeletion } from './accountDeletion.js';
 import { callElapsedMs, endCall } from './callSessions.js';
+import { DmCallRegistry, dmChannelIdFromRoom, dmRoomName, type DmCallState } from './dmCalls.js';
 import { attachRealtime, broadcast, disconnectUser, presence, refreshPresence, sendToServerMembers, sendToUser, sendToUsers, visiblePresenceStatus } from './realtime.js';
 import { normalizeServerLayout, parseStoredServerLayout, serverLayoutSchema } from './serverLayout.js';
 import {
@@ -212,6 +215,7 @@ import {
 } from './serverMembers.js';
 import { getInviteByCode, getOrCreateServerInvite, regenerateServerInvite, redeemInvite } from './invites.js';
 import {
+  areFriends,
   getFriendshipBetween,
   listFriends,
   listIncomingRequests,
@@ -930,6 +934,11 @@ const deleteAccountSchema = z.object({ password: z.string().min(1).max(PASSWORD_
 async function removeAccountEverywhere(userId: string): Promise<void> {
   // Tira da chamada de voz antes de apagar (depois não haveria mais como saber em que sala a pessoa está).
   await forceDisconnectFromVoice(userId).catch(() => undefined);
+  for (const call of dmCalls.forUser(userId)) {
+    dmCalls.finish(call.dmChannelId);
+    announceDmCall(call, 'ended');
+    await roomService.removeParticipant(dmRoomName(call.dmChannelId), userId).catch(() => undefined);
+  }
   const result = deleteAccount(userId);
   disconnectUser(userId);
 
@@ -3046,6 +3055,174 @@ app.post('/api/dm-channels/:dmChannelId/typing', requireSession, typingLimiter, 
   response.status(204).end();
 });
 
+// ---- Ligações individuais (voz entre dois amigos, pela aba de amigos). O estado "chamando / em andamento" fica em dmCalls.ts; a
+// mídia é uma sala do LiveKit própria de cada ligação ("dm-" + id da conversa). Só os dois participantes da conversa, ainda amigos e
+// sem bloqueio, conseguem entrar (o token só sai para eles).
+const dmCalls = new DmCallRegistry();
+const dmCallLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Muitas ligações em pouco tempo. Aguarde um instante.' },
+});
+
+function dmCallInfo(call: DmCallState): DmCallInfo {
+  return { dmChannelId: call.dmChannelId, callerId: call.callerId, calleeId: call.calleeId, status: call.status, elapsedMs: dmCalls.elapsedMs(call) };
+}
+
+function announceDmCall(call: DmCallState, status: DmCallEventStatus): void {
+  sendToUsers([call.callerId, call.calleeId], {
+    type: 'DM_CALL_UPDATE',
+    dmChannelId: call.dmChannelId,
+    callerId: call.callerId,
+    calleeId: call.calleeId,
+    status,
+    elapsedMs: dmCalls.elapsedMs(call),
+  });
+}
+
+// Ninguém atendeu a tempo: a ligação é perdida para os dois.
+setInterval(() => {
+  for (const call of dmCalls.expire()) announceDmCall(call, 'missed');
+}, 5_000).unref();
+
+function resolveDmCall(request: Request, response: Response) {
+  const user = currentUser(response);
+  const dmChannelId = request.params.dmChannelId;
+  const channel = typeof dmChannelId === 'string' ? getDmChannelForParticipant(dmChannelId, user.id) : undefined;
+  if (!channel) {
+    response.status(404).json({ error: 'Conversa não encontrada.' });
+    return null;
+  }
+  const other = channel.participants.find((participant) => participant.id !== user.id)!;
+  return { user, channel, other };
+}
+
+const DM_CALL_NOT_ALLOWED = 'Não foi possível ligar para essa pessoa agora.';
+
+// As ligações em que a pessoa está agora (ao abrir o app ou reconectar). Uma ligação "em andamento" cuja sala já esvaziou (o aviso do
+// LiveKit se perdeu) é encerrada aqui, para nunca ficar uma ligação fantasma.
+app.get('/api/me/dm-calls', requireSession, async (_request, response) => {
+  const user = currentUser(response);
+  const calls: DmCallInfo[] = [];
+  for (const call of dmCalls.forUser(user.id)) {
+    if (call.status === 'active' && call.acceptedAt !== null && Date.now() - call.acceptedAt > 20_000) {
+      const inRoom = await roomService.listParticipants(dmRoomName(call.dmChannelId)).then((list) => list.length, () => 0);
+      if (inRoom === 0) {
+        dmCalls.finish(call.dmChannelId);
+        announceDmCall(call, 'ended');
+        continue;
+      }
+    }
+    calls.push(dmCallInfo(call));
+  }
+  response.json({ calls });
+});
+
+app.post('/api/dm-channels/:dmChannelId/call', requireSession, dmCallLimiter, (request, response) => {
+  const context = resolveDmCall(request, response);
+  if (!context) return;
+  const { user, channel, other } = context;
+  if (!areFriends(user.id, other.id) || isBlocked(user.id, other.id)) {
+    response.status(403).json({ error: DM_CALL_NOT_ALLOWED });
+    return;
+  }
+  if (!dmCalls.get(channel.id) && !presence.isOnline(other.id)) {
+    response.status(409).json({ error: `${other.displayName} está offline no momento.` });
+    return;
+  }
+  const result = dmCalls.start(channel.id, user.id, other.id);
+  if (!result.ok) {
+    response.status(409).json({ error: result.reason === 'CALLER_BUSY' ? 'Você já está em outra ligação. Desligue antes de fazer outra.' : `${other.displayName} está em outra ligação.` });
+    return;
+  }
+  announceDmCall(result.call, result.call.status);
+  response.status(result.created ? 201 : 200).json({ call: dmCallInfo(result.call) });
+});
+
+app.post('/api/dm-channels/:dmChannelId/call/accept', requireSession, dmCallLimiter, (request, response) => {
+  const context = resolveDmCall(request, response);
+  if (!context) return;
+  const result = dmCalls.accept(context.channel.id, context.user.id);
+  if (!result.ok) {
+    response.status(result.reason === 'NOT_FOUND' ? 404 : result.reason === 'ALREADY_ACTIVE' ? 409 : 403).json({ error: 'Essa ligação não está mais disponível.' });
+    return;
+  }
+  announceDmCall(result.call, 'active');
+  response.json({ call: dmCallInfo(result.call) });
+});
+
+app.post('/api/dm-channels/:dmChannelId/call/decline', requireSession, dmCallLimiter, (request, response) => {
+  const context = resolveDmCall(request, response);
+  if (!context) return;
+  const result = dmCalls.decline(context.channel.id, context.user.id);
+  if (!result.ok) {
+    response.status(result.reason === 'NOT_FOUND' ? 404 : 403).json({ error: 'Essa ligação não está mais disponível.' });
+    return;
+  }
+  announceDmCall(result.call, 'declined');
+  response.status(204).end();
+});
+
+// Quem ligou desiste enquanto chama, ou qualquer um dos dois encerra a ligação em andamento. Sair da sala de voz não chama isto:
+// como num canal de voz, sair não derruba o outro (a ligação acaba quando a sala esvazia).
+app.delete('/api/dm-channels/:dmChannelId/call', requireSession, dmCallLimiter, (request, response) => {
+  const context = resolveDmCall(request, response);
+  if (!context) return;
+  const result = dmCalls.end(context.channel.id, context.user.id);
+  if (!result.ok) {
+    response.status(result.reason === 'NOT_FOUND' ? 404 : 403).json({ error: 'Essa ligação não está mais disponível.' });
+    return;
+  }
+  announceDmCall(result.call, 'ended');
+  response.status(204).end();
+});
+
+app.post('/api/dm-channels/:dmChannelId/call/token', requireSession, voiceTokenLimiter, async (request, response) => {
+  const context = resolveDmCall(request, response);
+  if (!context) return;
+  const { user, channel, other } = context;
+  const call = dmCalls.get(channel.id);
+  if (!call) {
+    response.status(404).json({ error: 'Não há ligação em andamento nessa conversa.' });
+    return;
+  }
+  // Quem foi chamado só entra depois de atender.
+  if (call.calleeId === user.id && call.status !== 'active') {
+    response.status(403).json({ error: 'Atenda a ligação antes de entrar.' });
+    return;
+  }
+  if (!areFriends(user.id, other.id) || isBlocked(user.id, other.id)) {
+    response.status(403).json({ error: DM_CALL_NOT_ALLOWED });
+    return;
+  }
+  const metadata: HumanParticipantMetadata = {
+    app: 'nexplay',
+    participantType: 'HUMAN',
+    userId: user.id,
+    accentColor: user.accentColor,
+    statusText: user.statusText,
+    activity: null,
+  };
+  const accessToken = new AccessToken(config.LIVEKIT_API_KEY, config.LIVEKIT_API_SECRET, {
+    identity: user.id,
+    name: user.username,
+    ttl: '10m',
+    metadata: JSON.stringify(metadata),
+  });
+  accessToken.addGrant({
+    room: dmRoomName(channel.id),
+    roomJoin: true,
+    canPublish: true,
+    canSubscribe: true,
+    canPublishData: true,
+    canUpdateOwnMetadata: true,
+  });
+  const payload: LiveKitTokenResponse = { token: await accessToken.toJwt(), url: config.LIVEKIT_PUBLIC_URL };
+  response.json(payload);
+});
+
 app.post('/api/dm-channels/:dmChannelId/messages', requireSession, dmMessageLimiter, (request, response) => {
   const dmChannelId = request.params.dmChannelId;
   const user = currentUser(response);
@@ -3412,6 +3589,15 @@ app.post('/api/livekit/webhook', express.raw({ type: '*/*' }), async (request, r
   }
 
   const roomName = event.room?.name;
+  // Sala de uma ligação individual: quando ninguém mais está nela a ligação acabou (o próprio LiveKit é a fonte da verdade).
+  const dmCallChannelId = roomName ? dmChannelIdFromRoom(roomName) : null;
+  if (roomName && dmCallChannelId && (event.event === 'participant_left' || event.event === 'room_finished')) {
+    const remaining = event.event === 'room_finished' ? 0 : await roomService.listParticipants(roomName).then((list) => list.length, () => 0);
+    if (remaining === 0) {
+      const finished = dmCalls.finish(dmCallChannelId);
+      if (finished) announceDmCall(finished, 'ended');
+    }
+  }
   const channel = roomName ? getVoiceChannelById(roomName) : undefined;
   if (channel && ROOM_STATE_WEBHOOK_EVENTS.has(event.event)) {
     try {

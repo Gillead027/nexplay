@@ -39,6 +39,23 @@ function playTones(tones: Tone[], volumePercent: number): void {
   }
 }
 
+/** Toque de ligação recebida: repete a cada ~2 s até quem chamou desistir ou a pessoa atender/recusar. Devolve a função que para o toque. */
+export function startRingtone(getOutputVolume: () => number): () => void {
+  const ring = () =>
+    playTones(
+      [
+        { frequency: 659, startOffset: 0, duration: 0.2 },
+        { frequency: 880, startOffset: 0.24, duration: 0.2 },
+        { frequency: 659, startOffset: 0.7, duration: 0.2 },
+        { frequency: 880, startOffset: 0.94, duration: 0.24 },
+      ],
+      getOutputVolume(),
+    );
+  ring();
+  const timer = window.setInterval(ring, 2_200);
+  return () => window.clearInterval(timer);
+}
+
 export function playJoinSound(outputVolume: number): void {
   playTones(
     [

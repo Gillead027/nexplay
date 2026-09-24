@@ -711,6 +711,20 @@ export interface RoomParticipantSummary {
   isDeafened?: boolean;
 }
 
+// Ligações individuais (amigos): o "servidor" fictício dos canais de voz das ligações, o estado que vale enquanto a ligação existe
+// e o que os eventos anunciam. A sala no LiveKit de cada ligação se chama "dm-" + id da conversa.
+export const DM_CALL_SERVER_ID = 'dm';
+export type DmCallStatus = 'ringing' | 'active';
+export type DmCallEventStatus = DmCallStatus | 'ended' | 'declined' | 'missed';
+export interface DmCallInfo {
+  dmChannelId: string;
+  callerId: string;
+  calleeId: string;
+  status: DmCallStatus;
+  // Há quanto tempo a ligação está em andamento (ms, no relógio do servidor); null enquanto chama.
+  elapsedMs: number | null;
+}
+
 export interface RoomSummary extends VoiceChannel {
   participants: RoomParticipantSummary[];
   // Há quanto tempo (ms) a chamada deste canal está ativa, medido pelo servidor; null quando não há ninguém de verdade na sala.
@@ -1154,4 +1168,6 @@ export type RealtimeEvent =
   | { type: 'DM_MESSAGE_CREATE'; dmChannelId: string; message: DmMessage }
   | { type: 'DM_MESSAGE_UPSERT'; dmChannelId: string; message: DmMessage }
   | { type: 'DM_MESSAGE_DELETE'; dmChannelId: string; messageId: string }
-  | { type: 'BLOCK_UPDATE'; blockedUserId: string; blocked: boolean };
+  | { type: 'BLOCK_UPDATE'; blockedUserId: string; blocked: boolean }
+  // Ligação individual pela aba de amigos: chamando, em andamento ou terminada (encerrada, recusada ou perdida).
+  | { type: 'DM_CALL_UPDATE'; dmChannelId: string; callerId: string; calleeId: string; status: DmCallEventStatus; elapsedMs: number | null };

@@ -6,7 +6,7 @@ import { MessageSkeleton } from './Skeleton';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { MarkdownText } from './Markdown';
 import { Avatar } from './Workspace';
-import { CheckIcon, CopyIcon, EditIcon, ForwardIcon, TrashIcon } from './Icons';
+import { CheckIcon, CopyIcon, EditIcon, ForwardIcon, TrashIcon, PhoneIcon } from './Icons';
 import { copyLabel, useCopyFeedback } from '../useCopyFeedback';
 import { TypingIndicator } from './TypingIndicator';
 import { useTypingIndicator, useTypingSender } from '../useTypingIndicator';
@@ -87,12 +87,15 @@ export function DmChannelView({
   isBlockedByMe,
   onOpenProfile,
   onForward,
+  call,
 }: {
   channel: DmChannel;
   session: UserSession;
   isBlockedByMe: boolean;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
   onForward: (message: DmMessage) => void;
+  // Botão de ligar no cabeçalho ("Ligar", "Atender", "Entrar na ligação"...); ausente quando já se está na ligação (o painel dela cuida).
+  call?: { label: string; onClick: () => void; disabled?: boolean } | undefined;
 }) {
   const other = channel.participants.find((participant) => participant.id !== session.id) ?? channel.participants[0]!;
   const [messages, setMessages] = useState<DmMessage[]>([]);
@@ -231,6 +234,11 @@ export function DmChannelView({
           <Avatar name={other.displayName} accentColor={other.accentColor} avatarUrl={other.avatarUrl} frame={other.avatarFrame} />
           <strong>{other.displayName}</strong>
         </button>
+        {call && (
+          <button type="button" className="dm-call-button" onClick={call.onClick} disabled={call.disabled} title={call.label} aria-label={call.label}>
+            <PhoneIcon size={16} /> <span>{call.label}</span>
+          </button>
+        )}
       </header>
       {error && <div className="error-banner" role="alert"><span>{error}</span></div>}
       <div className="messages text-channel-messages" role="log" aria-live="polite" aria-busy={loading}>

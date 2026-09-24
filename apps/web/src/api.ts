@@ -8,6 +8,7 @@ import type {
   CategoryPrefs,
   Channel,
   ContentVisibility,
+  DmCallInfo,
   DmChannel,
   DmMessage,
   ForwardDestination,
@@ -446,6 +447,13 @@ export const api = {
   blockUser: (userId: string) => request<void>(`/api/blocks/${encodeURIComponent(userId)}`, { method: 'PUT' }),
   unblockUser: (userId: string) => request<void>(`/api/blocks/${encodeURIComponent(userId)}`, { method: 'DELETE' }),
   getDmChannels: () => request<{ channels: DmChannel[] }>('/api/dm-channels'),
+  // Ligações individuais (voz entre dois amigos).
+  getMyDmCalls: () => request<{ calls: DmCallInfo[] }>('/api/me/dm-calls'),
+  startDmCall: (dmChannelId: string) => request<{ call: DmCallInfo }>(`/api/dm-channels/${encodeURIComponent(dmChannelId)}/call`, { method: 'POST' }),
+  acceptDmCall: (dmChannelId: string) => request<{ call: DmCallInfo }>(`/api/dm-channels/${encodeURIComponent(dmChannelId)}/call/accept`, { method: 'POST' }),
+  declineDmCall: (dmChannelId: string) => request<void>(`/api/dm-channels/${encodeURIComponent(dmChannelId)}/call/decline`, { method: 'POST' }),
+  endDmCall: (dmChannelId: string) => request<void>(`/api/dm-channels/${encodeURIComponent(dmChannelId)}/call`, { method: 'DELETE' }),
+  getDmCallToken: (dmChannelId: string) => request<LiveKitTokenResponse>(`/api/dm-channels/${encodeURIComponent(dmChannelId)}/call/token`, { method: 'POST' }),
   openDmChannel: (userId: string) =>
     request<{ channel: DmChannel }>(`/api/dm-channels/${encodeURIComponent(userId)}`, { method: 'PUT' }),
   getDmMessages: (dmChannelId: string) =>

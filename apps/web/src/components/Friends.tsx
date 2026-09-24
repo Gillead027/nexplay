@@ -11,7 +11,7 @@ import type {
 import { api } from '../api';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { Avatar } from './Workspace';
-import { CloseIcon, MessageIcon, SearchIcon, UserIcon, UserPlusIcon } from './Icons';
+import { CloseIcon, MessageIcon, SearchIcon, UserIcon, UserPlusIcon, PhoneIcon } from './Icons';
 
 export interface FriendsState {
   friends: FriendSummary[];
@@ -244,6 +244,7 @@ export function FriendsHome({
   serverIds,
   onOpenProfile,
   onOpenDm,
+  onCall,
   onRefresh,
 }: {
   state: FriendsState;
@@ -251,6 +252,8 @@ export function FriendsHome({
   serverIds: string[];
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
   onOpenDm: (userId: string) => void;
+  // Liga para o amigo (voz individual): abre a conversa e começa a chamar.
+  onCall: (userId: string) => void;
   onRefresh: () => void;
 }) {
   const [tab, setTab] = useState<FriendsTab>(state.incoming.length > 0 ? 'pending' : 'all');
@@ -320,6 +323,9 @@ export function FriendsHome({
                   {friend.statusText && <small>{friend.statusText}</small>}
                 </button>
                 <div className="friend-row-actions">
+                  <button type="button" className="icon-button" title="Ligar" aria-label={`Ligar para ${friend.displayName}`} onClick={() => onCall(friend.id)}>
+                    <PhoneIcon size={16} />
+                  </button>
                   <button
                     type="button"
                     className="icon-button"

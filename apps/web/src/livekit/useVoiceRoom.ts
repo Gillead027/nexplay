@@ -24,6 +24,7 @@ import {
 import {
   CHAT_MESSAGE_MAX_LENGTH,
   DEAFENED_ATTRIBUTE,
+  DM_CALL_SERVER_ID,
   MIC_MUTED_ATTRIBUTE,
   MUSIC_BOT_DISPLAY_NAME,
   MUSIC_BOT_IDENTITY,
@@ -639,7 +640,8 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
         setMessages([]);
         setDeafened(false);
         updateUserMuted(false);
-        const credentials = await api.getLiveKitToken(channel.serverId, channel.id);
+        // Ligação individual: sala própria, com o token vindo da rota das ligações (só os dois amigos recebem).
+        const credentials = channel.serverId === DM_CALL_SERVER_ID ? await api.getDmCallToken(channel.id) : await api.getLiveKitToken(channel.serverId, channel.id);
         suppressPresenceSoundsRef.current = true;
         await withTimeout(
           room.connect(credentials.url, credentials.token, { autoSubscribe: true }),
