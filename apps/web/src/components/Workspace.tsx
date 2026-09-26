@@ -125,6 +125,7 @@ import { stampRoom, type RoomView } from '../callTimer';
 import { TrustSafetyPane } from './TrustSafety';
 import { StatusNotices } from './StatusNotices';
 import { useNewVersion } from '../useNewVersion';
+import { hasUnreadUpdates, readUpdatesSeen, saveUpdatesSeen } from '../updatesSeen';
 import { ConnectionSignal } from './ConnectionSignal';
 import { ServerImage } from './ServerImage';
 import { describeConnectionSignal } from '../connectionSignal';
@@ -2701,6 +2702,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   // Arrastar alguém para outro canal de voz (só quem tem "Mover membros"; o servidor confere a permissão).
   async function moveVoiceMember(member: VoiceMemberDrag, toRoomId: string) {
     if (!activeServerId) return;
+    setInviteMessage({ text: `Movendo ${member.name}…`, failed: false });
     try {
       await api.moveVoiceParticipant(activeServerId, member.fromRoomId, member.identity, toRoomId);
       const destination = rooms.find((room) => room.id === toRoomId);
@@ -2793,6 +2795,18 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         }
       : undefined;
   const activeTextChannel = textChannels.find(({ id }) => id === selectedTextChannelId);
+  // "NOVO" no canal "atualizações": some assim que a pessoa abre o canal e vê as novidades.
+  const [updatesSeen, setUpdatesSeen] = useState<Record<string, number>>(() => readUpdatesSeen());
+  useEffect(() => {
+    if (!activeTextChannel?.isUpdates || activeTextChannel.latestAnnouncementAt === undefined) return;
+    const { id, latestAnnouncementAt } = activeTextChannel;
+    setUpdatesSeen((current) => {
+      if ((current[id] ?? 0) >= latestAnnouncementAt) return current;
+      const next = { ...current, [id]: latestAnnouncementAt };
+      saveUpdatesSeen(next);
+      return next;
+    });
+  }, [activeTextChannel]);
   // Em telas estreitas os servidores e canais viram uma gaveta que abre pelo botão de menu e fecha ao escolher um canal.
   const [navOpen, setNavOpen] = useState(false);
   useEscapeLayer(navOpen, () => setNavOpen(false));
@@ -3345,6 +3359,9 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                             aria-current={selected ? 'page' : undefined} title={channel.description}>
                             <span className="channel-hash" aria-hidden="true">#</span>
                             <span>{channel.name}</span>
+                            {!selected && hasUnreadUpdates(channel.latestAnnouncementAt, updatesSeen[channel.id]) && (
+                              <span className="channel-new-badge" title="Tem novidade do NexPlay que você ainda não viu">NOVO</span>
+                            )}
                           </button>
                           {canManageChannels && (
                             <TextChannelSettingsModal channel={channel} serverId={activeServerId ?? ''} categories={categories}
@@ -3407,20 +3424,20 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                     onDragLeave={() => setDragOverTarget((current) => current === 'root' ? 'none' : current)}
                     onDrop={(event) => handleCategoryDrop(event, null, 'Sem categoria')}>
                     {showUncategorizedText && (
-                      <>
-                        <div className="section-title">
-                          <span>CANAIS DE TEXTO</span>
-                          {canManageChannels && (
-                            <button type="button" className="add-channel-button"
-                              onClick={(event) => openCreateChannel('text', null, event.currentTarget)}
-                              aria-label="Criar canal de texto" title="Criar canal de texto">
-                              <PlusIcon size={14} />
-                            </button>
-                          )}
-                        </div>
-                        {renderTextChannels(uncategorizedText)}
-                      </>
+                      <div className="section-title">
+                        <span>CANAIS DE TEXTO</span>
+                        {canManageChannels && (
+                          <button type="button" className="add-channel-button"
+                            onClick={(event) => openCreateChannel('text', null, event.currentTarget)}
+                            aria-label="Criar canal de texto" title="Criar canal de texto">
+                            <PlusIcon size={14} />
+                          </button>
+                        )}
+                      </div>
                     )}
+                    {/* Só o título some quando o servidor tem categorias; os canais sem categoria continuam na lista
+                        (antes sumiam junto com o título e ficavam invisíveis, como o canal "atualizações"). */}
+                    {(showUncategorizedText || uncategorizedText.length > 0) && renderTextChannels(uncategorizedText)}
                     {showUncategorizedVoice && (
                       <div className="section-title">
                         <span>CANAIS DE VOZ</span>

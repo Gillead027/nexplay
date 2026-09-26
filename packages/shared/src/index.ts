@@ -915,6 +915,8 @@ export interface TextChannel {
   isAnnouncement: boolean;
   // O canal "atualizações" de cada servidor (onde o NexPlay publica as novidades): só quem gerencia mensagens escreve nele.
   isUpdates: boolean;
+  // Só no canal "atualizações": quando a última novidade foi publicada nele (o app mostra "NOVO" se a pessoa ainda não viu).
+  latestAnnouncementAt?: number;
   createdBy: string | null;
   createdAt: number;
 }

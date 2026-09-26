@@ -16,7 +16,7 @@ import { db } from './db.js';
 import { getReactionsByChannel, getReactionsForMessage } from './reactions.js';
 import { slugify } from './slug.js';
 import type { UserRecord } from './users.js';
-import { listAnnouncementMessages } from './updatesChannel.js';
+import { getLatestAnnouncementAt, listAnnouncementMessages } from './updatesChannel.js';
 import { listWebhookMessages } from './webhooks.js';
 
 interface TextChannelRow {
@@ -179,6 +179,7 @@ const listAllBotMessagesStatement = db.prepare(`
 const deleteBotMessageByIdStatement = db.prepare('DELETE FROM text_bot_messages WHERE id = ?');
 
 function toChannel(row: TextChannelRow): TextChannel {
+  const latestAnnouncementAt = row.is_updates ? getLatestAnnouncementAt(row.id) : null;
   return {
     id: row.id,
     serverId: row.server_id,
@@ -190,6 +191,7 @@ function toChannel(row: TextChannelRow): TextChannel {
     contentVisibility: row.content_visibility,
     isAnnouncement: Boolean(row.is_announcement),
     isUpdates: Boolean(row.is_updates),
+    ...(latestAnnouncementAt !== null ? { latestAnnouncementAt } : {}),
     createdBy: row.created_by,
     createdAt: row.created_at,
   };

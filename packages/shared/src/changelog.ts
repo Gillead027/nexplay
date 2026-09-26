@@ -39,6 +39,16 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Webhooks de canal: um bot ou script pode postar mensagens num canal (Configurações do canal, aba Integrações).',
     ],
   },
+  {
+    id: '2026-09-26-correcoes-atualizacoes-e-mover',
+    date: '2026-09-26',
+    title: 'Correções: canal atualizações visível, aviso de novidade e mover membro com confirmação',
+    items: [
+      'Canais sem categoria voltaram a aparecer na barra lateral dos servidores que têm categorias (o canal atualizações, e também regras, bem-vindos e outros, estavam escondidos por causa disso).',
+      'O canal atualizações mostra o aviso NOVO enquanto houver novidade que você ainda não leu.',
+      'Ao mover alguém de canal de voz, o NexPlay agora confirma se a pessoa realmente saiu do canal; se o aplicativo dela estiver desatualizado, avisa para ela atualizar o NexPlay (a pessoa movida precisa estar com a versão mais nova).',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

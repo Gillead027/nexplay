@@ -76,6 +76,15 @@ function toAnnouncementMessage(row: AnnouncementRow): TextMessage {
   };
 }
 
+const selectLatestAnnouncementStatement = db.prepare(
+  'SELECT MAX(created_at) AS latest FROM text_announcement_messages WHERE channel_id = ?',
+);
+
+// Quando a última novidade foi publicada neste canal (null se ainda não houve nenhuma).
+export function getLatestAnnouncementAt(channelId: string): number | null {
+  return (selectLatestAnnouncementStatement.get(channelId) as { latest: number | null }).latest;
+}
+
 export function listAnnouncementMessages(channelId: string, limit = 100): TextMessage[] {
   return (listMessagesStatement.all(channelId, limit) as unknown as AnnouncementRow[]).map(toAnnouncementMessage);
 }

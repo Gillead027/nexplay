@@ -39,6 +39,7 @@ test('servidor novo já nasce com o canal atualizações (depois do geral) e só
       assert.equal(updates.name, UPDATES_CHANNEL_NAME);
       assert.equal(channels.filter((channel) => channel.isUpdates).length, 1);
       assert.deepEqual(await messagesOf(request, serverId, updates.id, ana.cookie), [], 'servidor novo não recebe o histórico de novidades');
+      assert.equal(updates.latestAnnouncementAt, undefined, 'sem novidade publicada, não há o que marcar como NOVO');
 
       const invite = (await (await request(`/servers/${serverId}/invite`, 'POST', undefined, ana.cookie)).json()) as { invite: { code: string } };
       assert.equal((await request(`/invites/${invite.invite.code}/redeem`, 'POST', undefined, bia.cookie)).status, 201);
@@ -95,6 +96,8 @@ test('na subida da API: servidor que já existia ganha o canal e recebe as novid
       assert.equal(messages.length, CHANGELOG.length, 'uma mensagem por novidade');
       assert.deepEqual(messages.map((message) => message.text), CHANGELOG.map(formatChangelogMessage), 'na ordem do changelog');
       assert.ok(messages.every((message) => message.senderType === 'SYSTEM' && message.senderName === 'NexPlay'));
+      assert.equal(updates.latestAnnouncementAt, messages[messages.length - 1]!.sentAt, 'o canal informa quando saiu a última novidade (para o aviso NOVO)');
+      assert.equal(channels.find((channel) => !channel.isUpdates)?.latestAnnouncementAt, undefined, 'só o canal de atualizações tem esse campo');
     } finally {
       await second.stop();
     }

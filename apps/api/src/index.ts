@@ -3815,7 +3815,21 @@ app.post(
         toChannelId: toRoom.id,
         movedByName: currentUser(response).username,
       });
-      response.status(204).end();
+      // Só diz que moveu se a pessoa realmente saiu do canal de origem (o app dela é quem sai e entra no novo).
+      // Um app desatualizado não entende o aviso e a pessoa continua no canal: nesse caso avisa quem moveu,
+      // em vez de fingir que deu certo. Sala que deixou de existir = a pessoa saiu.
+      const deadline = Date.now() + 6_000;
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 400));
+        const remaining = await roomService.listParticipants(fromRoom.id).catch(() => []);
+        if (!remaining.some(({ identity }) => identity === targetId)) {
+          response.status(204).end();
+          return;
+        }
+      }
+      response.status(409).json({
+        error: 'A pessoa não saiu do canal: o NexPlay dela provavelmente está desatualizado. Peça para ela atualizar o aplicativo e tente de novo.',
+      });
     } catch (error) {
       console.error('Falha ao mover participante de canal de voz:', error);
       response.status(503).json({ error: 'Não foi possível mover a pessoa agora.' });
