@@ -11,6 +11,7 @@ import multer, { MulterError } from 'multer';
 import { z } from 'zod';
 import {
   ACCENT_COLORS,
+  type Activity,
   IMAGE_MIME,
   parseImageDataUrl,
   MUSIC_BOT_IDENTITY,
@@ -31,7 +32,9 @@ import {
   DISPLAY_NAME_MIN_LENGTH,
   hasPermission,
   IDENTITY_DOCUMENT_MAX_SIZE_BYTES,
+  parseActivity,
   PRESENCE_STATUSES,
+  publicActivity,
   isStaffTier,
   MESSAGE_SEARCH_QUERY_MAX_LENGTH,
   MESSAGE_SEARCH_QUERY_MIN_LENGTH,
@@ -164,7 +167,7 @@ import { authorizeVoiceDisconnect, authorizeVoiceMove } from './voiceModeration.
 import { deleteAccount, planAccountDeletion } from './accountDeletion.js';
 import { callElapsedMs, endCall } from './callSessions.js';
 import { DmCallRegistry, dmChannelIdFromRoom, dmRoomName, type DmCallState } from './dmCalls.js';
-import { attachRealtime, broadcast, disconnectUser, presence, refreshPresence, sendToServerMembers, sendToUser, sendToUsers, visiblePresenceStatus } from './realtime.js';
+import { attachRealtime, broadcast, disconnectUser, presence, refreshPresence, sendToServerMembers, sendToUser, sendToUsers, setActivity, visibleActivity, visiblePresenceStatus } from './realtime.js';
 import { normalizeServerLayout, parseStoredServerLayout, serverLayoutSchema } from './serverLayout.js';
 import {
   createVoiceChannel,
@@ -370,6 +373,15 @@ const dmChannelLimiter = rateLimit({
 const typingLimiter = rateLimit({
   windowMs: 10 * 1000,
   limit: 60,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { error: 'Devagar.' },
+});
+
+// A atividade só é enviada quando muda (troca de jogo ou de faixa), mas cada envio vira um aviso para todos os servidores da pessoa.
+const activityLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: { error: 'Devagar.' },
@@ -1106,6 +1118,23 @@ app.put('/api/me/presence', requireSession, (request, response) => {
   // As outras abas e aparelhos da própria pessoa acompanham a troca.
   sendToUser(user.id, { type: 'PRESENCE_STATUS_CHOICE', status: body.data.status });
   response.json({ presenceStatus: body.data.status });
+});
+
+// O que a pessoa está fazendo agora (jogo ou música, detectado pelo app desktop): aparece na lista de membros dos servidores
+// dela. O cliente só manda quando muda (e de novo a cada reconexão); ver ACTIVITY_UPDATE em @nexplay/shared. null = parou.
+app.put('/api/me/activity', requireSession, activityLimiter, (request, response) => {
+  const raw = (request.body as { activity?: unknown } | undefined)?.activity;
+  let activity: Activity | null = null;
+  if (raw !== null) {
+    const parsed = parseActivity(raw);
+    activity = parsed && publicActivity(parsed);
+    if (!activity) {
+      response.status(400).json({ error: 'Atividade inválida.' });
+      return;
+    }
+  }
+  setActivity(currentUser(response).id, activity);
+  response.status(204).end();
 });
 
 // Como a pessoa organizou a lista de servidores (pastas). Sempre devolvido já conferido contra os servidores dela.
@@ -3032,11 +3061,15 @@ app.get('/api/servers/:serverId/members', requireSession, requireServerMembershi
 // os membros do próprio servidor aparecem (nada de listar a instância inteira).
 app.get('/api/servers/:serverId/presence', requireSession, requireServerMembership, (_request, response) => {
   const statuses: Record<string, PresenceStatus> = {};
+  const activities: Record<string, Activity> = {};
   for (const userId of listMemberUserIdsForServer(currentServerId(response))) {
     const status = visiblePresenceStatus(userId);
-    if (status) statuses[userId] = status;
+    if (!status) continue;
+    statuses[userId] = status;
+    const activity = visibleActivity(userId);
+    if (activity) activities[userId] = activity;
   }
-  response.json({ onlineUserIds: Object.keys(statuses), statuses });
+  response.json({ onlineUserIds: Object.keys(statuses), statuses, activities });
 });
 
 app.get('/api/friends', requireSession, (_request, response) => {

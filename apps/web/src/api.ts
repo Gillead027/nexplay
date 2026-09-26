@@ -1,6 +1,7 @@
 import type { AccountDeletionPreview } from './components/DeleteAccountDialog';
 import type {
   AccentColor,
+  Activity,
   AvatarFrame,
   BanRecord,
   BlockedUserSummary,
@@ -414,7 +415,10 @@ export const api = {
     }),
   getMembers: (serverId: string) => request<{ members: MemberSummary[] }>(`${s(serverId)}/members`),
   getPresence: (serverId: string) =>
-    request<{ onlineUserIds: string[]; statuses?: Record<string, PresenceStatus> }>(`${s(serverId)}/presence`),
+    request<{ onlineUserIds: string[]; statuses?: Record<string, PresenceStatus>; activities?: Record<string, Activity> }>(`${s(serverId)}/presence`),
+  // O que a pessoa está jogando/ouvindo (null = parou), para a lista de membros; ver useShareActivity.
+  setActivity: (activity: Activity | null) =>
+    request<void>('/api/me/activity', { method: 'PUT', body: JSON.stringify({ activity }) }),
   setPresenceStatus: (status: PresenceStatus) =>
     request<{ presenceStatus: PresenceStatus }>('/api/me/presence', { method: 'PUT', body: JSON.stringify({ status }) }),
   getServerLayout: () => request<{ layout: ServerLayout }>('/api/me/server-layout'),

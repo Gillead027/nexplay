@@ -485,7 +485,13 @@ button:disabled { cursor: default; opacity: .45; }
 .member-row.online .member-status-dot { background: #65c6f0; }
 .member-copy { min-width: 0; display: grid; gap: 1px; }
 .member-copy strong { overflow: hidden; color: var(--text-primary); font-size: var(--fs-sm); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.member-copy > span:not(.sr-only) { overflow: hidden; color: var(--text-muted); font-size: var(--fs-2xs); text-overflow: ellipsis; white-space: nowrap; }
+.member-copy > span:not(.sr-only, .activity-line) { overflow: hidden; color: var(--text-muted); font-size: var(--fs-2xs); text-overflow: ellipsis; white-space: nowrap; }
+/* O que a pessoa joga ou ouve, embaixo do nome: ícone (música em verde, como no Discord) e uma linha só, cortada com reticências. */
+.member-copy .activity-line { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--text-muted); font-size: var(--fs-2xs); }
+.member-copy .activity-line > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-copy .activity-line svg { flex: none; }
+.member-copy .activity-line.listening svg { color: var(--success); }
+.member-copy .activity-line.playing svg { color: var(--accent); }
 .member-row.offline .member-avatar .avatar, .member-row.offline .member-copy { opacity: .45; }
 .member-row.offline:hover .member-avatar .avatar, .member-row.offline:hover .member-copy { opacity: .8; }
 .bot-badge { display: inline-flex; align-items: center; margin-left: 5px; padding: 1px 4px; border-radius: 3px; color: #88aee8; background: var(--accent); font-size: var(--fs-2xs); font-weight: 800; letter-spacing: .45px; vertical-align: middle; }

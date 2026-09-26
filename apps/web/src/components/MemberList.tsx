@@ -1,9 +1,10 @@
 import { useMemo } from 'react';
-import type { MemberSummary, PresenceStatus } from '@nexplay/shared';
+import type { Activity, MemberSummary, PresenceStatus } from '@nexplay/shared';
 import { buildMemberSections } from '../memberListState';
 import { buildNameColorMap } from '../roleColors';
 import type { ServerMemberListData } from '../useServerMemberList';
 import { PRESENCE_STATUS_LABELS } from '@nexplay/shared';
+import { ActivityLine } from './ActivityDisplay';
 import { MemberSkeleton } from './Skeleton';
 import { Avatar } from './Workspace';
 
@@ -11,6 +12,7 @@ function MemberRow({
   member,
   online,
   status,
+  activity,
   nameColor,
   isOwn,
   onOpenProfile,
@@ -18,6 +20,7 @@ function MemberRow({
   member: MemberSummary;
   online: boolean;
   status: PresenceStatus | 'offline';
+  activity: Activity | undefined;
   nameColor: string | undefined;
   isOwn: boolean;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
@@ -38,7 +41,8 @@ function MemberRow({
           {member.displayName}
           {isOwn ? ' (você)' : ''}
         </strong>
-        {member.statusText && <span>{member.statusText}</span>}
+        {/* Como no Discord: o que a pessoa está jogando ou ouvindo ocupa o lugar do status escrito. */}
+        {activity ? <ActivityLine activity={activity} compact /> : member.statusText && <span>{member.statusText}</span>}
         <span className="sr-only">{status === 'offline' ? 'Offline' : PRESENCE_STATUS_LABELS[status]}</span>
       </span>
     </button>
@@ -62,7 +66,7 @@ export function MemberList({
   ownStatus: PresenceStatus;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
 }) {
-  const { members, roles, onlineIds, statuses, loading, failed } = data;
+  const { members, roles, onlineIds, statuses, activities, loading, failed } = data;
   const sections = useMemo(() => buildMemberSections(members, onlineIds, ownId, roles), [members, onlineIds, ownId, roles]);
   const nameColors = useMemo(() => buildNameColorMap(members, roles), [members, roles]);
   const empty = members.length === 0;
@@ -87,6 +91,7 @@ export function MemberList({
                 member={member}
                 online={section.kind !== 'offline'}
                 status={section.kind === 'offline' ? 'offline' : member.id === ownId ? ownStatus : (statuses.get(member.id) ?? 'online')}
+                activity={section.kind === 'offline' ? undefined : activities.get(member.id)}
                 nameColor={nameColors.get(member.id)}
                 isOwn={member.id === ownId}
                 onOpenProfile={onOpenProfile}

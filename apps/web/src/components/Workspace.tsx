@@ -99,6 +99,7 @@ import { useEscapeLayer } from '../escapeLayers';
 import { PRESENCE_STATUS_LABELS, type PresenceStatus } from '@nexplay/shared';
 import { StatusPicker } from './StatusPicker';
 import { useServerMemberList } from '../useServerMemberList';
+import { useShareActivity } from '../useShareActivity';
 import { buildNameColorMap } from '../roleColors';
 import { copyText } from '../clipboard';
 import { liveDeafenedByIdentity, liveMutedByIdentity } from '../micState';
@@ -2168,6 +2169,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const member = useActiveServerMember(activeServerId, session);
   // Membros, cargos e presença do servidor aberto: uma leitura só, usada pela lista da direita e pela cor dos nomes.
   const memberData = useServerMemberList(activeServerId);
+  // O que a pessoa joga/ouve (app desktop) vai para a lista de membros de todos os servidores dela.
+  useShareActivity();
   const nameColors = useMemo(() => buildNameColorMap(memberData.members, memberData.roles), [memberData.members, memberData.roles]);
   // Trocar o status em outra aba ou aparelho da própria pessoa chega por aqui.
   useEffect(
@@ -2830,14 +2833,14 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       return channel?.categoryId ? categoryPrefFor(channel.categoryId).notificationMode : 'all';
     },
   });
-  // Atividade só existe pra quem está no mesmo canal de voz que você agora —
-  // o LiveKit não entrega metadata de participantes de salas que você não
-  // entrou, então fora daí o popover mostra o perfil sem essa seção.
+  // Quem está no mesmo canal de voz que você entrega a atividade completa pelo LiveKit (capa e barra de progresso);
+  // fora disso, vale a versão enxuta que o servidor repassa para a lista de membros (só faixa e artista, ou o jogo).
   const profileActivity = profileTarget
     ? (() => {
         const match = typedParticipants.find((participant) => participant.identity === profileTarget.userId);
         const metadata = match ? parseParticipantMetadata(match.metadata) : null;
-        return metadata?.participantType === 'HUMAN' ? metadata.activity : null;
+        const fromCall = metadata?.participantType === 'HUMAN' ? metadata.activity : null;
+        return fromCall ?? memberData.activities.get(profileTarget.userId) ?? null;
       })()
     : null;
 

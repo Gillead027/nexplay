@@ -1,7 +1,7 @@
 import type { Server as HttpServer, IncomingMessage } from 'node:http';
 import type { Socket } from 'node:net';
 import { WebSocketServer, type WebSocket } from 'ws';
-import type { PresenceStatus, RealtimeEvent } from '@nexplay/shared';
+import { activityIdentity, type Activity, type PresenceStatus, type RealtimeEvent } from '@nexplay/shared';
 import { config } from './config.js';
 import { isBanned } from './moderation.js';
 import { PresenceTracker } from './presence.js';
@@ -72,16 +72,50 @@ export function visiblePresenceStatus(userId: string): PresenceStatus | null {
   return status === 'invisible' ? null : status;
 }
 
-function notifyPresence(userId: string): void {
+// O que cada pessoa está fazendo agora (jogo ou música), já na versão pública. Só existe em memória: quem fecha o app
+// perde a atividade, e o app dela a reenvia ao reconectar (ver PUT /api/me/activity).
+const activities = new Map<string, Activity>();
+
+// A atividade que os outros podem ver: só de quem está online e visível (invisível não entrega nem o que está ouvindo).
+export function visibleActivity(userId: string): Activity | null {
+  return visiblePresenceStatus(userId) ? (activities.get(userId) ?? null) : null;
+}
+
+function audienceOf(userId: string): string[] {
   const audience = new Set<string>();
   for (const serverId of listServerIdsForMember(userId)) {
     for (const memberId of listMemberUserIdsForServer(serverId)) audience.add(memberId);
   }
-  const status = visiblePresenceStatus(userId);
-  sendToUsers([...audience], { type: 'PRESENCE_UPDATE', userId, online: status !== null, ...(status ? { status } : {}) });
+  return [...audience];
 }
 
-export const presence = new PresenceTracker((userId) => notifyPresence(userId));
+function notifyPresence(userId: string): void {
+  const status = visiblePresenceStatus(userId);
+  const activity = visibleActivity(userId);
+  sendToUsers(audienceOf(userId), {
+    type: 'PRESENCE_UPDATE',
+    userId,
+    online: status !== null,
+    ...(status ? { status } : {}),
+    ...(activity ? { activity } : {}),
+  });
+}
+
+// A pessoa começou, trocou ou parou de jogar / ouvir. Só avisa quem a vê se a atividade de fato mudou e se ela está visível.
+export function setActivity(userId: string, activity: Activity | null): void {
+  const before = activities.get(userId) ?? null;
+  if (activityIdentity(before) === activityIdentity(activity)) return;
+  if (activity) activities.set(userId, activity);
+  else activities.delete(userId);
+  if (!visiblePresenceStatus(userId)) return;
+  sendToUsers(audienceOf(userId), { type: 'ACTIVITY_UPDATE', userId, activity });
+}
+
+export const presence = new PresenceTracker((userId, online) => {
+  // Saiu de verdade (passou a carência): a atividade some junto, para não reaparecer velha quando ela voltar.
+  if (!online) activities.delete(userId);
+  notifyPresence(userId);
+});
 
 // A pessoa trocou o que mostra (online, ausente, não perturbe, invisível): avisa quem a vê, sem mexer nas conexões.
 export function refreshPresence(userId: string): void {

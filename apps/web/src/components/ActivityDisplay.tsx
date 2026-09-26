@@ -33,13 +33,21 @@ function useElapsedMs(activity: ListeningActivity | null): number | undefined {
   return activity.durationMs !== undefined ? Math.min(elapsed, activity.durationMs) : Math.max(0, elapsed);
 }
 
+// O texto da lista de membros, mais curto que a frase do perfil: só a faixa e o artista (o ícone já diz que é música),
+// ou "Jogando X".
+export function formatActivityCompact(activity: Activity): string {
+  if (activity.kind === 'playing') return `Jogando ${activity.name}`;
+  return activity.artist ? `${activity.title} — ${activity.artist}` : activity.title;
+}
+
 // Linha compacta pra lugares apertados (lista de membros): ícone + uma linha
-// de texto, sem capa/barra de progresso.
-export function ActivityLine({ activity }: { activity: Activity }) {
+// de texto, sem capa/barra de progresso. Com `compact` o texto é o curto, e o
+// texto inteiro fica na dica ao passar o mouse (a linha corta com reticências).
+export function ActivityLine({ activity, compact = false }: { activity: Activity; compact?: boolean }) {
   return (
-    <span className="activity-line">
+    <span className={`activity-line ${activity.kind}`} title={compact ? formatActivity(activity) : undefined}>
       {activity.kind === 'playing' ? <GameControllerIcon size={11} /> : <MusicNoteIcon size={11} />}
-      <span>{formatActivity(activity)}</span>
+      <span>{compact ? formatActivityCompact(activity) : formatActivity(activity)}</span>
     </span>
   );
 }

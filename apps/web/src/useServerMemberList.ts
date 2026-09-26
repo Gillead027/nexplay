@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { MemberSummary, PresenceStatus, Role } from '@nexplay/shared';
+import type { Activity, MemberSummary, PresenceStatus, Role } from '@nexplay/shared';
+import { activitiesFromResponse, applyActivityEvent } from './activityState';
 import { api } from './api';
 import { applyMemberEvent, applyRoleEvent } from './memberListState';
 import { applyPresenceStatusEvent, presenceFromResponse } from './presenceStatus';
@@ -15,6 +16,8 @@ export function useServerMemberList(serverId: string | null) {
   const [roles, setRoles] = useState<Role[]>([]);
   // Quem está visível e o que mostra (online, ausente, não perturbe). Invisível e offline não aparecem aqui.
   const [statuses, setStatuses] = useState<ReadonlyMap<string, PresenceStatus>>(() => new Map());
+  // O que quem está visível joga ou ouve agora (mostrado embaixo do nome na lista).
+  const [activities, setActivities] = useState<ReadonlyMap<string, Activity>>(() => new Map());
   const [loading, setLoading] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -23,6 +26,7 @@ export function useServerMemberList(serverId: string | null) {
       setMembers([]);
       setRoles([]);
       setStatuses(new Map());
+      setActivities(new Map());
       setLoading(false);
       setFailed(false);
       return;
@@ -33,6 +37,7 @@ export function useServerMemberList(serverId: string | null) {
     setMembers([]);
     setRoles([]);
     setStatuses(new Map());
+    setActivities(new Map());
     setLoading(true);
     setFailed(false);
 
@@ -47,6 +52,7 @@ export function useServerMemberList(serverId: string | null) {
         setMembers(membersResponse.members);
         setRoles(rolesResponse.roles);
         setStatuses(presenceFromResponse(presenceResponse));
+        setActivities(activitiesFromResponse(presenceResponse));
         setFailed(false);
       } catch {
         if (active) setFailed(true);
@@ -65,6 +71,7 @@ export function useServerMemberList(serverId: string | null) {
       setMembers((current) => applyMemberEvent(current, event, serverId));
       setRoles((current) => applyRoleEvent(current, event, serverId));
       setStatuses((current) => applyPresenceStatusEvent(current, event));
+      setActivities((current) => applyActivityEvent(current, event));
     });
     const unsubscribeConnect = onRealtimeConnect(() => void refresh());
 
@@ -76,7 +83,7 @@ export function useServerMemberList(serverId: string | null) {
   }, [serverId]);
 
   const onlineIds = useMemo<ReadonlySet<string>>(() => new Set(statuses.keys()), [statuses]);
-  return { members, roles, onlineIds, statuses, loading, failed };
+  return { members, roles, onlineIds, statuses, activities, loading, failed };
 }
 
 export type ServerMemberListData = ReturnType<typeof useServerMemberList>;

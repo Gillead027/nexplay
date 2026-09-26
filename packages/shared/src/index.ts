@@ -433,7 +433,34 @@ export interface BotParticipantMetadata {
 
 export type ParticipantMetadata = HumanParticipantMetadata | BotParticipantMetadata;
 
-function parseActivity(value: unknown): Activity | null {
+// A atividade que vai para a lista de membros de todos os servidores da pessoa: só o que cabe numa linha (jogo, ou
+// faixa e artista). Capa do álbum e barra de progresso continuam só no metadata da chamada de voz, porque mudam a cada
+// poucos segundos e inundariam o tempo real de todo mundo.
+export const ACTIVITY_TEXT_MAX_LENGTH = 120;
+
+function clipActivityText(value: string): string {
+  const text = value.trim();
+  return text.length > ACTIVITY_TEXT_MAX_LENGTH ? `${text.slice(0, ACTIVITY_TEXT_MAX_LENGTH - 1)}…` : text;
+}
+
+/** Versão pública e enxuta de uma atividade (sem capa nem tempo, textos com limite). Null quando não sobra o que mostrar. */
+export function publicActivity(activity: Activity): Activity | null {
+  if (activity.kind === 'playing') {
+    const name = clipActivityText(activity.name);
+    return name ? { kind: 'playing', name } : null;
+  }
+  const title = clipActivityText(activity.title);
+  if (!title) return null;
+  return { kind: 'listening', app: clipActivityText(activity.app), title, artist: clipActivityText(activity.artist) };
+}
+
+/** Identidade de uma atividade: muda quando é outro jogo ou outra faixa (a posição da música não conta). */
+export function activityIdentity(activity: Activity | null): string {
+  if (!activity) return '';
+  return activity.kind === 'playing' ? `playing:${activity.name}` : `listening:${activity.app}:${activity.artist}:${activity.title}`;
+}
+
+export function parseActivity(value: unknown): Activity | null {
   if (!value || typeof value !== 'object') return null;
   const activity = value as Record<string, unknown>;
   if (activity.kind === 'playing' && typeof activity.name === 'string') {
@@ -1178,7 +1205,10 @@ export type RealtimeEvent =
   // Quem tem o app aberto (ao menos um WebSocket conectado). Vai só pra quem divide
   // servidor com a pessoa; o estado inicial vem de GET /api/servers/:id/presence.
   // "status" é o que a pessoa escolheu mostrar (só vem quando ela está online e visível).
-  | { type: 'PRESENCE_UPDATE'; userId: string; online: boolean; status?: PresenceStatus }
+  // "activity" é o jogo ou a música da pessoa naquele instante (versão pública, ver publicActivity); só vem quando ela está online e visível.
+  | { type: 'PRESENCE_UPDATE'; userId: string; online: boolean; status?: PresenceStatus; activity?: Activity }
+  // A pessoa (online e visível) começou ou parou de jogar / ouvir música; activity null = parou.
+  | { type: 'ACTIVITY_UPDATE'; userId: string; activity: Activity | null }
   // Alguém começou a digitar (vale por poucos segundos; o cliente renova a cada tecla, no máximo a cada 3 s).
   // A própria pessoa trocou o que mostra (outras abas e aparelhos dela acompanham) ou reorganizou a lista de servidores.
   | { type: 'PRESENCE_STATUS_CHOICE'; status: PresenceStatus }

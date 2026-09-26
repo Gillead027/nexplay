@@ -59,6 +59,16 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Por segurança, ao trocar a senha você continua logado neste aparelho e os outros aparelhos precisam entrar de novo com a senha nova.',
     ],
   },
+  {
+    id: '2026-09-26-atividade-na-lista-de-membros',
+    date: '2026-09-26',
+    title: 'Jogo e música direto na lista de membros',
+    items: [
+      'Agora dá para ver o que cada pessoa está jogando ou ouvindo embaixo do nome dela, na lista de membros, sem precisar clicar no perfil (como no Discord).',
+      'Aparece para quem usa o aplicativo do NexPlay no computador, que percebe o jogo aberto ou a música tocando no Windows. Quem está com o status invisível não mostra a atividade.',
+      'O perfil da pessoa também passa a mostrar o que ela está fazendo mesmo que ela não esteja na mesma chamada de voz que você.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';
