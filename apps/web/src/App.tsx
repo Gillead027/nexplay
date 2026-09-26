@@ -59,7 +59,8 @@ export function App() {
     };
   }, []);
 
-  // Sessão recusada pelo servidor com o app já aberto (cookie de 12 h vencido):
+  // Sessão recusada pelo servidor com o app já aberto (cookie vencido ou senha
+  // trocada em outro aparelho — o login normal dura 1 ano):
   // volta pra tela de entrada dizendo por quê, em vez de deixar a tela parecendo
   // logada com o tempo real morto. Só age em 'ready' — durante o boot ou já
   // deslogado, um 401 é esperado e o fluxo normal cuida dele. Sair do Workspace

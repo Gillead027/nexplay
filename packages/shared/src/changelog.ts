@@ -49,6 +49,16 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Ao mover alguém de canal de voz, o NexPlay agora confirma se a pessoa realmente saiu do canal; se o aplicativo dela estiver desatualizado, avisa para ela atualizar o NexPlay (a pessoa movida precisa estar com a versão mais nova).',
     ],
   },
+  {
+    id: '2026-09-26-login-permanente',
+    date: '2026-09-26',
+    title: 'Login permanente: você não precisa mais entrar de novo toda vez',
+    items: [
+      'Depois de entrar, o NexPlay lembra de você: pode desligar o computador ou fechar o aplicativo que, ao abrir de novo, você já está logado.',
+      'Para sair da conta, use Configurações > Sair da conta.',
+      'Por segurança, ao trocar a senha você continua logado neste aparelho e os outros aparelhos precisam entrar de novo com a senha nova.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

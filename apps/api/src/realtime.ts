@@ -6,7 +6,7 @@ import { config } from './config.js';
 import { isBanned } from './moderation.js';
 import { PresenceTracker } from './presence.js';
 import { listMemberUserIdsForServer, listServerIdsForMember } from './serverMembers.js';
-import { getSessionFromCookieHeader } from './session.js';
+import { getSessionDetailsFromCookieHeader, isSessionCurrent } from './session.js';
 import { getUserById } from './users.js';
 
 const REALTIME_PATH = '/api/realtime';
@@ -124,9 +124,9 @@ export function attachRealtime(server: HttpServer): void {
       return;
     }
 
-    const identity = getSessionFromCookieHeader(request.headers.cookie);
+    const identity = getSessionDetailsFromCookieHeader(request.headers.cookie);
     const user = identity ? getUserById(identity.id) : undefined;
-    if (!user || isBanned(user.id)) {
+    if (!identity || !user || isBanned(user.id) || !isSessionCurrent(identity, user.passwordHash)) {
       socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
       socket.destroy();
       return;

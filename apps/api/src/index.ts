@@ -81,8 +81,10 @@ import { config } from './config.js';
 import {
   clearSessionCookie,
   createSession,
-  getSession,
+  getSessionDetails,
   inviteMatches,
+  isSessionCurrent,
+  sessionNeedsRenewal,
   setSessionCookie,
 } from './session.js';
 import {
@@ -664,7 +666,7 @@ const voiceKickSchema = z.object({ userId: z.string().min(1) });
 const messageSearchQuerySchema = z.string().trim().min(MESSAGE_SEARCH_QUERY_MIN_LENGTH).max(MESSAGE_SEARCH_QUERY_MAX_LENGTH);
 
 function requireSession(request: Request, response: Response, next: NextFunction): void {
-  const identity = getSession(request);
+  const identity = getSessionDetails(request);
   if (!identity) {
     response.status(401).json({ error: 'Sessão ausente ou expirada.' });
     return;
@@ -675,12 +677,24 @@ function requireSession(request: Request, response: Response, next: NextFunction
     return;
   }
   // Checado a cada requisição (não só no login) porque a sessão é um cookie
-  // stateless de até 12h — sem isso, um usuário banido continuaria com
-  // acesso completo até o cookie expirar sozinho.
+  // stateless de longa duração (1 ano, renovado com o uso) — sem isso, um
+  // usuário banido continuaria com acesso completo até o cookie expirar sozinho.
   if (isBanned(user.id)) {
     clearSessionCookie(response);
     response.status(403).json({ error: 'Sua conta foi banida deste servidor.' });
     return;
+  }
+  // A senha mudou depois que este cookie foi emitido (ex.: a pessoa trocou a
+  // senha em outro aparelho): a sessão antiga deixa de valer.
+  if (!isSessionCurrent(identity, user.passwordHash)) {
+    clearSessionCookie(response);
+    response.status(401).json({ error: 'Sessão inválida.' });
+    return;
+  }
+  // Login permanente: enquanto a pessoa usa o app, o cookie ganha mais um ano
+  // (no máximo uma vez por dia). Sessões antigas, de 12 h, viram permanentes aqui.
+  if (identity.stamp === undefined || sessionNeedsRenewal(identity)) {
+    setSessionCookie(response, createSession(user.id, user.username, user.passwordHash));
   }
   response.locals.user = user;
   next();
@@ -905,7 +919,7 @@ app.post('/api/auth/register', registerLimiter, authLimiter, (request, response)
   // Conta nova não entra em servidor nenhum sozinha: só vê os servidores em que
   // entrar por convite (POST /api/invites/:code/redeem) ou que ela mesma criar.
   // O código de cadastro só libera criar a conta.
-  const session = createSession(user.id, user.username);
+  const session = createSession(user.id, user.username, user.passwordHash);
   setSessionCookie(response, session);
   response.status(201).json({ user: toUserSession(user) });
 });
@@ -927,7 +941,7 @@ app.post('/api/auth/login', authLimiter, (request, response) => {
     return;
   }
 
-  const session = createSession(user.id, user.username);
+  const session = createSession(user.id, user.username, user.passwordHash);
   setSessionCookie(response, session);
   response.status(200).json({ user: toUserSession(user) });
 });
@@ -958,6 +972,10 @@ app.patch('/api/auth/password', requireSession, authLimiter, (request, response)
     return;
   }
   updateUserPassword(user.id, body.data.newPassword);
+  // Os outros aparelhos com login permanente caem (o cookie deles carrega o carimbo da senha antiga);
+  // este continua logado com um cookie novo, já com o carimbo da senha nova.
+  const updated = getUserById(user.id);
+  if (updated) setSessionCookie(response, createSession(updated.id, updated.username, updated.passwordHash));
   response.status(204).end();
 });
 
