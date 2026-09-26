@@ -746,6 +746,8 @@ export function TextChannelView({
   );
   const isTimedOut = Boolean(member?.timeoutUntil && member.timeoutUntil > Date.now());
   const canManageMessages = hasPermission(member?.permissions ?? 0, Permission.MANAGE_MESSAGES);
+  // O canal "atualizações" é do NexPlay (as novidades são publicadas sozinhas): membros comuns só leem.
+  const isReadOnly = channel.isUpdates && !canManageMessages;
 
   async function handleFilesSelected(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -1121,6 +1123,11 @@ export function TextChannelView({
           </button>
         </div>
       )}
+      {isReadOnly && (
+        <div className="reply-composer-banner timeout-composer-banner">
+          <span>Este canal é do NexPlay: aqui você acompanha as novidades de cada atualização, e só o NexPlay publica.</span>
+        </div>
+      )}
       {isTimedOut && member?.timeoutUntil && (
         <div className="reply-composer-banner timeout-composer-banner">
           <span>
@@ -1173,7 +1180,7 @@ export function TextChannelView({
             className="text-channel-attach-button"
             title="Anexar arquivo"
             aria-label="Anexar arquivo"
-            disabled={isTimedOut || uploading || pendingAttachments.length >= ATTACHMENT_MAX_PER_MESSAGE}
+            disabled={isTimedOut || isReadOnly || uploading || pendingAttachments.length >= ATTACHMENT_MAX_PER_MESSAGE}
             onClick={() => fileInputRef.current?.click()}
           >
             <AttachmentIcon size={17} />
@@ -1185,7 +1192,7 @@ export function TextChannelView({
             rows={1}
             maxLength={CHAT_MESSAGE_MAX_LENGTH}
             value={draft}
-            disabled={isTimedOut}
+            disabled={isTimedOut || isReadOnly}
             onChange={(event) => {
               setDraft(event.target.value);
               notifyTyping(event.target.value);
@@ -1197,7 +1204,8 @@ export function TextChannelView({
               }
             }}
             placeholder={
-              isTimedOut ? 'Você está em timeout'
+              isReadOnly ? 'Só o NexPlay publica neste canal'
+                : isTimedOut ? 'Você está em timeout'
                 : uploading ? 'Enviando arquivo…'
                 : postAsSystem ? `Publicar como o servidor em #${channel.name}`
                 : `Conversar em #${channel.name}`
@@ -1213,7 +1221,7 @@ export function TextChannelView({
             </button>
           )}
           <span>{draft.length}/{CHAT_MESSAGE_MAX_LENGTH}</span>
-          <button type="submit" disabled={isTimedOut || sending || uploading || (!draft.trim() && pendingAttachments.length === 0)}>
+          <button type="submit" disabled={isTimedOut || isReadOnly || sending || uploading || (!draft.trim() && pendingAttachments.length === 0)}>
             {sending ? 'Enviando…' : 'Enviar'}
           </button>
         </div>

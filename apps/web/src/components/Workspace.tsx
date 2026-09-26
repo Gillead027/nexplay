@@ -492,6 +492,16 @@ function CreateCategoryDialog({
   );
 }
 
+// Arrastar uma pessoa de um canal de voz para outro (mover membro). Tipo próprio, para nunca ser confundido
+// com o arrastar de canais/categorias/servidores.
+const VOICE_MEMBER_MIME = 'application/x-nexplay-voice-member';
+
+interface VoiceMemberDrag {
+  fromRoomId: string;
+  identity: string;
+  name: string;
+}
+
 function ChannelButton({
   channel,
   summary,
@@ -516,6 +526,8 @@ function ChannelButton({
   accentByIdentity,
   draggable,
   onDragStart,
+  canMoveMembers,
+  onMoveMember,
 }: {
   channel: VoiceChannel;
   summary: RoomView | undefined;
@@ -553,9 +565,39 @@ function ChannelButton({
   accentByIdentity?: Map<string, AccentColor> | undefined;
   draggable?: boolean;
   onDragStart?: (event: ReactDragEvent<HTMLElement>) => void;
+  // Quem tem "Mover membros": pode arrastar as pessoas deste canal e soltar em outro canal de voz.
+  canMoveMembers?: boolean;
+  onMoveMember?: (member: VoiceMemberDrag, toRoomId: string) => void;
 }) {
+  const [memberDropOver, setMemberDropOver] = useState(false);
+  const acceptsMemberDrop = (event: ReactDragEvent<HTMLElement>) =>
+    Boolean(canMoveMembers && onMoveMember) && event.dataTransfer.types.includes(VOICE_MEMBER_MIME);
   return (
-    <div className="channel-block">
+    <div
+      className={`channel-block ${memberDropOver ? 'member-drop-over' : ''}`}
+      onDragOver={(event) => {
+        if (!acceptsMemberDrop(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        event.dataTransfer.dropEffect = 'move';
+        setMemberDropOver(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setMemberDropOver(false);
+      }}
+      onDrop={(event) => {
+        if (!acceptsMemberDrop(event)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        setMemberDropOver(false);
+        try {
+          const member = JSON.parse(event.dataTransfer.getData(VOICE_MEMBER_MIME)) as VoiceMemberDrag;
+          if (member.fromRoomId !== channel.id) onMoveMember?.(member, channel.id);
+        } catch {
+          // Conteúdo arrastado inesperado: ignora.
+        }
+      }}
+    >
       <div className={`channel-row ${settings ? 'channel-row-renamable' : ''}`} onContextMenu={onContextMenu}
         draggable={draggable} onDragStart={onDragStart}>
         <button
@@ -600,8 +642,19 @@ function ChannelButton({
         const canDisconnect = active && participant.identity !== ownIdentity;
         return (
           <div
-            className="channel-user-row"
+            className={`channel-user-row ${canMoveMembers && !isBot ? 'member-draggable' : ''}`}
             key={participant.identity}
+            draggable={Boolean(canMoveMembers && !isBot)}
+            onDragStart={
+              canMoveMembers && !isBot
+                ? (event) => {
+                    event.stopPropagation();
+                    event.dataTransfer.effectAllowed = 'move';
+                    const member: VoiceMemberDrag = { fromRoomId: channel.id, identity: participant.identity, name: participant.name };
+                    event.dataTransfer.setData(VOICE_MEMBER_MIME, JSON.stringify(member));
+                  }
+                : undefined
+            }
             onContextMenu={
               participant.identity === ownIdentity
                 ? undefined
@@ -2132,6 +2185,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const canManageChannels = hasPermission(member?.permissions ?? 0, Permission.MANAGE_CHANNELS);
   const canManageServer = hasPermission(member?.permissions ?? 0, Permission.MANAGE_SERVER);
   const canManageWebhooks = hasPermission(member?.permissions ?? 0, Permission.MANAGE_WEBHOOKS);
+  const canMoveMembers = hasPermission(member?.permissions ?? 0, Permission.MOVE_MEMBERS);
   const [addServerOpen, setAddServerOpen] = useState(false);
   const [addServerTab, setAddServerTab] = useState<'create' | 'join'>('create');
   const [forwardingMessage, setForwardingMessage] = useState<ForwardSource | null>(null);
@@ -2415,6 +2469,28 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     };
   }, [activeServerId]);
 
+  // Um moderador arrastou esta pessoa para outro canal de voz: sai do canal de origem e entra no de destino
+  // (voice.connect já desconecta do canal atual antes de entrar no novo). Só age se ela está mesmo no canal de origem.
+  const voiceMoveRef = useRef({ rooms, currentChannelId: voice.currentChannel?.id, join: joinChannel });
+  useEffect(() => {
+    voiceMoveRef.current = { rooms, currentChannelId: voice.currentChannel?.id, join: joinChannel };
+  });
+  useEffect(() => {
+    return onRealtimeEvent((event) => {
+      if (event.type !== 'VOICE_MEMBER_MOVED' || event.userId !== session.id) return;
+      const latest = voiceMoveRef.current;
+      if (latest.currentChannelId !== event.fromChannelId) return;
+      const follow = async () => {
+        let destination: VoiceChannel | undefined = latest.rooms.find((room) => room.id === event.toChannelId);
+        if (!destination) destination = (await api.getRooms(event.serverId)).rooms.find((room) => room.id === event.toChannelId);
+        if (!destination) return;
+        await latest.join(destination);
+        setInviteMessage({ text: `${event.movedByName} moveu você para ${destination.name}.`, failed: false });
+      };
+      void follow().catch(() => {});
+    });
+  }, [session.id]);
+
   useEffect(() => {
     if (!activeServerId) {
       setTextChannels([]);
@@ -2616,6 +2692,18 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     }
   }
 
+
+  // Arrastar alguém para outro canal de voz (só quem tem "Mover membros"; o servidor confere a permissão).
+  async function moveVoiceMember(member: VoiceMemberDrag, toRoomId: string) {
+    if (!activeServerId) return;
+    try {
+      await api.moveVoiceParticipant(activeServerId, member.fromRoomId, member.identity, toRoomId);
+      const destination = rooms.find((room) => room.id === toRoomId);
+      setInviteMessage({ text: `${member.name} foi movido para ${destination?.name ?? 'o outro canal'}.`, failed: false });
+    } catch (error) {
+      setInviteMessage({ text: error instanceof Error ? error.message : `Não foi possível mover ${member.name}.`, failed: true });
+    }
+  }
 
   async function disconnectParticipantFromVoice(identity: string, name: string) {
     const roomId = voice.currentChannel?.id;
@@ -3291,6 +3379,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                     onDisconnectParticipant={(identity, name) => void disconnectParticipantFromVoice(identity, name)}
                     disconnectingIdentity={disconnectingIdentity}
                     onParticipantContextMenu={openParticipantVolumeMenu}
+                    canMoveMembers={canMoveMembers}
+                    onMoveMember={(member, toRoomId) => void moveVoiceMember(member, toRoomId)}
                     liveMuted={voice.currentChannel?.id === room.id && voice.connected ? liveMuted : undefined}
                     liveDeafened={voice.currentChannel?.id === room.id && voice.connected ? liveDeafened : undefined}
                     liveWatching={voice.currentChannel?.id === room.id && voice.connected ? liveWatching : undefined}

@@ -220,6 +220,12 @@ export const api = {
 
   getRooms: (serverId: string) =>
     request<{ rooms: RoomSummary[]; livekitAvailable: boolean }>(`${s(serverId)}/rooms`),
+  // Mover alguém de um canal de voz para outro (só quem tem "Mover membros"). A pessoa movida recebe o aviso em tempo real.
+  moveVoiceParticipant: (serverId: string, fromRoomId: string, identity: string, toRoomId: string) =>
+    request<void>(`${s(serverId)}/rooms/${encodeURIComponent(fromRoomId)}/participants/${encodeURIComponent(identity)}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ toRoomId }),
+    }),
   disconnectVoiceParticipant: (serverId: string, roomId: string, identity: string) =>
     request<void>(`${s(serverId)}/rooms/${encodeURIComponent(roomId)}/participants/${encodeURIComponent(identity)}/disconnect`, {
       method: 'POST',
@@ -458,11 +464,13 @@ export const api = {
     request<{ channel: DmChannel }>(`/api/dm-channels/${encodeURIComponent(userId)}`, { method: 'PUT' }),
   getDmMessages: (dmChannelId: string) =>
     request<{ messages: DmMessage[] }>(`/api/dm-channels/${encodeURIComponent(dmChannelId)}/messages`),
-  sendDmMessage: (dmChannelId: string, text: string) =>
+  sendDmMessage: (dmChannelId: string, text: string, attachmentIds?: string[]) =>
     request<{ message: DmMessage }>(`/api/dm-channels/${encodeURIComponent(dmChannelId)}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, ...(attachmentIds?.length ? { attachmentIds } : {}) }),
     }),
+  uploadDmAttachment: (dmChannelId: string, file: File) =>
+    uploadFile<{ attachment: MessageAttachment }>(`/api/dm-channels/${encodeURIComponent(dmChannelId)}/attachments`, file),
   editDmMessage: (dmChannelId: string, messageId: string, text: string) =>
     request<{ message: DmMessage }>(
       `/api/dm-channels/${encodeURIComponent(dmChannelId)}/messages/${encodeURIComponent(messageId)}`,

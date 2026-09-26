@@ -35,6 +35,7 @@ test('a visão geral conta pessoas, servidores, mensagens e anexos', () => {
       CREATE TABLE text_messages (id TEXT PRIMARY KEY, channel_id TEXT, sender_id TEXT, created_at INTEGER);
       CREATE TABLE dm_messages (id TEXT PRIMARY KEY, sender_id TEXT, created_at INTEGER);
       CREATE TABLE message_attachments (id TEXT PRIMARY KEY, size_bytes INTEGER);
+      CREATE TABLE dm_attachments (id TEXT PRIMARY KEY, size_bytes INTEGER);
     `);
     const now = 1_800_000_000_000;
     const day = 86_400_000;
@@ -58,6 +59,7 @@ test('a visão geral conta pessoas, servidores, mensagens e anexos', () => {
     db.prepare('INSERT INTO dm_messages VALUES (?, ?, ?)').run('d1', 'u2', now - 60_000);
     db.prepare('INSERT INTO message_attachments VALUES (?, ?)').run('a1', 1500);
     db.prepare('INSERT INTO message_attachments VALUES (?, ?)').run('a2', 500);
+    db.prepare('INSERT INTO dm_attachments VALUES (?, ?)').run('a3', 250);
 
     const overview = collectAdminOverview({
       db,
@@ -95,8 +97,8 @@ test('a visão geral conta pessoas, servidores, mensagens e anexos', () => {
       directMessages24h: 1,
       directMessages7d: 1,
     });
-    assert.equal(overview.storage.attachmentCount, 2);
-    assert.equal(overview.storage.attachmentBytes, 2000);
+    assert.equal(overview.storage.attachmentCount, 3);
+    assert.equal(overview.storage.attachmentBytes, 2250);
     assert.ok(overview.storage.databaseBytes > 0);
     assert.ok(overview.storage.diskTotalBytes > 0 && overview.storage.diskFreeBytes > 0);
     assert.deepEqual(overview.voice, { activeRooms: 1, participants: 2 });

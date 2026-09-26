@@ -16,6 +16,7 @@ import { db } from './db.js';
 import { getReactionsByChannel, getReactionsForMessage } from './reactions.js';
 import { slugify } from './slug.js';
 import type { UserRecord } from './users.js';
+import { listAnnouncementMessages } from './updatesChannel.js';
 import { listWebhookMessages } from './webhooks.js';
 
 interface TextChannelRow {
@@ -28,6 +29,7 @@ interface TextChannelRow {
   slow_mode_seconds: number;
   content_visibility: ContentVisibility;
   is_announcement: number;
+  is_updates: number;
   created_by: string | null;
   created_at: number;
 }
@@ -187,6 +189,7 @@ function toChannel(row: TextChannelRow): TextChannel {
     slowModeSeconds: row.slow_mode_seconds,
     contentVisibility: row.content_visibility,
     isAnnouncement: Boolean(row.is_announcement),
+    isUpdates: Boolean(row.is_updates),
     createdBy: row.created_by,
     createdAt: row.created_at,
   };
@@ -279,6 +282,7 @@ export function createTextChannel(
     slowModeSeconds: 0,
     contentVisibility: 'default',
     isAnnouncement: false,
+    isUpdates: false,
     createdBy: creatorId,
     createdAt: Date.now(),
   };
@@ -311,7 +315,8 @@ export function listTextMessages(channelId: string, limit = 100): TextMessage[] 
   const botMessages = (listBotMessagesStatement.all(channelId, limit) as unknown as TextBotMessageRow[])
     .map(toBotMessage);
   const webhookMessages = listWebhookMessages(channelId, limit);
-  return [...humanMessages, ...botMessages, ...webhookMessages, ...listGameMessages(channelId, limit)]
+  const announcementMessages = listAnnouncementMessages(channelId, limit);
+  return [...humanMessages, ...botMessages, ...webhookMessages, ...announcementMessages, ...listGameMessages(channelId, limit)]
     .sort((left, right) => left.sentAt - right.sentAt)
     .slice(-limit);
 }

@@ -57,6 +57,7 @@ import {
   WEBHOOKS_MAX_PER_CHANNEL,
   type Channel,
   type PresenceStatus,
+  type DmChannel,
   type ForwardedFromMeta,
   type IdentityVerificationStatus,
   type DmCallEventStatus,
@@ -155,8 +156,9 @@ import { addReaction, isValidReactionEmoji, removeReaction } from './reactions.j
 import { authorizeMusicCommand } from './musicCommands.js';
 import { defaultRng, handlePokemonCommand, isPokemonCommand } from './pokemon.js';
 import { getPokemonSprite } from './pokemonSprites.js';
+import { announcePendingUpdates, provisionUpdatesChannels } from './updatesChannel.js';
 import { fetchMusicThumbnail } from './musicThumbnails.js';
-import { authorizeVoiceDisconnect } from './voiceModeration.js';
+import { authorizeVoiceDisconnect, authorizeVoiceMove } from './voiceModeration.js';
 import { deleteAccount, planAccountDeletion } from './accountDeletion.js';
 import { callElapsedMs, endCall } from './callSessions.js';
 import { DmCallRegistry, dmChannelIdFromRoom, dmRoomName, type DmCallState } from './dmCalls.js';
@@ -181,6 +183,15 @@ import {
   listOrphanedAttachments,
   sanitizeFilename,
 } from './attachments.js';
+import {
+  createPendingDmAttachment,
+  deleteDmAttachmentRecord,
+  getDmAttachmentRecordById,
+  getDmAttachmentRecordsForMessage,
+  listOrphanedDmAttachments,
+  listPendingDmAttachments,
+  toDmAttachment,
+} from './dmAttachments.js';
 import { deleteAttachmentObject, ensureAttachmentsBucket, getAttachmentObjectStream, uploadAttachmentObject } from './storage.js';
 import {
   createWebhook,
@@ -530,6 +541,12 @@ const disconnectParticipantSchema = z.object({
   identity: z.string().min(1).max(128),
 });
 
+const moveParticipantSchema = z.object({
+  fromRoomId: z.string().min(1).max(32),
+  identity: z.string().min(1).max(128),
+  toRoomId: z.string().min(1).max(32),
+});
+
 const musicCommandSchema = z.object({
   roomId: z.string().min(1).max(32),
   text: z.string().trim().min(1).max(CHAT_MESSAGE_MAX_LENGTH),
@@ -596,8 +613,15 @@ const reactionSchema = z.object({
   emoji: z.string().refine(isValidReactionEmoji, 'Emoji não suportado.'),
 });
 
+// Edição: o texto continua obrigatório (a tela de edição não mexe nos anexos).
 const dmMessageSchema = z.object({
   text: z.string().trim().min(1).max(CHAT_MESSAGE_MAX_LENGTH),
+});
+
+// Envio: pode ser só arquivo (texto vazio), igual nos canais de texto.
+const dmSendSchema = z.object({
+  text: z.string().trim().max(CHAT_MESSAGE_MAX_LENGTH),
+  attachmentIds: z.array(z.string().min(1)).max(ATTACHMENT_MAX_PER_MESSAGE).optional(),
 });
 
 const forwardDestinationSchema = z.discriminatedUnion('kind', [
@@ -739,6 +763,15 @@ function rejectIfTimedOut(serverId: string, userId: string, response: Response):
   if (remaining <= 0) return false;
   const minutes = Math.ceil(remaining / 60_000);
   response.status(403).json({ error: `Você está em timeout por mais ${minutes} minuto(s).` });
+  return true;
+}
+
+// O canal "atualizações" é onde o NexPlay publica as novidades: membros comuns só leem. Quem gerencia
+// mensagens (moderação e administração) também pode escrever nele.
+function rejectIfUpdatesChannelReadOnly(channel: { isUpdates: boolean; serverId: string }, userId: string, response: Response): boolean {
+  if (!channel.isUpdates) return false;
+  if (hasPermission(getUserPermissionBitfield(userId, channel.serverId), Permission.MANAGE_MESSAGES)) return false;
+  response.status(403).json({ error: 'Só o NexPlay publica neste canal.' });
   return true;
 }
 
@@ -1937,6 +1970,7 @@ app.post(
       return;
     }
     if (rejectIfTimedOut(serverId, currentUser(response).id, response)) return;
+    if (rejectIfUpdatesChannelReadOnly(channel, currentUser(response).id, response)) return;
 
     const canManageMessages = hasPermission(getUserPermissionBitfield(currentUser(response).id, serverId), Permission.MANAGE_MESSAGES);
     if (body.data.postedAsSystem && !canManageMessages) {
@@ -2136,6 +2170,7 @@ app.post(
     }
     const user = currentUser(response);
     if (rejectIfTimedOut(serverId, user.id, response)) return;
+    if (rejectIfUpdatesChannelReadOnly(channel, user.id, response)) return;
     if (!request.file) {
       response.status(400).json({ error: 'Nenhum arquivo enviado.' });
       return;
@@ -2202,6 +2237,15 @@ app.get('/api/attachments/:attachmentId/:filename', requireSession, async (reque
     return;
   }
 
+  await streamAttachmentObject(response, attachment);
+});
+
+// Devolve o arquivo do armazenamento. Vale para anexo de canal e de conversa privada: só imagem
+// raster vai "inline"; todo o resto é download forçado, com o tipo fixado pelo servidor.
+async function streamAttachmentObject(
+  response: Response,
+  attachment: { objectKey: string; contentType: string; sizeBytes: number; filename: string },
+): Promise<void> {
   try {
     const objectStream = await getAttachmentObjectStream(attachment.objectKey);
     const inline = (ATTACHMENT_INLINE_IMAGE_TYPES as readonly string[]).includes(attachment.contentType);
@@ -2219,6 +2263,79 @@ app.get('/api/attachments/:attachmentId/:filename', requireSession, async (reque
     console.error(`Falha ao buscar anexo ${attachment.objectKey} no storage:`, error);
     response.status(503).json({ error: 'Não foi possível carregar o arquivo agora.' });
   }
+}
+
+// Verifica a participação ANTES de o multer guardar o arquivo em memória: quem não é da conversa
+// nem chega a gastar os até 15 MB do servidor.
+function requireDmParticipant(request: Request, response: Response, next: NextFunction): void {
+  const dmChannelId = request.params.dmChannelId;
+  const channel = typeof dmChannelId === 'string' ? getDmChannelForParticipant(dmChannelId, currentUser(response).id) : undefined;
+  if (!channel) {
+    response.status(404).json({ error: 'Conversa não encontrada.' });
+    return;
+  }
+  response.locals.dmChannel = channel;
+  next();
+}
+
+// Upload de arquivo numa conversa privada — mesmo fluxo em duas etapas dos canais de texto: o arquivo
+// sobe "pendente" e só é ligado à mensagem quando ela é enviada (POST .../messages com attachmentIds).
+app.post(
+  '/api/dm-channels/:dmChannelId/attachments',
+  requireSession,
+  requireDmParticipant,
+  uploadLimiter,
+  handleAttachmentUpload,
+  async (request, response) => {
+    const user = currentUser(response);
+    const channel = response.locals.dmChannel as DmChannel;
+    const other = channel.participants.find((participant) => participant.id !== user.id)!;
+    if (isBlocked(user.id, other.id)) {
+      response.status(403).json({ error: 'Não foi possível enviar o arquivo agora.' });
+      return;
+    }
+    if (!request.file) {
+      response.status(400).json({ error: 'Nenhum arquivo enviado.' });
+      return;
+    }
+
+    const filename = sanitizeFilename(request.file.originalname);
+    const contentType = request.file.mimetype || 'application/octet-stream';
+    const objectKey = `${randomUUID()}/${filename}`;
+    try {
+      await uploadAttachmentObject(objectKey, request.file.buffer, contentType);
+    } catch (error) {
+      console.error('Falha ao enviar anexo de conversa privada para o storage de objetos:', error);
+      response.status(503).json({ error: 'Não foi possível enviar o arquivo agora. Tente novamente.' });
+      return;
+    }
+    const attachment = createPendingDmAttachment({
+      dmChannelId: channel.id,
+      objectKey,
+      filename,
+      contentType,
+      sizeBytes: request.file.size,
+      uploadedBy: user.id,
+    });
+    response.status(201).json({ attachment: toDmAttachment(attachment) });
+  },
+);
+
+// Só os dois participantes baixam (e o upload ainda pendente só quem o enviou). Qualquer outra pessoa
+// recebe o mesmo 404 de "não existe", sem revelar que o arquivo existe.
+app.get('/api/dm-attachments/:attachmentId/:filename', requireSession, async (request, response) => {
+  const attachmentId = request.params.attachmentId;
+  const attachment = typeof attachmentId === 'string' ? getDmAttachmentRecordById(attachmentId) : undefined;
+  const user = currentUser(response);
+  if (
+    !attachment ||
+    !getDmChannelForParticipant(attachment.dmChannelId, user.id) ||
+    (attachment.dmMessageId === null && attachment.uploadedBy !== user.id)
+  ) {
+    response.status(404).json({ error: 'Anexo não encontrado.' });
+    return;
+  }
+  await streamAttachmentObject(response, attachment);
 });
 
 app.get(
@@ -2418,6 +2535,8 @@ app.post(
     };
     if (resolved.kind === 'channel') {
       if (rejectIfTimedOut(resolved.serverId, user.id, response)) return;
+      const destination = getTextChannelById(resolved.channelId);
+      if (destination && rejectIfUpdatesChannelReadOnly(destination, user.id, response)) return;
       const message = createForwardedTextMessage(resolved.channelId, source.text, user, forwardedFrom);
       sendToServerMembers(resolved.serverId, { type: 'TEXT_MESSAGE_CREATE', serverId: resolved.serverId, channelId: resolved.channelId, message });
       response.status(201).json({ message });
@@ -3233,8 +3352,8 @@ app.post('/api/dm-channels/:dmChannelId/messages', requireSession, dmMessageLimi
     response.status(404).json({ error: 'Conversa não encontrada.' });
     return;
   }
-  const body = dmMessageSchema.safeParse(request.body);
-  if (!body.success) {
+  const body = dmSendSchema.safeParse(request.body);
+  if (!body.success || (!body.data.text && !body.data.attachmentIds?.length)) {
     response.status(400).json({ error: 'A mensagem deve ter entre 1 e 500 caracteres.' });
     return;
   }
@@ -3246,7 +3365,13 @@ app.post('/api/dm-channels/:dmChannelId/messages', requireSession, dmMessageLimi
     response.status(403).json({ error: 'Não foi possível enviar a mensagem agora.' });
     return;
   }
-  const message = createDmMessage(channel.id, body.data.text, user);
+  const attachmentIds = body.data.attachmentIds ?? [];
+  // Mensagem só de arquivo precisa de pelo menos um upload válido (desta pessoa, nesta conversa, ainda pendente).
+  if (!body.data.text && listPendingDmAttachments(attachmentIds, channel.id, user.id).length === 0) {
+    response.status(400).json({ error: 'O arquivo não está mais disponível. Anexe de novo.' });
+    return;
+  }
+  const message = createDmMessage(channel.id, body.data.text, user, attachmentIds);
   sendToUsers([user.id, other.id], { type: 'DM_MESSAGE_CREATE', dmChannelId: channel.id, message });
   response.status(201).json({ message });
   checkSelfHarmAndNotify({
@@ -3286,7 +3411,7 @@ app.patch('/api/dm-channels/:dmChannelId/messages/:messageId', requireSession, d
   response.json({ message: result.message });
 });
 
-app.delete('/api/dm-channels/:dmChannelId/messages/:messageId', requireSession, (request, response) => {
+app.delete('/api/dm-channels/:dmChannelId/messages/:messageId', requireSession, async (request, response) => {
   const dmChannelId = request.params.dmChannelId;
   const messageId = request.params.messageId;
   const user = currentUser(response);
@@ -3295,6 +3420,9 @@ app.delete('/api/dm-channels/:dmChannelId/messages/:messageId', requireSession, 
     response.status(404).json({ error: 'Conversa não encontrada.' });
     return;
   }
+  // Guarda os anexos ANTES de apagar: o ON DELETE CASCADE remove as linhas junto com a mensagem e
+  // depois não haveria como saber quais arquivos apagar do armazenamento.
+  const attachments = getDmAttachmentRecordsForMessage(messageId);
   const result = deleteDmMessage(channel.id, messageId, user.id);
   if (!result.ok) {
     if (result.reason === 'FORBIDDEN') {
@@ -3304,6 +3432,13 @@ app.delete('/api/dm-channels/:dmChannelId/messages/:messageId', requireSession, 
     }
     return;
   }
+  await Promise.all(
+    attachments.map((attachment) =>
+      deleteAttachmentObject(attachment.objectKey).catch((error) => {
+        console.error(`Falha ao remover objeto de anexo ${attachment.objectKey} do MinIO:`, error);
+      }),
+    ),
+  );
   const other = channel.participants.find((participant) => participant.id !== user.id)!;
   sendToUsers([user.id, other.id], { type: 'DM_MESSAGE_DELETE', dmChannelId: channel.id, messageId });
   response.status(204).end();
@@ -3343,6 +3478,8 @@ app.post('/api/dm-channels/:dmChannelId/messages/:messageId/forward', requireSes
   const forwardedFrom: ForwardedFromMeta = { authorName: source.senderName, messageId: source.id, dmChannelId: channel.id };
   if (resolved.kind === 'channel') {
     if (rejectIfTimedOut(resolved.serverId, user.id, response)) return;
+    const destination = getTextChannelById(resolved.channelId);
+    if (destination && rejectIfUpdatesChannelReadOnly(destination, user.id, response)) return;
     const message = createForwardedTextMessage(resolved.channelId, source.text, user, forwardedFrom);
     sendToServerMembers(resolved.serverId, { type: 'TEXT_MESSAGE_CREATE', serverId: resolved.serverId, channelId: resolved.channelId, message });
     response.status(201).json({ message });
@@ -3612,6 +3749,79 @@ app.post('/api/livekit/webhook', express.raw({ type: '*/*' }), async (request, r
   }
   response.status(200).end();
 });
+
+// Mover alguém de um canal de voz para outro (arrastar no menu lateral). Só quem tem "Mover membros" (ou
+// administra o servidor). O moderador não precisa estar em nenhum canal de voz. Quem é movido recebe um
+// aviso em tempo real e o próprio app dela sai do canal de origem e entra no de destino: o servidor não
+// mexe na chamada, então a pessoa continua com o mesmo token/fluxo de entrada de sempre.
+app.post(
+  '/api/servers/:serverId/rooms/:roomId/participants/:identity/move',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MOVE_MEMBERS),
+  moderationLimiter,
+  async (request, response) => {
+    const serverId = currentServerId(response);
+    const parsed = moveParticipantSchema.safeParse({
+      fromRoomId: request.params.roomId,
+      identity: request.params.identity,
+      toRoomId: request.body?.toRoomId,
+    });
+    const fromRoom = parsed.success ? getVoiceChannelById(parsed.data.fromRoomId) : undefined;
+    const toRoom = parsed.success ? getVoiceChannelById(parsed.data.toRoomId) : undefined;
+    if (!parsed.success || !fromRoom || !toRoom || fromRoom.serverId !== serverId || toRoom.serverId !== serverId) {
+      response.status(400).json({ error: 'Canal de voz inválido.' });
+      return;
+    }
+    const targetId = parsed.data.identity;
+    try {
+      const fromParticipants = await roomService.listParticipants(fromRoom.id);
+      // Sala que ainda não existe no LiveKit = ninguém dentro.
+      const toParticipants = await roomService.listParticipants(toRoom.id).catch(() => []);
+      const decision = authorizeVoiceMove({
+        fromRoomId: fromRoom.id,
+        toRoomId: toRoom.id,
+        channels: listVoiceChannels(serverId),
+        targetIdentity: targetId,
+        participantIdentities: fromParticipants.map(({ identity }) => identity),
+        destinationParticipantCount: toParticipants.length,
+      });
+      if (!decision.ok) {
+        const messages = {
+          INVALID_ROOM: 'Canal de voz inválido.',
+          SAME_ROOM: 'A pessoa já está nesse canal.',
+          TARGET_IS_BOT: 'O NexMusic não pode ser movido.',
+          TARGET_NOT_IN_ROOM: 'Essa pessoa não está mais nesse canal de voz.',
+          DESTINATION_FULL: 'Esse canal de voz atingiu o limite de pessoas.',
+        } as const;
+        response.status(decision.reason === 'TARGET_NOT_IN_ROOM' ? 404 : decision.reason === 'DESTINATION_FULL' ? 409 : 400).json({ error: messages[decision.reason] });
+        return;
+      }
+      // Quem está em timeout não entra em voz (a rota de entrada recusaria); e a pessoa precisa poder ver o canal de destino.
+      const target = getServerMember(serverId, targetId);
+      if (!target || activeTimeoutRemainingMs(target.timeoutUntil) > 0) {
+        response.status(409).json({ error: 'Essa pessoa não pode entrar em canais de voz agora (timeout).' });
+        return;
+      }
+      if (filterChannelsByCategoryAccess(serverId, targetId, [toRoom]).length === 0) {
+        response.status(403).json({ error: 'Essa pessoa não tem acesso a esse canal.' });
+        return;
+      }
+      sendToUser(targetId, {
+        type: 'VOICE_MEMBER_MOVED',
+        serverId,
+        userId: targetId,
+        fromChannelId: fromRoom.id,
+        toChannelId: toRoom.id,
+        movedByName: currentUser(response).username,
+      });
+      response.status(204).end();
+    } catch (error) {
+      console.error('Falha ao mover participante de canal de voz:', error);
+      response.status(503).json({ error: 'Não foi possível mover a pessoa agora.' });
+    }
+  },
+);
 
 app.post(
   '/api/servers/:serverId/rooms/:roomId/participants/:identity/disconnect',
@@ -3891,7 +4101,27 @@ setInterval(() => {
       .catch((error) => console.error(`Falha ao limpar anexo órfão ${attachment.objectKey}:`, error))
       .finally(() => deleteAttachmentRecord(attachment.id));
   }
+  for (const attachment of listOrphanedDmAttachments(ORPHANED_ATTACHMENT_MAX_AGE_MS)) {
+    deleteAttachmentObject(attachment.objectKey)
+      .catch((error) => console.error(`Falha ao limpar anexo órfão de conversa privada ${attachment.objectKey}:`, error))
+      .finally(() => deleteDmAttachmentRecord(attachment.id));
+  }
 }, ORPHANED_ATTACHMENT_SWEEP_INTERVAL_MS);
+
+// Canal "atualizações" em todo servidor (os que já existiam ganham o seu aqui, uma única vez) e publicação
+// das novidades ainda não entregues (packages/shared/src/changelog.ts). Roda antes de aceitar conexões: quem
+// abrir o app depois já encontra o canal e as mensagens; se algo publicar depois, os conectados são avisados.
+try {
+  const created = provisionUpdatesChannels();
+  const posted = announcePendingUpdates();
+  for (const { serverId, channelId, message } of posted) {
+    sendToServerMembers(serverId, { type: 'TEXT_MESSAGE_CREATE', serverId, channelId, message });
+  }
+  if (created || posted.length) console.log(`Atualizações: ${created} canal(is) criado(s), ${posted.length} mensagem(ns) publicada(s).`);
+} catch (error) {
+  // Nunca impede a API de subir: na próxima subida ele tenta de novo (o que já foi entregue não se repete).
+  console.error('Falha ao publicar as novidades nos servidores:', error);
+}
 
 const server = app.listen(config.PORT, '0.0.0.0', () => {
   console.log(`NexPlay API ouvindo na porta ${config.PORT}`);

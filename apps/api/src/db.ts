@@ -276,6 +276,24 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_text_webhook_messages_channel_created
     ON text_webhook_messages(channel_id, created_at DESC);
+
+  -- Anexos de conversa privada: tabela própria porque message_attachments
+  -- referencia text_channels/text_messages, FKs que uma DM nunca satisfaz.
+  -- Mesma lógica em duas etapas: dm_message_id NULL = upload pendente.
+  CREATE TABLE IF NOT EXISTS dm_attachments (
+    id TEXT PRIMARY KEY,
+    dm_message_id TEXT REFERENCES dm_messages(id) ON DELETE CASCADE,
+    dm_channel_id TEXT NOT NULL REFERENCES dm_channels(id) ON DELETE CASCADE,
+    object_key TEXT NOT NULL,
+    filename TEXT NOT NULL,
+    content_type TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    uploaded_by TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    created_at INTEGER NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_dm_attachments_message ON dm_attachments(dm_message_id);
+  CREATE INDEX IF NOT EXISTS idx_dm_attachments_channel ON dm_attachments(dm_channel_id);
 `);
 
 // O NexMusic mantém um único player persistente por canal de texto. Limpa
@@ -693,7 +711,39 @@ ensureColumns('text_channels', [
   ['slow_mode_seconds', 'INTEGER NOT NULL DEFAULT 0'],
   ['content_visibility', "TEXT NOT NULL DEFAULT 'default'"],
   ['is_announcement', 'INTEGER NOT NULL DEFAULT 0'],
+  // 1 = o canal "atualizações" do servidor (onde o NexPlay publica as novidades). Marcado pela coluna, não pelo
+  // nome, para renomear o canal não quebrar as publicações (ver updatesChannel.ts).
+  ['is_updates', 'INTEGER NOT NULL DEFAULT 0'],
 ]);
+
+// 1 = este servidor já passou pela criação do canal "atualizações". Sem isso, um dono que apagou o canal de
+// propósito o veria voltar a cada subida da API.
+ensureColumns('servers', [['updates_provisioned', 'INTEGER NOT NULL DEFAULT 0']]);
+
+// Novidades publicadas: uma linha por (servidor, entrada) impede publicar a mesma novidade duas vezes, e
+// também marca como "já entregues" as entradas anteriores à criação de um servidor novo (que não recebe histórico).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS update_announcements (
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    entry_id TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (server_id, entry_id)
+  );
+
+  -- Mensagens do NexPlay no canal de atualizações. Tabela própria (como text_bot_messages): a mensagem não é
+  -- de nenhuma conta de usuário, então não cabe em text_messages (sender_id é uma conta).
+  CREATE TABLE IF NOT EXISTS text_announcement_messages (
+    id TEXT PRIMARY KEY,
+    channel_id TEXT NOT NULL REFERENCES text_channels(id) ON DELETE CASCADE,
+    entry_id TEXT NOT NULL,
+    text TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    UNIQUE (channel_id, entry_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_text_announcement_messages_channel
+    ON text_announcement_messages(channel_id, created_at DESC);
+`);
 
 ensureColumns('voice_channels', [
   ['category_id', 'TEXT REFERENCES categories(id) ON DELETE SET NULL'],

@@ -3,6 +3,7 @@ import { parseImageDataUrl, type AccentColor, type ImageFormat, type Server } fr
 import { bootstrapServerRoles, db } from './db.js';
 import { addServerMember } from './serverMembers.js';
 import { createTextChannel } from './textChannels.js';
+import { createUpdatesChannel } from './updatesChannel.js';
 import { createVoiceChannel } from './voiceChannels.js';
 import type { UserRecord } from './users.js';
 
@@ -101,6 +102,8 @@ export function createServer(name: string, description: string, owner: UserRecor
   addServerMember(server.id, owner.id);
   bootstrapServerRoles(server.id, [owner.id], owner.id);
   createTextChannel(server.id, 'geral', 'Conversa geral da comunidade', owner.id);
+  // Todo servidor nasce com o canal "atualizações" (criado depois do "geral", que continua sendo o primeiro).
+  createUpdatesChannel(server.id, true);
   createVoiceChannel(server.id, 'Geral', 'Conversa livre', owner.id);
   return server;
 }

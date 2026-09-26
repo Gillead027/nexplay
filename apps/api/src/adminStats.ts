@@ -70,7 +70,10 @@ export function collectAdminOverview({ db, dbPath, dataDir, now, isOnline, voice
     .all() as AdminOverview['servers']['list'];
 
   const attachments = db
-    .prepare('SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes FROM message_attachments')
+    .prepare(
+      `SELECT COUNT(*) AS n, COALESCE(SUM(size_bytes), 0) AS bytes
+       FROM (SELECT size_bytes FROM message_attachments UNION ALL SELECT size_bytes FROM dm_attachments)`,
+    )
     .get() as { n: number; bytes: number };
 
   const disk = statfsSync(dataDir);

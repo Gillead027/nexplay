@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AccentColor, DmChannel, DmChannelParticipant, DmMessage, ForwardedFromMeta } from '@nexplay/shared';
 import { areFriends } from './friendships.js';
+import { attachToDmMessage, getDmAttachmentsByChannel, getDmAttachmentsForMessage } from './dmAttachments.js';
 import { db } from './db.js';
 import type { UserRecord } from './users.js';
 
@@ -174,20 +175,32 @@ export function getDmChannelForParticipant(dmChannelId: string, userId: string):
   return channel.participants.some((participant) => participant.id === userId) ? channel : undefined;
 }
 
+// As últimas `limit` mensagens, da mais antiga para a mais nova (a consulta pega as mais novas
+// primeiro para o limite valer para elas; a tela espera a ordem cronológica, como nos canais).
 export function listDmMessages(dmChannelId: string, limit = 100): DmMessage[] {
-  return (listMessagesStatement.all(dmChannelId, limit) as unknown as DmMessageRow[]).map(toMessage);
+  const attachmentsByMessage = getDmAttachmentsByChannel(dmChannelId);
+  return (listMessagesStatement.all(dmChannelId, limit) as unknown as DmMessageRow[])
+    .map(toMessage)
+    .map((message) => {
+      const attachments = attachmentsByMessage.get(message.id);
+      return attachments?.length ? { ...message, attachments } : message;
+    })
+    .reverse();
 }
 
 export function getDmMessageById(dmChannelId: string, messageId: string): DmMessage | undefined {
   const row = selectMessageByIdStatement.get(messageId, dmChannelId) as unknown as DmMessageRow | undefined;
-  return row && toMessage(row);
+  if (!row) return undefined;
+  const attachments = getDmAttachmentsForMessage(messageId);
+  return { ...toMessage(row), ...(attachments.length ? { attachments } : {}) };
 }
 
-export function createDmMessage(dmChannelId: string, text: string, sender: UserRecord): DmMessage {
+export function createDmMessage(dmChannelId: string, text: string, sender: UserRecord, attachmentIds: string[] = []): DmMessage {
   const id = randomUUID();
   const createdAt = Date.now();
   insertMessageStatement.run(id, dmChannelId, sender.id, text, createdAt, null, null, null, null, null);
   touchLastMessageStatement.run(createdAt, dmChannelId);
+  const attachments = attachmentIds.length ? attachToDmMessage(attachmentIds, id, dmChannelId, sender.id) : [];
   return {
     id,
     dmChannelId,
@@ -195,6 +208,7 @@ export function createDmMessage(dmChannelId: string, text: string, sender: UserR
     senderName: sender.username,
     text,
     sentAt: createdAt,
+    ...(attachments.length ? { attachments } : {}),
   };
 }
 

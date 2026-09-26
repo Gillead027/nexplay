@@ -1,3 +1,4 @@
+export * from './changelog.js';
 export * from './emoji-data.js';
 export * from './imageFormat.js';
 
@@ -86,6 +87,7 @@ export const Permission = {
   ADMINISTRATOR: 1 << 13,
   MANAGE_SERVER: 1 << 14,
   MANAGE_WEBHOOKS: 1 << 15,
+  MOVE_MEMBERS: 1 << 16,
 } as const;
 
 export type PermissionFlag = (typeof Permission)[keyof typeof Permission];
@@ -145,6 +147,7 @@ export const PERMISSION_DEFINITIONS: PermissionDefinition[] = [
   { flag: Permission.USE_SOUNDBOARD, category: 'Voz', label: 'Usar soundboard', description: 'Tocar sons do soundboard durante uma chamada.' },
   { flag: Permission.MANAGE_SOUNDBOARD, category: 'Voz', label: 'Gerenciar soundboard', description: 'Apagar sons enviados por outros membros.' },
   { flag: Permission.KICK_MEMBERS, category: 'Moderação', label: 'Expulsar membros', description: 'Desconectar um membro de qualquer canal de voz, mesmo sem estar na mesma chamada.' },
+  { flag: Permission.MOVE_MEMBERS, category: 'Moderação', label: 'Mover membros', description: 'Arrastar um membro de um canal de voz para outro.' },
   { flag: Permission.MODERATE_MEMBERS, category: 'Moderação', label: 'Silenciar membros (timeout)', description: 'Impedir temporariamente que um membro envie mensagens, reaja, use o soundboard ou entre em canais de voz.' },
   { flag: Permission.BAN_MEMBERS, category: 'Moderação', label: 'Banir membros', description: 'Impedir que um membro volte a acessar o servidor.' },
 ];
@@ -910,6 +913,8 @@ export interface TextChannel {
   slowModeSeconds: number;
   contentVisibility: ContentVisibility;
   isAnnouncement: boolean;
+  // O canal "atualizações" de cada servidor (onde o NexPlay publica as novidades): só quem gerencia mensagens escreve nele.
+  isUpdates: boolean;
   createdBy: string | null;
   createdAt: number;
 }
@@ -1126,6 +1131,8 @@ export interface DmMessage extends ForwardedFromFields {
   text: string;
   sentAt: number;
   editedAt?: number;
+  // Arquivos enviados junto (qualquer tipo, mesmos limites dos canais de texto). Mensagem só de anexo tem text vazio.
+  attachments?: MessageAttachment[];
 }
 
 // Eventos empurrados pelo WebSocket da API (ver apps/api/src/realtime.ts) —
@@ -1146,6 +1153,9 @@ export type RealtimeEvent =
   | { type: 'CATEGORY_UPDATE'; serverId: string; category: Category }
   | { type: 'CATEGORY_DELETE'; serverId: string; categoryId: string }
   | { type: 'ROOM_STATE_UPDATE'; serverId: string; room: RoomSummary }
+  // Um moderador arrastou esta pessoa para outro canal de voz: o app dela sai do canal de origem e entra no de destino.
+  // Empurrado só para a pessoa movida (sendToUser).
+  | { type: 'VOICE_MEMBER_MOVED'; serverId: string; userId: string; fromChannelId: string; toChannelId: string; movedByName: string }
   | { type: 'TEXT_MESSAGE_REACTION_ADD'; serverId: string; channelId: string; messageId: string; emoji: string; userId: string }
   | { type: 'TEXT_MESSAGE_REACTION_REMOVE'; serverId: string; channelId: string; messageId: string; emoji: string; userId: string }
   | { type: 'SOUNDBOARD_SOUND_CREATE'; serverId: string; sound: SoundboardSound }

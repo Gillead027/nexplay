@@ -73,6 +73,12 @@ const selectFriendIdsStatement = db.prepare(`
   SELECT CASE WHEN user_id_a = ? THEN user_id_b ELSE user_id_a END AS other FROM friendships WHERE user_id_a = ? OR user_id_b = ?
 `);
 const selectUploadKeysStatement = db.prepare('SELECT object_key FROM message_attachments WHERE uploaded_by = ?');
+// Arquivos das conversas privadas da pessoa (dela e de quem conversava com ela): as conversas somem
+// junto com a conta, então os objetos no armazenamento também precisam ser apagados.
+const selectDmAttachmentKeysStatement = db.prepare(`
+  SELECT object_key FROM dm_attachments
+  WHERE uploaded_by = ? OR dm_channel_id IN (SELECT id FROM dm_channels WHERE user_id_a = ? OR user_id_b = ?)
+`);
 const selectServerAttachmentKeysStatement = db.prepare(`
   SELECT object_key FROM message_attachments WHERE channel_id IN (SELECT id FROM text_channels WHERE server_id = ?)
 `);
@@ -97,6 +103,7 @@ export function deleteAccount(userId: string): AccountDeletionResult {
   db.exec('BEGIN IMMEDIATE');
   try {
     for (const row of selectUploadKeysStatement.all(userId) as { object_key: string }[]) objectKeys.add(row.object_key);
+    for (const row of selectDmAttachmentKeysStatement.all(userId, userId, userId) as { object_key: string }[]) objectKeys.add(row.object_key);
     for (const row of selectVerificationKeysStatement.all(userId) as { a: string; b: string }[]) {
       if (row.a) objectKeys.add(row.a);
       if (row.b) objectKeys.add(row.b);

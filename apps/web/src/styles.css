@@ -352,6 +352,10 @@ button:disabled { cursor: default; opacity: .45; }
 .channel-hash, .room-title-hash { color: var(--text-muted); font-size: var(--fs-xl); font-weight: 500; line-height: 1; }
 .service-warning { margin: 0 4px 9px; padding: 7px 8px; border: 1px solid #644044; border-radius: 2px; color: #d8a1a4; background: #26191b; font-size: var(--fs-xs); }
 .channel-block { margin-bottom: 2px; }
+/* Mover membro: quem tem permissão segura numa pessoa da lista de voz e arrasta até outro canal de voz. */
+.channel-user-row.member-draggable { cursor: grab; }
+.channel-user-row.member-draggable:active { cursor: grabbing; }
+.channel-block.member-drop-over { border-radius: var(--radius-sm); background: color-mix(in srgb, var(--accent) 16%, transparent); outline: 1px dashed var(--accent); outline-offset: -1px; }
 .channel-row { position: relative; }
 .channel-chat-toggle {
   position: absolute; top: 50%; right: 5px; transform: translateY(-50%);
