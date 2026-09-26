@@ -30,9 +30,10 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     id: '2026-09-26-mover-membros-arquivos-dm-atualizacoes',
     date: '2026-09-26',
-    title: 'Mover membros na voz, arquivos nas conversas privadas e o canal de atualizações',
+    title: 'Mover membros na voz, arquivos nas conversas privadas, o canal de atualizações e mais segurança na voz',
     items: [
       'Mover membros: moderadores e administradores podem mover alguém de um canal de voz para outro, é só segurar no nome da pessoa e arrastar até o outro canal de voz.',
+      'Desconectar alguém de um canal de voz agora é só para moderadores e administradores (quem tem a permissão "Expulsar membros"); antes qualquer pessoa na chamada podia.',
       'Arquivos nas conversas privadas: agora dá para enviar documentos, ZIP, RAR e qualquer outro tipo de arquivo (até 15 MB, até 5 por mensagem).',
       'Canal atualizações: todo servidor passa a ter o canal atualizações, onde o NexPlay publica o que mudou a cada novidade, como esta mensagem.',
       'Webhooks de canal: um bot ou script pode postar mensagens num canal (Configurações do canal, aba Integrações).',

@@ -3823,10 +3823,14 @@ app.post(
   },
 );
 
+// Desconectar uma PESSOA de um canal de voz \u00e9 modera\u00e7\u00e3o: s\u00f3 quem tem "Expulsar membros" (administradores
+// inclu\u00eddos) e cargo acima do dela. Tirar o NexMusic da chamada continua livre para quem est\u00e1 nela \u2014 qualquer
+// um j\u00e1 faz isso pelo comando de sair.
 app.post(
   '/api/servers/:serverId/rooms/:roomId/participants/:identity/disconnect',
   requireSession,
   requireServerMembership,
+  moderationLimiter,
   async (request, response) => {
   const serverId = currentServerId(response);
   const parsed = disconnectParticipantSchema.safeParse({
@@ -3839,6 +3843,27 @@ app.post(
     return;
   }
   const user = currentUser(response);
+  const targetIsBot = parsed.data.identity === MUSIC_BOT_IDENTITY;
+  if (!targetIsBot) {
+    if (!hasPermission(getUserPermissionBitfield(user.id, serverId), Permission.KICK_MEMBERS)) {
+      response.status(403).json({ error: 'S\u00f3 moderadores e administradores podem desconectar algu\u00e9m do canal de voz.' });
+      return;
+    }
+    const moderation = authorizeModerationAction(
+      user.id,
+      getUserHighestPosition(user.id, serverId),
+      parsed.data.identity,
+      getUserHighestPosition(parsed.data.identity, serverId),
+    );
+    if (!moderation.ok) {
+      response.status(403).json({
+        error: moderation.reason === 'SELF'
+          ? 'Voc\u00ea n\u00e3o pode desconectar a si mesmo por aqui.'
+          : 'Voc\u00ea s\u00f3 pode desconectar membros com posi\u00e7\u00e3o de cargo menor que a sua.',
+      });
+      return;
+    }
+  }
   try {
     const participants = await roomService.listParticipants(room.id);
     const authorization = authorizeVoiceDisconnect({
@@ -3847,6 +3872,7 @@ app.post(
       requesterId: user.id,
       targetIdentity: parsed.data.identity,
       participantIdentities: participants.map(({ identity }) => identity),
+      requireRequesterInRoom: targetIsBot,
     });
     if (!authorization.ok) {
       if (authorization.reason === 'REQUESTER_NOT_IN_ROOM') {

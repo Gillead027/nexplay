@@ -32,6 +32,17 @@ describe('authorizeVoiceDisconnect', () => {
       participantIdentities: ['bob'],
     }), { ok: false, reason: 'REQUESTER_NOT_IN_ROOM' });
   });
+
+  it('um moderador (que a rota já conferiu) pode desconectar alguém sem estar no canal', () => {
+    assert.deepEqual(authorizeVoiceDisconnect({
+      roomId: 'geral',
+      channels,
+      requesterId: 'mod',
+      targetIdentity: 'bob',
+      participantIdentities: ['bob'],
+      requireRequesterInRoom: false,
+    }), { ok: true });
+  });
 });
 
 const moveChannels = [

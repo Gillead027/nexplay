@@ -35,25 +35,29 @@ export type VoiceDisconnectAuthorization =
   | { ok: true }
   | { ok: false; reason: 'INVALID_ROOM' | 'REQUESTER_NOT_IN_ROOM' | 'TARGET_NOT_IN_ROOM' };
 
+// requireRequesterInRoom: quem tira o NexMusic da chamada precisa estar nela; um moderador (que tem "Expulsar
+// membros", conferido na rota) desconecta alguém mesmo sem estar no canal.
 export function authorizeVoiceDisconnect({
   roomId,
   channels,
   requesterId,
   targetIdentity,
   participantIdentities,
+  requireRequesterInRoom = true,
 }: {
   roomId: string;
   channels: readonly VoiceChannel[];
   requesterId: string;
   targetIdentity: string;
   participantIdentities: readonly string[];
+  requireRequesterInRoom?: boolean;
 }): VoiceDisconnectAuthorization {
   if (!channels.some((channel) => channel.id === roomId)) {
     return { ok: false, reason: 'INVALID_ROOM' };
   }
 
   const identities = new Set(participantIdentities);
-  if (!identities.has(requesterId)) {
+  if (requireRequesterInRoom && !identities.has(requesterId)) {
     return { ok: false, reason: 'REQUESTER_NOT_IN_ROOM' };
   }
 

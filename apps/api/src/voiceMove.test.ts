@@ -49,3 +49,42 @@ test('mover membro de canal de voz: só quem tem a permissão "Mover membros" (o
     }
   });
 });
+
+test('desconectar alguém de um canal de voz: só quem tem "Expulsar membros" e cargo acima do alvo (o NexMusic segue livre)', async () => {
+  await withTempDirectory('voice-disconnect', async (directory) => {
+    const api = await startApi(directory);
+    try {
+      const { request } = api;
+      const ana = await register(request, 'Ana');
+      const bia = await register(request, 'Bia');
+      const cami = await register(request, 'Cami');
+      const created = await request('/servers', 'POST', { name: 'Casa', description: '' }, ana.cookie);
+      const serverId = ((await created.json()) as { server: { id: string } }).server.id;
+      const invite = (await (await request(`/servers/${serverId}/invite`, 'POST', undefined, ana.cookie)).json()) as { invite: { code: string } };
+      for (const person of [bia, cami]) assert.equal((await request(`/invites/${invite.invite.code}/redeem`, 'POST', undefined, person.cookie)).status, 201);
+      const channels = ((await (await request(`/servers/${serverId}/channels`, 'GET', undefined, ana.cookie)).json()) as { channels: Channel[] }).channels;
+      const room = channels.find((channel) => channel.type === 'VOICE')!;
+      const disconnect = (cookie: string, identity: string) =>
+        request(`/servers/${serverId}/rooms/${room.id}/participants/${identity}/disconnect`, 'POST', undefined, cookie);
+
+      // O LiveKit não roda nos testes: 403 = barrado pela permissão/cargo, 503 = passou por tudo até o LiveKit.
+      assert.equal((await disconnect(bia.cookie, cami.id)).status, 403, 'membro comum não desconecta ninguém');
+      assert.equal((await disconnect(ana.cookie, cami.id)).status, 503, 'administrador passa');
+      assert.equal((await disconnect(ana.cookie, ana.id)).status, 403, 'nem a si mesmo por aqui');
+      assert.equal((await disconnect(cami.cookie, 'music-bot')).status, 503, 'tirar o NexMusic segue livre para quem está na chamada');
+
+      const role = await request(
+        `/servers/${serverId}/roles`,
+        'POST',
+        { name: 'Moderador', color: '#3366ff', permissions: Permission.KICK_MEMBERS, hoist: false },
+        ana.cookie,
+      );
+      const { role: moderator } = (await role.json()) as { role: Role };
+      assert.equal((await request(`/servers/${serverId}/roles/${moderator.id}/members/${bia.id}`, 'PUT', undefined, ana.cookie)).status, 204);
+      assert.equal((await disconnect(bia.cookie, cami.id)).status, 503, 'moderador passa');
+      assert.equal((await disconnect(bia.cookie, ana.id)).status, 403, 'moderador não desconecta quem tem cargo acima do dele');
+    } finally {
+      await api.stop();
+    }
+  });
+});

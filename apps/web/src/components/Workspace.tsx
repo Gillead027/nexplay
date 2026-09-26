@@ -528,6 +528,7 @@ function ChannelButton({
   onDragStart,
   canMoveMembers,
   onMoveMember,
+  canDisconnectMembers,
 }: {
   channel: VoiceChannel;
   summary: RoomView | undefined;
@@ -544,7 +545,7 @@ function ChannelButton({
   // conectado agora — o LiveKit não entrega "quem está falando" de salas que
   // você não entrou. Por isso este set só chega preenchido quando `active`.
   speakingIds: Set<string>;
-  onDisconnectParticipant: (identity: string, name: string) => void;
+  onDisconnectParticipant: (roomId: string, identity: string, name: string) => void;
   disconnectingIdentity: string | null;
   settings: {
     serverId: string;
@@ -568,6 +569,8 @@ function ChannelButton({
   // Quem tem "Mover membros": pode arrastar as pessoas deste canal e soltar em outro canal de voz.
   canMoveMembers?: boolean;
   onMoveMember?: (member: VoiceMemberDrag, toRoomId: string) => void;
+  // Quem tem "Expulsar membros": vê o botão de desconectar nas pessoas do canal, mesmo sem estar na chamada.
+  canDisconnectMembers?: boolean;
 }) {
   const [memberDropOver, setMemberDropOver] = useState(false);
   const acceptsMemberDrop = (event: ReactDragEvent<HTMLElement>) =>
@@ -639,7 +642,8 @@ function ChannelButton({
       </div>
       {summary?.participants.map((participant) => {
         const isBot = participant.participantType === 'BOT';
-        const canDisconnect = active && participant.identity !== ownIdentity;
+        // Desconectar uma pessoa é para quem tem cargo elevado ("Expulsar membros"); tirar o NexMusic, para quem está na chamada.
+        const canDisconnect = participant.identity !== ownIdentity && (isBot ? active : Boolean(canDisconnectMembers));
         return (
           <div
             className={`channel-user-row ${canMoveMembers && !isBot ? 'member-draggable' : ''}`}
@@ -696,7 +700,7 @@ function ChannelButton({
                 disabled={disconnectingIdentity === participant.identity}
                 onClick={(event) => {
                   event.stopPropagation();
-                  onDisconnectParticipant(participant.identity, participant.name);
+                  onDisconnectParticipant(channel.id, participant.identity, participant.name);
                 }}
                 title={`Desconectar ${participant.name}`}
                 aria-label={`Desconectar ${participant.name}`}
@@ -2186,6 +2190,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const canManageServer = hasPermission(member?.permissions ?? 0, Permission.MANAGE_SERVER);
   const canManageWebhooks = hasPermission(member?.permissions ?? 0, Permission.MANAGE_WEBHOOKS);
   const canMoveMembers = hasPermission(member?.permissions ?? 0, Permission.MOVE_MEMBERS);
+  const canKickMembers = hasPermission(member?.permissions ?? 0, Permission.KICK_MEMBERS);
   const [addServerOpen, setAddServerOpen] = useState(false);
   const [addServerTab, setAddServerTab] = useState<'create' | 'join'>('create');
   const [forwardingMessage, setForwardingMessage] = useState<ForwardSource | null>(null);
@@ -2705,21 +2710,17 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     }
   }
 
-  async function disconnectParticipantFromVoice(identity: string, name: string) {
-    const roomId = voice.currentChannel?.id;
-    const voiceServerId = voice.currentChannel?.serverId;
-    if (!roomId || !voiceServerId || !voice.connected || disconnectingIdentity) return;
+  async function disconnectParticipantFromVoice(roomId: string, identity: string, name: string) {
+    if (!activeServerId || disconnectingIdentity) return;
     if (!window.confirm(`Desconectar ${name} do canal de voz?`)) return;
     setDisconnectingIdentity(identity);
     try {
-      await api.disconnectVoiceParticipant(voiceServerId, roomId, identity);
-      if (activeServerId) {
-        const result = await api.getRooms(activeServerId);
-        setRooms(result.rooms);
-        setLivekitAvailable(result.livekitAvailable);
-      }
+      await api.disconnectVoiceParticipant(activeServerId, roomId, identity);
+      const result = await api.getRooms(activeServerId);
+      setRooms(result.rooms);
+      setLivekitAvailable(result.livekitAvailable);
     } catch (error) {
-      window.alert(error instanceof Error ? error.message : `N?o foi poss?vel desconectar ${name}.`);
+      window.alert(error instanceof Error ? error.message : `Não foi possível desconectar ${name}.`);
     } finally {
       setDisconnectingIdentity(null);
     }
@@ -3376,9 +3377,10 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                     ownAvatarFrame={session.avatarFrame}
                     onOpenProfile={openUserProfile}
                     speakingIds={voice.speakers}
-                    onDisconnectParticipant={(identity, name) => void disconnectParticipantFromVoice(identity, name)}
+                    onDisconnectParticipant={(roomId, identity, name) => void disconnectParticipantFromVoice(roomId, identity, name)}
                     disconnectingIdentity={disconnectingIdentity}
                     onParticipantContextMenu={openParticipantVolumeMenu}
+                    canDisconnectMembers={canKickMembers}
                     canMoveMembers={canMoveMembers}
                     onMoveMember={(member, toRoomId) => void moveVoiceMember(member, toRoomId)}
                     liveMuted={voice.currentChannel?.id === room.id && voice.connected ? liveMuted : undefined}
