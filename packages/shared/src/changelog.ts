@@ -69,6 +69,14 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'O perfil da pessoa também passa a mostrar o que ela está fazendo mesmo que ela não esteja na mesma chamada de voz que você.',
     ],
   },
+  {
+    id: '2026-09-26-nexmusic-youtube-retomado',
+    date: '2026-09-26',
+    title: 'NexMusic: busca e reprodução do YouTube atualizadas',
+    items: [
+      'O NexMusic recebeu uma atualização para manter a busca e a reprodução de músicas do YouTube compatíveis com as mudanças recentes da plataforma.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';
