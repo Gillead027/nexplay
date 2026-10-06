@@ -22,20 +22,15 @@ export function watchedStreamIdentities(screens: readonly ScreenViewLike[], watc
   return identities;
 }
 
-// Nome da faixa de áudio do Spotify (ou de qualquer música) tocado no PC de quem compartilha — publicada como Unknown,
-// igual o soundboard. Ver useVoiceRoom.ts (toggleDeviceMusic).
-export const DEVICE_MUSIC_TRACK_NAME = 'musica-pc';
-
 export interface AudioPublicationKind {
   isMicrophone: boolean;
   isScreenShareAudio: boolean;
   isSoundboard: boolean;
-  isDeviceMusic: boolean;
 }
 
-// Voz, soundboard e música do PC tocam sempre; o áudio da transmissão só se o usuário estiver
+// Voz e soundboard tocam sempre; o áudio da transmissão só se o usuário estiver
 // assistindo aquela transmissão.
 export function shouldPlayAudioPublication(kind: AudioPublicationKind, watchingStream: boolean): boolean {
   if (kind.isScreenShareAudio) return watchingStream;
-  return kind.isMicrophone || kind.isSoundboard || kind.isDeviceMusic;
+  return kind.isMicrophone || kind.isSoundboard;
 }

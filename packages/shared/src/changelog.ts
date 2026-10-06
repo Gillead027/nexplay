@@ -77,17 +77,6 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'O NexMusic recebeu uma atualização para manter a busca e a reprodução de músicas do YouTube compatíveis com as mudanças recentes da plataforma.',
     ],
   },
-  {
-    id: '2026-10-06-som-do-pc-na-chamada',
-    date: '2026-10-06',
-    title: 'Som do seu PC na chamada (Spotify em qualidade original)',
-    items: [
-      'Novo botão de música na barra de voz do aplicativo desktop: quem clica passa a enviar para a chamada o som que está tocando no computador, como o Spotify, em qualidade original.',
-      'Funciona só no Windows, no aplicativo desktop. Ao escolher a tela, marque "Compartilhar áudio".',
-      'Diferente do bot, esse som não passa pelo YouTube. Quem está na chamada ouve mesmo que o bot de música esteja fora do ar.',
-      'Para parar, clique de novo no botão ou saia da chamada.',
-    ],
-  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';
