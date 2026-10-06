@@ -29,7 +29,10 @@ export default defineConfig([
     // do backend nunca chegava a existir). external mantém esses pacotes
     // como require() de verdade, resolvido do node_modules real.
     external: ['electron', 'windows-media-sessions', 'ps-list'],
-    noExternal: ['electron-updater'],
+    // @nexplay/shared PRECISA ir embutido: os preloads rodam com sandbox:true, onde require() só aceita 'electron'.
+    // Fora daqui (o padrão do tsup para dependências) o preload quebrava inteiro ao carregar e o site ficava sem
+    // ponte nenhuma — sem os botões de minimizar/maximizar/fechar (bug do 0.2.19 e 0.2.20). Ver check-preloads.mjs.
+    noExternal: ['electron-updater', '@nexplay/shared'],
   },
   {
     entry: { 'picker-renderer': 'src/picker-renderer.ts' },

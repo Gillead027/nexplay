@@ -1,12 +1,12 @@
 {
   "name": "@nexplay/desktop",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "private": true,
   "description": "Cliente Windows do NexPlay",
   "main": "dist/main.js",
   "scripts": {
     "dev": "npm run build && wait-on http-get://localhost:5173 http-get://localhost:3000/api/health && node scripts/dev.mjs",
-    "build": "tsup --config tsup.config.ts",
+    "build": "tsup --config tsup.config.ts && node scripts/check-preloads.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "node --import tsx --test src/policy.test.ts src/settings.test.ts src/windowState.test.ts",
     "package": "node scripts/package.mjs"
