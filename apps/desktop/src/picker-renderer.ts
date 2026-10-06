@@ -96,6 +96,33 @@ function syncFpsForResolution(): void {
 resolutionSelect?.addEventListener('change', syncFpsForResolution);
 syncFpsForResolution();
 
+// Botões de opção (chips) do Discord por cima dos <select> escondidos: clicar muda o select, e o estado
+// ativo/desativado dos chips acompanha o select (1080p trava o FPS em 60).
+const chipGroups = Array.from(document.querySelectorAll<HTMLDivElement>('.chip-group'));
+function syncChips(): void {
+  for (const group of chipGroups) {
+    const select = document.getElementById(group.dataset.for ?? '') as HTMLSelectElement | null;
+    if (!select) continue;
+    for (const chip of Array.from(group.querySelectorAll<HTMLButtonElement>('.chip'))) {
+      const active = chip.dataset.value === select.value;
+      chip.classList.toggle('active', active);
+      chip.setAttribute('aria-checked', String(active));
+      chip.disabled = select.disabled && !active;
+    }
+  }
+}
+for (const group of chipGroups) {
+  group.addEventListener('click', (event) => {
+    const chip = (event.target as HTMLElement).closest<HTMLButtonElement>('.chip');
+    const select = document.getElementById(group.dataset.for ?? '') as HTMLSelectElement | null;
+    if (!chip || !select || chip.disabled || !chip.dataset.value) return;
+    select.value = chip.dataset.value;
+    select.dispatchEvent(new Event('change'));
+    syncChips();
+  });
+}
+syncChips();
+
 cancelButton?.addEventListener('click', () => void window.capturePicker.cancel());
 closeButton?.addEventListener('click', () => void window.capturePicker.cancel());
 confirmButton?.addEventListener('click', () => {

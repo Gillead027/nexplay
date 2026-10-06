@@ -7,51 +7,61 @@
       content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:;"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Selecionar compartilhamento</title>
+    <title>Compartilhamento de tela</title>
     <link rel="stylesheet" href="picker.css" />
   </head>
   <body>
     <header>
-      <div class="picker-icon" aria-hidden="true">▣</div>
-      <div>
-        <h1>Compartilhar tela</h1>
-        <p>Escolha o que você quer transmitir para seus amigos.</p>
-      </div>
-      <button id="picker-close" type="button" aria-label="Fechar">×</button>
+      <h1>Compartilhamento de tela</h1>
+      <button id="picker-close" type="button" aria-label="Fechar">
+        <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+      </button>
     </header>
-    <div id="tabs" class="tabs">
-      <button type="button" class="tab active" data-kind="window">Aplicativos</button>
-      <button type="button" class="tab" data-kind="screen">Telas</button>
+    <div id="tabs" class="tabs" role="tablist">
+      <button type="button" class="tab active" role="tab" data-kind="window">Aplicativos</button>
+      <button type="button" class="tab" role="tab" data-kind="screen">Telas</button>
     </div>
     <main id="source-list">
       <p id="status">Carregando fontes…</p>
     </main>
-    <div class="options">
-      <label>
-        <span>Resolução</span>
-        <select id="quality-resolution">
-          <option value="720">720p</option>
-          <option value="1080" selected>1080p</option>
-        </select>
-      </label>
-      <label>
-        <span>FPS</span>
-        <select id="quality-fps">
-          <option value="30">30 FPS</option>
-          <option value="60" selected>60 FPS</option>
-        </select>
-      </label>
+    <section class="options" aria-label="Qualidade da transmissão">
+      <h2>Qualidade da transmissão</h2>
+      <div class="option-rows">
+        <div class="option-row">
+          <span class="option-label">Resolução</span>
+          <div class="chip-group" data-for="quality-resolution" role="radiogroup" aria-label="Resolução">
+            <button type="button" class="chip" data-value="720" role="radio">720p</button>
+            <button type="button" class="chip" data-value="1080" role="radio">1080p</button>
+          </div>
+        </div>
+        <div class="option-row">
+          <span class="option-label">Taxa de quadros</span>
+          <div class="chip-group" data-for="quality-fps" role="radiogroup" aria-label="Taxa de quadros">
+            <button type="button" class="chip" data-value="30" role="radio">30 FPS</button>
+            <button type="button" class="chip" data-value="60" role="radio">60 FPS</button>
+          </div>
+        </div>
+      </div>
+      <!-- Os valores de verdade (lidos pelo picker-renderer); os botões acima só mudam estes. -->
+      <select id="quality-resolution" hidden>
+        <option value="720">720p</option>
+        <option value="1080" selected>1080p</option>
+      </select>
+      <select id="quality-fps" hidden>
+        <option value="30">30 FPS</option>
+        <option value="60" selected>60 FPS</option>
+      </select>
       <label class="options-toggle">
+        <input id="share-audio" type="checkbox" checked />
         <span>
           <strong>Compartilhar áudio</strong>
-          <small>Compartilha o áudio do aplicativo/guia</small>
+          <small>Transmite também o som do aplicativo.</small>
         </span>
-        <input id="share-audio" type="checkbox" checked />
       </label>
-    </div>
+    </section>
     <footer>
-      <button id="cancel" type="button" class="btn-secondary">Cancelar</button>
-      <button id="confirm" type="button" class="btn-primary" disabled>Transmitir</button>
+      <button id="cancel" type="button" class="btn-link">Cancelar</button>
+      <button id="confirm" type="button" class="btn-primary" disabled>Transmitir ao vivo</button>
     </footer>
     <script src="../renderer-dist/picker-renderer.global.js"></script>
   </body>
