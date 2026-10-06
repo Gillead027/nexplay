@@ -2,6 +2,7 @@ export * from './changelog.js';
 export * from './cosmetics.js';
 import type { Nameplate, UserCosmetics } from './cosmetics.js';
 export * from './emoji-data.js';
+export * from './gateway.js';
 export * from './imageFormat.js';
 export * from './ipc.js';
 

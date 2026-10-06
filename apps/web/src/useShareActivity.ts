@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { activityIdentity, publicActivity, type Activity } from '@nexplay/shared';
 import { api } from './api';
-import { onRealtimeConnect } from './realtime';
+import { onRealtimeConnect, onRealtimeResume } from './realtime';
 import { native, nativeSupports } from './native';
 
 // Conta pro servidor o que a pessoa está jogando ou ouvindo (detectado pelo app desktop) para aparecer na lista de membros
@@ -36,10 +36,13 @@ export function useShareActivity(): void {
     void shell.activity.getCurrent().then((activity) => apply((activity as Activity | null) ?? null));
     const unsubscribeActivity = shell.activity.onChanged((activity) => apply(activity as Activity | null));
     const unsubscribeConnect = onRealtimeConnect(() => publish(true));
+    // Numa queda mais longa que a carência da presença o servidor esquece a atividade, mesmo retomando a sessão.
+    const unsubscribeResume = onRealtimeResume(() => publish(true));
 
     return () => {
       unsubscribeActivity?.();
       unsubscribeConnect();
+      unsubscribeResume();
     };
   }, []);
 }

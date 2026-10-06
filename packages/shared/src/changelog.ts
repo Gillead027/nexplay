@@ -185,6 +185,15 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Configurações do servidor > Cargos: o título do cargo ficou alinhado e a busca de cargos foi corrigida.',
     ],
   },
+  {
+    id: '2026-10-06-conexao-retoma-de-onde-parou',
+    date: '2026-10-06',
+    title: 'Conexão que retoma de onde parou',
+    items: [
+      'Se a internet cair por alguns segundos, o NexPlay agora volta de onde parou: as mensagens e avisos que chegaram enquanto você estava fora aparecem na ordem, sem recarregar a tela.',
+      'O NexPlay também percebe sozinho quando a conexão travou sem cair e reconecta.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

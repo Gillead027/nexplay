@@ -25,6 +25,12 @@ const envSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
+  // Tempo real no formato do gateway do Discord (opcodes, sequência e resume; ver gateway.ts em @nexplay/shared).
+  // Desligado, quem pede ?v=2 recebe o formato antigo e o app cai nele sozinho: é a volta segura.
+  REALTIME_GATEWAY: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((value) => value === 'true'),
   // Nomes de usuário (separados por vírgula) que veem o painel de administração da instância.
   ADMIN_USERNAMES: z.string().default(''),
   // Quantos servidores uma conta pode ter (como dona) ao mesmo tempo; 0 = sem limite. Quem está em ADMIN_USERNAMES não tem
