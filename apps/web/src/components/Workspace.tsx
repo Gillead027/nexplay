@@ -3094,7 +3094,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           )}
 
           {!dm && activeServerId && (!voice.connected || voiceMembersOpen) && (
-            <MemberList data={memberData} ownId={session.id} ownStatus={session.presenceStatus} onOpenProfile={openUserProfile} />
+            <MemberList data={memberData} ownId={session.id} ownStatus={session.presenceStatus} ownNameplate={session.cosmetics?.nameplate} ownAvatarFrame={session.avatarFrame} onOpenProfile={openUserProfile} />
           )}
         </div>
   );
@@ -3686,7 +3686,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           ) : storeOpen ? (
             <Store
               session={session}
-              onFrameChanged={(user) => {
+              onUserChanged={(user) => {
                 onProfileUpdated(user);
                 setProfileFrame(user.avatarFrame);
               }}
@@ -3778,7 +3778,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
               onToggleMembers={toggleTextMembers}
             />
             {textMembersOpen && (
-              <MemberList data={memberData} ownId={session.id} ownStatus={session.presenceStatus} onOpenProfile={openUserProfile} />
+              <MemberList data={memberData} ownId={session.id} ownStatus={session.presenceStatus} ownNameplate={session.cosmetics?.nameplate} ownAvatarFrame={session.avatarFrame} onOpenProfile={openUserProfile} />
             )}
           </div>
         ) : (

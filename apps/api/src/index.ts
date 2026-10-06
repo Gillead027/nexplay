@@ -23,6 +23,9 @@ import {
   SERVER_ICON_DATA_URL_MAX_LENGTH,
   BAN_REASON_MAX_LENGTH,
   AVATAR_FRAME_IDS,
+  HEX_COLOR_PATTERN,
+  NAMEPLATE_IDS,
+  PROFILE_EFFECT_IDS,
   USER_BANNER_DATA_URL_MAX_LENGTH,
   BIO_MAX_LENGTH,
   CATEGORY_NAME_MAX_LENGTH,
@@ -99,6 +102,7 @@ import {
   setUserPresenceStatus,
   setUserServerLayoutJson,
   updateUserPassword,
+  updateUserCosmetics,
   updateUserProfile,
   verifyPassword,
   type UserRecord,
@@ -877,6 +881,7 @@ function toUserSession(user: UserRecord): UserSession {
     bannerAnimated: user.bannerAnimated,
     presenceStatus: user.presenceStatus,
     identityVerificationStatus: user.identityVerificationStatus,
+    cosmetics: user.cosmetics,
   };
 }
 
@@ -1096,6 +1101,29 @@ app.patch('/api/profile', requireSession, serverProfileJson, (request, response)
     bannerDataUrl: body.data.bannerDataUrl,
     avatarFrame: body.data.avatarFrame,
   });
+  if (!updated) {
+    response.status(404).json({ error: 'Usuário não encontrado.' });
+    return;
+  }
+  response.json({ user: toUserSession(updated) });
+});
+
+// Itens da Loja (tudo grátis). Ausente = mantém; '' = tira. Ver UserCosmetics em @nexplay/shared.
+const cosmeticsSchema = z.object({
+  profileEffect: z.enum([...PROFILE_EFFECT_IDS, '']).optional(),
+  nameplate: z.enum([...NAMEPLATE_IDS, '']).optional(),
+  themePrimary: z.union([z.literal(''), z.string().regex(HEX_COLOR_PATTERN)]).optional(),
+  themeAccent: z.union([z.literal(''), z.string().regex(HEX_COLOR_PATTERN)]).optional(),
+  avatarFrame: z.enum([...AVATAR_FRAME_IDS, '']).optional(),
+});
+
+app.put('/api/me/cosmetics', requireSession, (request, response) => {
+  const body = cosmeticsSchema.safeParse(request.body);
+  if (!body.success) {
+    response.status(400).json({ error: 'Item da Loja inválido.' });
+    return;
+  }
+  const updated = updateUserCosmetics(currentUser(response).id, body.data);
   if (!updated) {
     response.status(404).json({ error: 'Usuário não encontrado.' });
     return;

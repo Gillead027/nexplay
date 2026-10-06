@@ -160,6 +160,19 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'O botão Tirar borda volta a foto ao normal. Dá para trocar a borda também em Configurações > Meu perfil, como antes.',
     ],
   },
+  {
+    id: '2026-10-06-loja-completa',
+    date: '2026-10-06',
+    title: 'Loja completa: efeitos de perfil, plaquinhas de nome, temas e pacotes',
+    items: [
+      'A Loja agora tem as abas Destaques, Decorações de avatar, Efeitos de perfil, Plaquinhas de nome, Temas de perfil e Pacotes, como a Loja do Discord. Tudo continua grátis.',
+      'Efeitos de perfil: estrelas, neve, brasas, corações, confete, bolhas, vaga-lumes ou pétalas animados por cima do seu cartão de perfil.',
+      'Plaquinhas de nome: um fundo animado atrás do seu nome na lista de membros dos servidores.',
+      'Temas de perfil: o seu cartão de perfil fica com duas cores. Dá para escolher um tema pronto ou montar as suas cores.',
+      'Pacotes: um conjunto que combina borda, efeito, plaquinha e tema, aplicado de uma vez.',
+      'Clique em qualquer item para ver como ele fica no seu cartão e na lista de membros antes de usar.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

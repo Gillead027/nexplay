@@ -1,4 +1,4 @@
-import type { AccentColor, MemberSummary, ServerMember } from '@nexplay/shared';
+import { parseCosmetics, type AccentColor, type MemberSummary, type ServerMember } from '@nexplay/shared';
 import { db } from './db.js';
 import { getUserPermissionBitfield, getUserRoleIds } from './roles.js';
 
@@ -9,6 +9,7 @@ interface MemberRow {
   avatar_data_url: string;
   avatar_frame: string;
   status_text: string;
+  cosmetics: string;
 }
 
 const selectMemberStatement = db.prepare(
@@ -26,7 +27,7 @@ const updateMemberTimeoutStatement = db.prepare(
 // membros de qualquer servidor, mesmo padrão que já existia antes de
 // múltiplos servidores existirem.
 const listMembersStatement = db.prepare(`
-  SELECT users.id, users.username, users.accent_color, users.avatar_data_url, users.avatar_frame, users.status_text
+  SELECT users.id, users.username, users.accent_color, users.avatar_data_url, users.avatar_frame, users.status_text, users.cosmetics
   FROM server_members
   INNER JOIN users ON users.id = server_members.user_id
   LEFT JOIN bans ON bans.user_id = users.id
@@ -79,6 +80,7 @@ export function listServerMembers(serverId: string): MemberSummary[] {
     avatarUrl: row.avatar_data_url,
     avatarFrame: row.avatar_frame as MemberSummary['avatarFrame'],
     statusText: row.status_text,
+    nameplate: parseCosmetics(row.cosmetics).nameplate,
     roleIds: getUserRoleIds(row.id, serverId),
     timeoutUntil: (selectMemberStatement.get(serverId, row.id) as { timeout_until: number | null }).timeout_until,
   }));

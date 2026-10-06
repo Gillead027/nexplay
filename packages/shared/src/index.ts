@@ -1,4 +1,6 @@
 export * from './changelog.js';
+export * from './cosmetics.js';
+import type { Nameplate, UserCosmetics } from './cosmetics.js';
 export * from './emoji-data.js';
 export * from './imageFormat.js';
 export * from './ipc.js';
@@ -179,6 +181,8 @@ export interface MemberSummary {
   statusText: string;
   roleIds: string[];
   timeoutUntil: number | null;
+  // Plaquinha de nome escolhida na Loja (fundo atrás do nome na lista de membros).
+  nameplate?: Nameplate | '';
 }
 
 export interface Server {
@@ -324,6 +328,8 @@ export interface UserSession {
   bannerAnimated: boolean;
   presenceStatus: PresenceStatus;
   identityVerificationStatus: IdentityVerificationStatus;
+  // Itens da Loja (efeito de perfil, plaquinha de nome, tema). Ausente em servidores antigos = nada.
+  cosmetics?: UserCosmetics;
 }
 
 // 'default' = normal; 'spoiler' e 'age_restricted' só guardam o selo visual e

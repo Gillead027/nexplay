@@ -7,6 +7,7 @@ import { ServerImage } from './ServerImage';
 import { ActivityLine, ListeningActivityCard } from './ActivityDisplay';
 import { BlockIcon, CloseIcon, MessageIcon, UserPlusIcon } from './Icons';
 import { computePopoverPosition, POPOVER_WIDTH } from './profilePopoverPosition';
+import { hasProfileTheme, ProfileEffectLayer, profileThemeStyle } from './Cosmetics';
 
 export interface ProfilePopoverTarget {
   userId: string;
@@ -130,7 +131,14 @@ export function ProfilePopover({
   const { top, left } = computePopoverPosition(target.rect, { width: POPOVER_WIDTH, height }, viewport);
 
   return (
-    <div className="profile-popover" ref={popoverRef} role="dialog" aria-label="Perfil do usuário" style={{ top: `${top}px`, left: `${left}px` }}>
+    <div
+      className={`profile-popover ${profile && hasProfileTheme(profile.cosmetics) ? 'themed' : ''}`}
+      ref={popoverRef}
+      role="dialog"
+      aria-label="Perfil do usuário"
+      style={{ top: `${top}px`, left: `${left}px`, ...(profile ? profileThemeStyle(profile.cosmetics) : undefined) }}
+    >
+      {profile && <ProfileEffectLayer effect={profile.cosmetics?.profileEffect} />}
       <button type="button" className="profile-popover-close" onClick={onClose} aria-label="Fechar">
         <CloseIcon size={13} />
       </button>

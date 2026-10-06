@@ -1,12 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import {
+  EMPTY_COSMETICS,
   PRESENCE_STATUSES,
+  parseCosmetics,
   parseImageDataUrl,
   type AccentColor,
   type AvatarFrame,
   type IdentityVerificationStatus,
   type PresenceStatus,
+  type UserCosmetics,
 } from '@nexplay/shared';
 import { db } from './db.js';
 
@@ -22,6 +25,7 @@ export interface UserRecord {
   bannerDataUrl: string;
   bannerAnimated: boolean;
   avatarFrame: AvatarFrame | '';
+  cosmetics: UserCosmetics;
   presenceStatus: PresenceStatus;
   assetsRev: number;
   timeoutUntil: number | null;
@@ -42,6 +46,7 @@ interface UserRow {
   banner_data_url: string;
   banner_animated: number;
   avatar_frame: AvatarFrame | '';
+  cosmetics: string;
   presence_status: string;
   assets_rev: number;
   timeout_until: number | null;
@@ -69,6 +74,7 @@ function toRecord(row: UserRow): UserRecord {
     bannerDataUrl: row.banner_data_url,
     bannerAnimated: row.banner_animated === 1,
     avatarFrame: row.avatar_frame,
+    cosmetics: parseCosmetics(row.cosmetics),
     presenceStatus: asPresenceStatus(row.presence_status),
     assetsRev: row.assets_rev,
     timeoutUntil: row.timeout_until,
@@ -87,6 +93,7 @@ const updateProfileStatement = db.prepare(
   `UPDATE users SET accent_color = ?, status_text = ?, bio = ?, pronouns = ?, avatar_data_url = ?, avatar_frame = ?, banner_data_url = ?,
     banner_animated = ?, assets_rev = ? WHERE id = ?`,
 );
+const updateCosmeticsStatement = db.prepare('UPDATE users SET cosmetics = ?, avatar_frame = ? WHERE id = ?');
 const updateTimeoutStatement = db.prepare('UPDATE users SET timeout_until = ? WHERE id = ?');
 const updateIdentityVerificationStatement = db.prepare(
   'UPDATE users SET identity_verification_status = ?, identity_verified_at = ?, identity_verification_ref = ? WHERE id = ?',
@@ -112,6 +119,7 @@ export function createUser(username: string, password: string, accentColor: Acce
     bannerDataUrl: '',
     bannerAnimated: false,
     avatarFrame: '',
+    cosmetics: { ...EMPTY_COSMETICS },
     presenceStatus: 'online',
     assetsRev: 0,
     timeoutUntil: null,
@@ -197,5 +205,23 @@ export function updateUserProfile(
     bannerChanged ? current.assetsRev + 1 : current.assetsRev,
     id,
   );
+  return getUserById(id);
+}
+
+// Itens da Loja. Campos ausentes mantêm o que já estava; '' tira o item. A decoração de avatar (borda) vai junto
+// porque a Loja também a escolhe, e um pacote troca tudo de uma vez.
+export function updateUserCosmetics(
+  id: string,
+  fields: { [K in keyof UserCosmetics]?: UserCosmetics[K] | undefined } & { avatarFrame?: AvatarFrame | '' | undefined },
+): UserRecord | undefined {
+  const current = getUserById(id);
+  if (!current) return undefined;
+  const next = parseCosmetics(JSON.stringify({
+    profileEffect: fields.profileEffect ?? current.cosmetics.profileEffect,
+    nameplate: fields.nameplate ?? current.cosmetics.nameplate,
+    themePrimary: fields.themePrimary ?? current.cosmetics.themePrimary,
+    themeAccent: fields.themeAccent ?? current.cosmetics.themeAccent,
+  }));
+  updateCosmeticsStatement.run(JSON.stringify(next), fields.avatarFrame ?? current.avatarFrame, id);
   return getUserById(id);
 }

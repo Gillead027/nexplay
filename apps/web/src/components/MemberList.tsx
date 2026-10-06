@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import type { Activity, MemberSummary, PresenceStatus } from '@nexplay/shared';
+import type { Activity, AvatarFrame, MemberSummary, Nameplate, PresenceStatus } from '@nexplay/shared';
 import { buildMemberSections } from '../memberListState';
 import { buildNameColorMap } from '../roleColors';
 import type { ServerMemberListData } from '../useServerMemberList';
@@ -28,10 +28,11 @@ function MemberRow({
   return (
     <button
       type="button"
-      className={`member-row ${online ? 'online' : 'offline'} status-${status}`}
+      className={`member-row ${online ? 'online' : 'offline'} status-${status} ${member.nameplate ? `has-nameplate nameplate-${member.nameplate}` : ''}`}
       onClick={(event) => onOpenProfile(member.id, event)}
       title={`Ver perfil de ${member.displayName}`}
     >
+      {member.nameplate && <span className="nameplate-art" aria-hidden="true" />}
       <span className="member-avatar">
         <Avatar name={member.displayName} accentColor={member.accentColor} avatarUrl={member.avatarUrl || undefined} frame={member.avatarFrame} />
         <span className="member-status-dot" aria-hidden="true" />
@@ -59,11 +60,16 @@ export function MemberList({
   data,
   ownId,
   ownStatus,
+  ownNameplate,
+  ownAvatarFrame,
   onOpenProfile,
 }: {
   data: ServerMemberListData;
   ownId: string;
   ownStatus: PresenceStatus;
+  // A própria pessoa aparece com o que escolheu na Loja na hora, sem esperar a lista recarregar.
+  ownNameplate?: Nameplate | '' | undefined;
+  ownAvatarFrame?: AvatarFrame | '' | undefined;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
 }) {
   const { members, roles, onlineIds, statuses, activities, loading, failed } = data;
@@ -88,7 +94,7 @@ export function MemberList({
             {section.members.map((member) => (
               <MemberRow
                 key={member.id}
-                member={member}
+                member={member.id === ownId ? { ...member, nameplate: ownNameplate ?? member.nameplate ?? '', avatarFrame: ownAvatarFrame ?? member.avatarFrame } : member}
                 online={section.kind !== 'offline'}
                 status={section.kind === 'offline' ? 'offline' : member.id === ownId ? ownStatus : (statuses.get(member.id) ?? 'online')}
                 activity={section.kind === 'offline' ? undefined : activities.get(member.id)}

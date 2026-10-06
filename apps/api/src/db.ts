@@ -330,6 +330,8 @@ ensureColumns('users', [
   // Borda animada do avatar (um id de AVATAR_FRAME_IDS; '' = sem borda) e, na capa do perfil, se ela é animada e a versão
   // (sobe a cada troca) que vai na URL para o navegador não reaproveitar a imagem antiga.
   ['avatar_frame', "TEXT NOT NULL DEFAULT ''"],
+  // Itens da Loja (efeito de perfil, plaquinha de nome, tema), em JSON; ver UserCosmetics em @nexplay/shared.
+  ['cosmetics', "TEXT NOT NULL DEFAULT ''"],
   // O que a pessoa escolheu mostrar (online, ausente, não perturbe, invisível) e a organização dela da lista de servidores
   // (JSON com servidores soltos e pastas; vazio = sem organização).
   ['presence_status', "TEXT NOT NULL DEFAULT 'online'"],

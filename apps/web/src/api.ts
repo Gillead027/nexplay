@@ -36,6 +36,7 @@ import type {
   TextChannel,
   TextMessage,
   TextWebhook,
+  UserCosmetics,
   UserSession,
   VideoQuality,
   VoiceChannel,
@@ -162,6 +163,9 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ accentColor, statusText, bio, pronouns, avatarUrl, ...extra }),
     }),
+  // Itens da Loja: campo ausente mantém, '' tira. A borda do avatar (decoração) vai junto.
+  updateCosmetics: (fields: Partial<UserCosmetics> & { avatarFrame?: AvatarFrame | '' }) =>
+    request<{ user: UserSession }>('/api/me/cosmetics', { method: 'PUT', body: JSON.stringify(fields) }),
   getUserAvatar: (userId: string) => request<{ avatarUrl: string; avatarFrame?: AvatarFrame | '' }>(`/api/users/${userId}/avatar`),
   getUserProfile: (userId: string) => request<{ user: UserSession }>(`/api/users/${userId}/profile`),
   getConfig: () => request<PublicConfig>('/api/config'),
