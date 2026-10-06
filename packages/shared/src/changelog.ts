@@ -141,6 +141,15 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Nas conversas privadas, mensagens seguidas da mesma pessoa ficam juntas e a hora aparece como "Hoje às 10:21", igual aos canais.',
     ],
   },
+  {
+    id: '2026-10-06-entrada-e-carregamento-estilo-discord',
+    date: '2026-10-06',
+    title: 'Tela de entrada e de carregamento no estilo do Discord',
+    items: [
+      'A tela de entrar na conta ganhou o cartão do Discord, com campos escuros e o botão roxo. A tela de criar conta ficou num cartão mais estreito.',
+      'Enquanto o NexPlay abre, aparece o logo pulsando no centro da tela no lugar da caixinha de carregamento.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

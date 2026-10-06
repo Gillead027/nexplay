@@ -20,9 +20,8 @@ function LoadingWindow({ label }: { label: string }) {
   return (
     <main className="splash" aria-live="polite">
       <div className="boot-window">
+        <img className="boot-logo" src="/logo-320.png" alt="" width="96" height="96" draggable={false} />
         <div className="boot-title">NexPlay</div>
-        <div className="skeleton-line wide" />
-        <div className="skeleton-line" />
         <span>{label}</span>
       </div>
     </main>
