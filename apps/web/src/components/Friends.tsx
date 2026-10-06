@@ -11,7 +11,7 @@ import type {
 import { api } from '../api';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { Avatar } from './Workspace';
-import { CloseIcon, MessageIcon, SearchIcon, UserIcon, UserPlusIcon, PhoneIcon } from './Icons';
+import { CloseIcon, MessageIcon, SearchIcon, StoreIcon, UserIcon, UserPlusIcon, PhoneIcon } from './Icons';
 
 export interface FriendsState {
   friends: FriendSummary[];
@@ -96,6 +96,8 @@ export function FriendsSidebar({
   pendingCount,
   onSelectDm,
   onBackToHome,
+  storeActive,
+  onOpenStore,
 }: {
   dmChannels: DmChannel[];
   ownId: string;
@@ -103,6 +105,8 @@ export function FriendsSidebar({
   pendingCount: number;
   onSelectDm: (dmChannelId: string) => void;
   onBackToHome: () => void;
+  storeActive: boolean;
+  onOpenStore: () => void;
 }) {
   const [dmQuery, setDmQuery] = useState('');
   const dmFilter = dmQuery.trim().toLowerCase();
@@ -117,10 +121,14 @@ export function FriendsSidebar({
       </header>
       <nav className="channels" aria-label="Conversas diretas">
         <div className="dm-nav-list">
-          <button type="button" className={`text-channel-button dm-home-button ${!activeDmChannelId ? 'active' : ''}`} onClick={onBackToHome}>
+          <button type="button" className={`text-channel-button dm-home-button ${!activeDmChannelId && !storeActive ? 'active' : ''}`} onClick={onBackToHome}>
             <UserIcon size={16} />
             <span>Amigos</span>
             {pendingCount > 0 && <span className="dm-pending-badge">{pendingCount}</span>}
+          </button>
+          <button type="button" className={`text-channel-button dm-home-button ${!activeDmChannelId && storeActive ? 'active' : ''}`} onClick={onOpenStore}>
+            <StoreIcon size={16} />
+            <span>Loja</span>
           </button>
         </div>
         <div className="section-title dm-section-title"><span>Mensagens diretas</span></div>

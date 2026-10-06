@@ -150,6 +150,16 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Enquanto o NexPlay abre, aparece o logo pulsando no centro da tela no lugar da caixinha de carregamento.',
     ],
   },
+  {
+    id: '2026-10-06-loja-de-bordas',
+    date: '2026-10-06',
+    title: 'Loja: bordas de avatar',
+    items: [
+      'No Início, embaixo de Amigos, agora tem a Loja.',
+      'Ela mostra as bordas animadas de avatar em cartões, como a loja do Discord. Todas são grátis: aperte Usar e a borda aparece na sua foto na hora.',
+      'O botão Tirar borda volta a foto ao normal. Dá para trocar a borda também em Configurações > Meu perfil, como antes.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

@@ -185,3 +185,7 @@ export function UserPlusIcon(props: IconProps) {
 export function BlockIcon(props: IconProps) {
   return <Icon {...props}><circle cx="12" cy="12" r="8.5" /><path d="m6.5 6.5 11 11" /></Icon>;
 }
+
+export function StoreIcon(props: IconProps) {
+  return <Icon {...props}><path d="M4 7h16l-1.2 12.1a2 2 0 0 1-2 1.9H7.2a2 2 0 0 1-2-1.9L4 7Z" /><path d="M8.5 7V6a3.5 3.5 0 0 1 7 0v1" /></Icon>;
+}

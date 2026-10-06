@@ -107,6 +107,7 @@ import { MemberList } from './MemberList';
 import { watchedStreamIdentities } from '../streamAudio';
 import { DEFAULT_PERSON_VOLUME, loadVolumes, saveVolumes, volumeStorageKey } from '../volumePrefs';
 import { DmChannelView } from './DmChannelView';
+import { Store } from './Store';
 import { FriendsHome, FriendsSidebar, isBlockedByMe as computeIsBlockedByMe, relationshipStatus, useFriendsState } from './Friends';
 import { ProfilePopover, type ProfilePopoverTarget } from './ProfilePopover';
 import { RemoteAudioSink } from './RemoteAudioSink';
@@ -2049,6 +2050,8 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   }
   const [selectedTextChannelId, setSelectedTextChannelId] = useState<string | null>(null);
   const [view, setView] = useState<'server' | 'friends'>('server');
+  // Dentro do Início: a Loja ocupa o lugar da página de Amigos (uma conversa aberta tem prioridade).
+  const [storeOpen, setStoreOpen] = useState(false);
   const [selectedDmChannelId, setSelectedDmChannelId] = useState<string | null>(null);
   const friendsState = useFriendsState(session);
   const selectedDmChannel = friendsState.dmChannels.find((channel) => channel.id === selectedDmChannelId) ?? null;
@@ -3536,8 +3539,10 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
             ownId={session.id}
             activeDmChannelId={selectedDmChannelId}
             pendingCount={friendsState.incoming.length}
-            onSelectDm={setSelectedDmChannelId}
-            onBackToHome={() => setSelectedDmChannelId(null)}
+            onSelectDm={(dmChannelId) => { setStoreOpen(false); setSelectedDmChannelId(dmChannelId); }}
+            onBackToHome={() => { setStoreOpen(false); setSelectedDmChannelId(null); }}
+            storeActive={storeOpen}
+            onOpenStore={() => { setSelectedDmChannelId(null); setStoreOpen(true); }}
           />
         )}
 
@@ -3678,6 +3683,14 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                 call={dmCallButton(selectedDmChannel)}
               />
             </div>
+          ) : storeOpen ? (
+            <Store
+              session={session}
+              onFrameChanged={(user) => {
+                onProfileUpdated(user);
+                setProfileFrame(user.avatarFrame);
+              }}
+            />
           ) : (
             <FriendsHome
               state={friendsState}
