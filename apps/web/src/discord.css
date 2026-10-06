@@ -522,3 +522,162 @@ button:hover > .avatar, .avatar:hover { box-shadow: none; }
 .voice-status-actions button:hover:not(:disabled) { background: #35373c; }
 .voice-status-actions button.danger, .voice-status-actions button.leave { color: var(--text-normal); }
 .voice-status-panel .voice-status-info .voice-status-dot { display: none !important; }
+
+/* ==========================================================================
+   Passada 4 — configurações (usuário e servidor) no layout do Discord
+   Duas regiões que crescem juntas: menu (coluna de 218px alinhada à direita)
+   e conteúdo (até 740px), com o ESC (círculo de 36px, borda de 2px) ao lado.
+   ========================================================================== */
+.settings-overlay { inset: 32px 0 0 0; background: var(--main); }
+.settings-overlay.entering { animation: dc-layer-in 250ms cubic-bezier(.2, 0, 0, 1) backwards; }
+.settings-overlay.leaving { animation: dc-layer-out 200ms cubic-bezier(.4, 0, 1, 1) forwards; }
+@keyframes dc-layer-in { from { opacity: 0; transform: scale(1.1); } to { opacity: 1; transform: none; } }
+@keyframes dc-layer-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: scale(1.1); } }
+
+.settings-modal { display: flex; width: 100%; height: 100%; margin: 0; border-radius: 0; box-shadow: none; animation: none; background: var(--main); }
+.settings-nav,
+.server-settings-nav {
+  flex: 1 0 218px; display: flex; flex-direction: column; align-items: flex-end;
+  padding: 60px 6px 60px 20px; border-right: 0; background: var(--sidebar); overflow-y: auto;
+}
+.settings-nav > *, .server-settings-nav > * { width: 192px; flex: none; }
+.settings-content, .server-settings-content { flex: 1 1 800px; min-width: 0; padding: 60px 40px 80px; background: var(--main); overflow-y: auto; }
+.settings-pane, .server-settings-content > * { max-width: 740px; }
+.settings-pane.two-column { max-width: 740px; grid-template-columns: minmax(0, 1fr) 300px; gap: 32px; }
+
+/* Itens do menu: sem ícones, 16px, como o Discord */
+.settings-nav-title { display: none; }
+.settings-nav-group {
+  padding: 6px 10px; margin: 0; color: var(--text-muted);
+  font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
+}
+.settings-nav-group:not(:first-of-type) { margin-top: 0; }
+.settings-nav button,
+.settings-nav-signout,
+.server-settings-nav > button {
+  height: auto; min-height: 32px; padding: 6px 10px; margin: 0 0 2px; gap: 8px; border-radius: 4px; box-shadow: none;
+  color: var(--text-secondary); background: transparent; font-size: 16px; font-weight: 500; line-height: 20px; text-align: left; transform: none;
+}
+.settings-nav button > svg, .settings-nav button > .nav-glyph,
+.server-settings-nav > button > svg { display: none; }
+.settings-nav button:hover:not(.active), .settings-nav-signout:hover, .server-settings-nav > button:hover:not(.active) { color: var(--text-normal); background: var(--hover); transform: none; }
+.settings-nav button.active, .server-settings-nav > button.active { color: var(--text-primary); background: var(--selected); box-shadow: none; }
+.settings-nav-divider, .server-settings-nav-spacer { flex: none; height: 1px; margin: 8px 10px; width: 172px; background: var(--dc-divider); }
+.settings-nav-signout > svg { display: none; }
+.server-settings-nav > .server-settings-danger { color: var(--danger); }
+.server-settings-nav > .server-settings-danger:hover { color: var(--danger); background: rgba(242, 63, 67, .1); }
+
+/* Cabeçalho do menu do servidor: nome em maiúsculas pequenas, como o Discord */
+.server-settings-heading { gap: 8px; padding: 6px 10px; margin-bottom: 2px; }
+.server-settings-avatar { width: 24px; height: 24px; border-radius: 50%; font-size: 11px; color: #fff; background: var(--accent); }
+.server-settings-heading strong { color: var(--text-muted); font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+.server-settings-heading div span { display: none; }
+
+/* Fechar (ESC): ao lado da coluna de conteúdo de 740px */
+.settings-close-group, .server-settings-close {
+  position: absolute; top: 60px; right: auto; left: min(calc(50vw + 510px), calc(100vw - 60px));
+  width: 36px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+}
+.settings-close, .server-settings-close svg {
+  width: 36px; height: 36px; padding: 0; display: grid; place-items: center;
+  border: 2px solid var(--text-secondary); border-radius: 50%; color: var(--text-secondary); background: transparent;
+  transition: background-color var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.server-settings-close svg { padding: 7px; }
+.settings-close:hover, .server-settings-close:hover svg { color: var(--text-normal); border-color: var(--text-normal); background: var(--hover); }
+.settings-close-group span, .server-settings-close span { color: var(--text-secondary); font-size: 13px; font-weight: 600; letter-spacing: 0; }
+.server-settings-shell { inset: 32px 0 0 0; display: flex; grid-template-columns: none; background: var(--main); animation: dc-layer-in 250ms cubic-bezier(.2, 0, 0, 1) backwards; }
+
+/* Conteúdo: títulos, rótulos, campos */
+.settings-pane h2, .server-settings-content h2 { margin: 0 0 20px; color: var(--text-primary); font-size: 20px; font-weight: 600; line-height: 24px; letter-spacing: 0; }
+.settings-page-description { color: var(--text-secondary); font-size: 14px; }
+.settings-pane label, .settings-label, .settings-side-title {
+  margin: 20px 0 8px; color: var(--text-secondary); font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
+}
+.settings-pane input, .settings-pane select, .settings-pane textarea,
+.server-settings-content input, .server-settings-content select, .server-settings-content textarea {
+  height: 40px; padding: 10px; border: 0; border-radius: 3px; color: var(--text-normal); background: #1e1f22;
+  font-size: 16px; box-shadow: none;
+}
+[data-theme="claro"] .settings-pane input, [data-theme="claro"] .settings-pane select, [data-theme="claro"] .server-settings-content input { background: #e3e5e8; }
+.settings-pane textarea, .server-settings-content textarea { height: auto; }
+.settings-pane input:focus, .server-settings-content input:focus { outline: 0; box-shadow: 0 0 0 1px var(--accent); }
+.settings-hint { color: var(--text-muted); font-size: 14px; max-width: none; }
+
+/* Interruptor do Discord: 40x24, cinza desligado, verde ligado */
+.settings-switch { width: 40px; height: 24px; border-radius: 14px; background: #80848e; transition: background-color 200ms ease; }
+.settings-switch::after { top: 3px; left: 3px; width: 18px; height: 18px; transition: transform 200ms ease; }
+.settings-switch.on { background: var(--success); }
+.settings-switch.on::after { transform: translateX(16px); }
+
+/* Cartões de seção: chapados, sem borda */
+.server-settings-card { padding: 16px; border: 0; border-radius: 8px; background: var(--sidebar); }
+
+/* Botões (tamanho médio do Discord) */
+.settings-pane .primary-button, .server-settings-content .primary-button, .settings-pane button.primary {
+  height: 38px; min-width: 96px; padding: 2px 16px; border-radius: 3px; font-size: 14px; font-weight: 500;
+}
+.dialog-cancel { border-radius: 3px; background: transparent; color: var(--text-normal); }
+.dialog-cancel:hover { text-decoration: underline; background: transparent; }
+
+/* Cores dos avatares padrão do Discord (blurple, cinza, verde, amarelo, vermelho, rosa) */
+.avatar-color-0, .voice-tile.tile-color-0 { --tile-color: #5865f2; } .avatar-color-0 { background: #5865f2; }
+.avatar-color-1, .voice-tile.tile-color-1 { --tile-color: #757e8a; } .avatar-color-1 { background: #757e8a; }
+.avatar-color-2, .voice-tile.tile-color-2 { --tile-color: #3ba55c; } .avatar-color-2 { background: #3ba55c; }
+.avatar-color-3, .voice-tile.tile-color-3 { --tile-color: #faa61a; } .avatar-color-3 { background: #faa61a; }
+.avatar-color-4, .voice-tile.tile-color-4 { --tile-color: #ed4245; } .avatar-color-4 { background: #ed4245; }
+.avatar-color-5, .voice-tile.tile-color-5 { --tile-color: #eb459f; } .avatar-color-5 { background: #eb459f; }
+.avatar-color-6, .voice-tile.tile-color-6 { --tile-color: #5865f2; } .avatar-color-6 { background: #5865f2; }
+.avatar-color-7, .voice-tile.tile-color-7 { --tile-color: #3ba55c; } .avatar-color-7 { background: #3ba55c; }
+
+/* Separador de 1px antes de cada grupo do menu (menos o primeiro) */
+.settings-nav .settings-nav-group ~ .settings-nav-group,
+.server-settings-nav .settings-nav-group ~ .settings-nav-group {
+  margin-top: 8px; padding-top: 15px;
+  background: linear-gradient(var(--dc-divider), var(--dc-divider)) 10px 0 / calc(100% - 20px) 1px no-repeat;
+}
+
+/* Menu do servidor sem ícones (os glifos também) */
+.server-settings-nav > button > .nav-glyph { display: none; }
+
+/* Interruptor dos cargos/permissões: o mesmo do Discord (40x24, verde ligado) */
+.static-switch { width: 40px; height: 24px; border-radius: 14px; background: #80848e; transition: background-color 200ms ease; }
+.static-switch::after { top: 3px; left: 3px; width: 18px; height: 18px; transition: transform 200ms ease; }
+.static-switch.on { background: var(--success); }
+.static-switch.on::after { transform: translateX(16px); }
+
+/* Cores do cargo: 2 fileiras de 10 quadradinhos de 20px, como o seletor do Discord */
+.static-swatches { display: grid; grid-template-columns: repeat(10, 20px); gap: 10px; }
+.static-swatches button { width: 20px; height: 20px; border: 0; border-radius: 4px; box-shadow: none; cursor: pointer; }
+.static-swatches button.selected { box-shadow: 0 0 0 2px var(--main), 0 0 0 4px #fff; }
+
+/* Telas de cargos: lista e editor chapados */
+.role-list-panel, .role-editor-panel, .roles-layout > section { border: 0; border-radius: 8px; background: transparent; }
+
+/* Cargos: lista à esquerda chapada, editor com abas sublinhadas (Discord) */
+.roles-workspace { grid-template-columns: 232px minmax(0, 1fr); gap: 16px; }
+.roles-list, .role-editor { border: 0; border-radius: 0; background: transparent; }
+.roles-list { padding: 0 8px 0 0; border-right: 1px solid var(--dc-divider); }
+.roles-search { height: 32px; border: 0; border-radius: 4px; background: #1e1f22; }
+.roles-search input { color: var(--text-normal); font-size: 14px; }
+.roles-list > button { min-height: 34px; padding: 6px 10px; gap: 8px; border-radius: 4px; color: var(--text-secondary); }
+.roles-list > button:hover { background: var(--hover); color: var(--text-normal); }
+.roles-list > button.active { background: var(--selected); color: var(--text-primary); }
+.roles-list > button > i { width: 12px; height: 12px; }
+.roles-list strong { font-size: 16px; font-weight: 500; }
+.roles-list small { display: none; }
+.role-editor { padding: 0 0 0 8px; }
+.role-editor-heading h2 { font-size: 16px; font-weight: 600; text-transform: uppercase; color: var(--text-primary); }
+.role-tabs { gap: 32px; margin: 16px 0 0; padding: 0; border-bottom: 1px solid var(--dc-divider); }
+.role-tabs button { height: 40px; padding: 0 0 14px; border-bottom: 2px solid transparent; color: var(--text-secondary); font-size: 16px; font-weight: 500; }
+.role-tabs button:hover { color: var(--text-normal); }
+.role-tabs button.active { border-bottom-color: var(--accent); color: var(--text-primary); }
+.role-fields-grid { grid-template-columns: 1fr; gap: 20px; margin-top: 20px; }
+.role-color-input { border: 0; border-radius: 3px; background: #1e1f22; }
+.role-static-toggle { padding: 20px 0; border-bottom: 1px solid var(--dc-divider); }
+.role-static-toggle strong { color: var(--text-primary); font-size: 16px; font-weight: 500; }
+.role-static-toggle span { color: var(--text-secondary); font-size: 14px; }
+.permission-row { padding: 20px 0; border-bottom: 1px solid var(--dc-divider); }
+.permission-row strong { color: var(--text-primary); font-size: 16px; font-weight: 500; }
+.permission-row span, .permission-row p { color: var(--text-secondary); font-size: 14px; }
+.role-create-row .primary-button { height: 32px; border-radius: 3px; }

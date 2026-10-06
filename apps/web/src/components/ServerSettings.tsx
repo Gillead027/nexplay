@@ -31,7 +31,11 @@ import { CloseIcon, CopyIcon, ImageIcon, PlusIcon, SearchIcon, SettingsIcon, Tra
 
 type ServerSettingsSection = 'profile' | 'roles' | 'members' | 'invites' | 'integrations';
 
-const ROLE_COLOR_SWATCHES = ['#7c6ff2', '#4fc6ad', '#ee7798', '#f2ad5c', '#4f8edc', '#a76de0', '#68708b', '#8a91a6'];
+// As 20 cores prontas do seletor de cor de cargo do Discord (claras em cima, escuras embaixo).
+const ROLE_COLOR_SWATCHES = [
+  '#1abc9c', '#2ecc71', '#3498db', '#9b59b6', '#e91e63', '#f1c40f', '#e67e22', '#e74c3c', '#95a5a6', '#607d8b',
+  '#11806a', '#1f8b4c', '#206694', '#71368a', '#ad1457', '#c27c0e', '#a84300', '#992d22', '#979c9f', '#546e7a',
+];
 
 function isFlagSet(bitfield: number, flag: number): boolean {
   return (bitfield & flag) !== 0;
