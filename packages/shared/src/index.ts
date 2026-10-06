@@ -580,7 +580,19 @@ export const MUSIC_COMMAND_ALIASES = {
   move: 'move',
   jump: 'jump',
   shuffle: 'shuffle',
+  filter: 'filter',
 } as const;
+
+// Filtros de áudio do NexMusic (o nome é o que a pessoa digita em /filter). A cadeia de ffmpeg de cada um fica no bot.
+export const MUSIC_FILTERS = ['off', 'bassboost', 'nightcore', '8d', 'karaoke'] as const;
+export type MusicFilter = (typeof MUSIC_FILTERS)[number];
+export const MUSIC_FILTER_LABELS: Record<MusicFilter, string> = {
+  off: 'sem filtro',
+  bassboost: 'graves reforçados',
+  nightcore: 'nightcore (mais rápido e agudo)',
+  '8d': '8D (o som gira ao redor)',
+  karaoke: 'karaokê (tira a voz do centro)',
+};
 
 export type MusicCommandName = (typeof MUSIC_COMMAND_ALIASES)[keyof typeof MUSIC_COMMAND_ALIASES];
 export type MusicCommandPrefix = '/' | '!';
@@ -605,6 +617,7 @@ export interface MusicCommandArgsByName {
   move: { from: number; to: number };
   jump: { position: number };
   shuffle: Record<never, never>;
+  filter: { filter: MusicFilter };
 }
 
 export type ParsedMusicCommand = {
@@ -644,6 +657,12 @@ export function parseMusicCommand(value: string): ParsedMusicCommand | null {
     const volume = Number(rawArgs);
     if (!Number.isInteger(volume) || volume < 0 || volume > 100) return null;
     return { name, prefix, args: { volume } };
+  }
+
+  if (name === 'filter') {
+    const value = rawArgs?.toLowerCase();
+    if (!value || !(MUSIC_FILTERS as readonly string[]).includes(value)) return null;
+    return { name, prefix, args: { filter: value as MusicFilter } };
   }
 
   if (name === 'remove' || name === 'jump') {
@@ -736,6 +755,10 @@ export function isMusicBotCommandRequest(value: unknown): value is MusicBotComma
       );
     }
     const isPosition = (value: unknown) => Number.isInteger(value) && (value as number) >= 1 && (value as number) <= MAX_QUEUE_POSITION;
+    if (candidate.command === 'filter') {
+      const { filter } = candidate.args as { filter?: unknown };
+      return Object.keys(candidate.args).length === 1 && (MUSIC_FILTERS as readonly unknown[]).includes(filter);
+    }
     if (candidate.command === 'remove' || candidate.command === 'jump') {
       const { position } = candidate.args as { position?: unknown };
       return Object.keys(candidate.args).length === 1 && isPosition(position);

@@ -61,6 +61,7 @@ export interface MusicVoiceParticipant {
     playable: PlayableMusicSource,
     initialVolume: number,
     callbacks: PlaybackCallbacks,
+    audioFilter?: string | null,
   ) => Promise<MusicPlaybackHandle>;
   stopAudio: () => Promise<void>;
   sendMessage: (text: string) => Promise<void>;
@@ -196,6 +197,7 @@ export class BotVoiceParticipant implements MusicVoiceParticipant {
     playable: PlayableMusicSource,
     initialVolume: number,
     callbacks: PlaybackCallbacks,
+    audioFilter: string | null = null,
   ): Promise<MusicPlaybackHandle> {
     if (playable.transport !== 'YTDLP_PIPE') throw new Error('Transporte externo não suportado.');
     return this.startAudioFixture(new YtDlpAudioSource({
@@ -207,6 +209,7 @@ export class BotVoiceParticipant implements MusicVoiceParticipant {
       pluginDir: this.options.ytdlpPluginDir,
       potBaseUrl: this.options.ytdlpPotBaseUrl,
       initialVolume,
+      audioFilter,
     }), callbacks);
   }
 

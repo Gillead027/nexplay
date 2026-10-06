@@ -88,6 +88,16 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Esses comandos seguem a regra de DJs configurada no bot.',
     ],
   },
+  {
+    id: '2026-10-06-nexmusic-filtros',
+    date: '2026-10-06',
+    title: 'NexMusic: filtros de áudio',
+    items: [
+      '/filter <nome> muda o som das músicas: bassboost (graves), nightcore (mais rápido e agudo), 8d (o som gira), karaoke (tira a voz do centro) ou off (sem filtro).',
+      'O filtro vale a partir da próxima música que começar. A música que já está tocando não muda.',
+      'Os filtros valem para músicas do YouTube e do Spotify (que toca pelo YouTube). Arquivos enviados ainda não recebem filtro.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

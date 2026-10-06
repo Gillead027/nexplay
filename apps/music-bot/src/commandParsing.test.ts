@@ -99,3 +99,22 @@ describe('comandos de fila: remove, move, jump e shuffle', () => {
     assert.equal(isMusicBotCommandRequest({ channelId: 'geral', command: 'shuffle', args: {}, requestedBy }), true);
   });
 });
+
+describe('comando de filtro', () => {
+  it('aceita um filtro conhecido, sem diferenciar maiúsculas', () => {
+    assert.deepEqual(parseMusicCommand('/filter nightcore')?.args, { filter: 'nightcore' });
+    assert.deepEqual(parseMusicCommand('!filter 8D')?.args, { filter: '8d' });
+    assert.deepEqual(parseMusicCommand('/filter off')?.args, { filter: 'off' });
+  });
+
+  it('recusa filtro desconhecido ou sem nome', () => {
+    assert.equal(parseMusicCommand('/filter'), null);
+    assert.equal(parseMusicCommand('/filter demon'), null);
+  });
+
+  it('a validação da requisição aceita só filtros conhecidos', () => {
+    const requestedBy = { id: 'user-1', displayName: 'Gillezin' };
+    assert.equal(isMusicBotCommandRequest({ channelId: 'geral', command: 'filter', args: { filter: 'karaoke' }, requestedBy }), true);
+    assert.equal(isMusicBotCommandRequest({ channelId: 'geral', command: 'filter', args: { filter: 'demon' }, requestedBy }), false);
+  });
+});

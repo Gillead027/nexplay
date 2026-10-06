@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { MUSIC_FILTER_LABELS, type MusicFilter } from '@nexplay/shared';
+import { ffmpegChainFor } from './audioFilters.js';
 import type {
   AuthenticatedUserIdentity,
   MusicBotCommandRequest,
@@ -76,6 +78,8 @@ export class MusicSession {
   volume = 100;
 
   private readonly upcomingTracks: MusicTrack[] = [];
+  // Vale a partir da próxima faixa que começa (a que já toca continua como está).
+  private audioFilter: MusicFilter = 'off';
   private readonly playedHistory: MusicTrack[] = [];
   private commandLock: Promise<void> = Promise.resolve();
   private playbackGeneration = 0;
@@ -143,6 +147,8 @@ export class MusicSession {
           return this.jumpCommand(request.args.position);
         case 'shuffle':
           return this.shuffleCommand();
+        case 'filter':
+          return this.filterCommand(request.args.filter);
       }
     });
   }
@@ -315,7 +321,7 @@ export class MusicSession {
       } else if (track.source === 'EXTERNAL_PROVIDER') {
         this.options.log('resolving playable source', { room: this.roomName, session: this.id, provider: track.providerTrack.providerId, track: track.providerTrack.sourceId });
         const playable = await this.options.providers.resolvePlayable(track.providerTrack);
-        this.playback = await this.botParticipant.startExternalAudio(playable, this.volume, callbacks);
+        this.playback = await this.botParticipant.startExternalAudio(playable, this.volume, callbacks, ffmpegChainFor(this.audioFilter));
         this.options.log('external playback started', { room: this.roomName, session: this.id, provider: playable.providerId, track: track.providerTrack.sourceId });
       } else {
         this.playback = await this.botParticipant.startTestAudio(this.volume, callbacks);
@@ -593,6 +599,15 @@ export class MusicSession {
     return reply(`Fila embaralhada: ${tracks.length} faixa(s).`, this.nowPlayingCard());
   }
 
+  private filterCommand(filter: MusicFilter): MusicCommandResponse {
+    this.audioFilter = filter;
+    this.options.log('audio filter set', { room: this.roomName, session: this.id, filter });
+    const applied = this.state === 'PLAYING' || this.state === 'PAUSED' || this.state === 'CONNECTING';
+    const label = MUSIC_FILTER_LABELS[filter];
+    const when = applied && this.currentTrack ? ' Começa a valer na próxima faixa.' : '';
+    return reply(filter === 'off' ? `Filtro desligado.${when}` : `Filtro: ${label}.${when}`, this.nowPlayingCard());
+  }
+
   private outOfRangeMessage(position: number): string {
     const size = this.upcomingTracks.length;
     return size === 0
@@ -655,7 +670,7 @@ export class MusicSessionManager {
   }
 
   async execute(request: MusicBotCommandRequest): Promise<MusicCommandResponse> {
-    const djCommands = new Set<MusicBotCommandRequest['command']>(['pause', 'resume', 'skip', 'stop', 'leave', 'volume', 'clear', 'remove', 'move', 'jump', 'shuffle']);
+    const djCommands = new Set<MusicBotCommandRequest['command']>(['pause', 'resume', 'skip', 'stop', 'leave', 'volume', 'clear', 'remove', 'move', 'jump', 'shuffle', 'filter']);
     if (this.djUserIds.size > 0 && djCommands.has(request.command) && !this.djUserIds.has(request.requestedBy.id)) {
       return reply('Este comando é restrito aos DJs configurados do SausiMusic.');
     }

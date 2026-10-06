@@ -2,6 +2,7 @@ import { prepareYtDlpCookies, ytDlpError } from './ytDlpOptions.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { PcmFrameBuffer } from './ffmpegAudioSource.js';
 import { PcmJitterBuffer } from './pcmJitterBuffer.js';
+import { ffmpegPipeArgs } from './audioFilters.js';
 import {
   DriftFreeFrameScheduler,
   TEST_AUDIO_CHANNELS,
@@ -24,6 +25,8 @@ interface YtDlpAudioSourceOptions {
   webUrl: string;
   ytdlpPath: string;
   cookiesPath?: string;
+  // Cadeia de filtros do FFmpeg (ver audioFilters.ts); null = sem filtro.
+  audioFilter?: string | null;
   proxyUrl?: string;
   ffmpegPath: string;
   pluginDir: string;
@@ -122,12 +125,7 @@ export class YtDlpAudioSource {
     });
     this.ytdlp = ytdlp;
 
-    const ffmpeg = spawn(this.options.ffmpegPath, [
-      '-hide_banner', '-loglevel', 'error',
-      '-i', 'pipe:0', '-vn',
-      '-f', 's16le', '-ar', String(TEST_AUDIO_SAMPLE_RATE),
-      '-ac', String(TEST_AUDIO_CHANNELS), 'pipe:1',
-    ], {
+    const ffmpeg = spawn(this.options.ffmpegPath, ffmpegPipeArgs(this.options.audioFilter ?? null, TEST_AUDIO_SAMPLE_RATE, TEST_AUDIO_CHANNELS), {
       shell: false,
       windowsHide: true,
       stdio: ['pipe', 'pipe', 'pipe'],

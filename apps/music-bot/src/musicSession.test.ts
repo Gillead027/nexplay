@@ -80,6 +80,7 @@ class FakeVoiceParticipant implements MusicVoiceParticipant {
   startCalls = 0;
   localStartCalls = 0;
   externalStartCalls = 0;
+  externalFilters: Array<string | null> = [];
   stopCalls = 0;
   disconnectCalls = 0;
   activePlaybacks = 0;
@@ -127,8 +128,10 @@ class FakeVoiceParticipant implements MusicVoiceParticipant {
     _playable: PlayableMusicSource,
     initialVolume: number,
     callbacks: PlaybackCallbacks,
+    audioFilter: string | null = null,
   ): Promise<MusicPlaybackHandle> {
     this.externalStartCalls += 1;
+    this.externalFilters.push(audioFilter);
     return this.startTestAudio(initialVolume, callbacks);
   }
 
@@ -607,6 +610,31 @@ describe('MusicSession player stateful', () => {
   });
 
 
+});
+
+describe('filtro de áudio', () => {
+  it('o filtro escolhido vale para a próxima faixa que começa, sem mexer no áudio atual', async () => {
+    const harness = createHarness();
+    await harness.manager.execute(command('/play Primeira'));
+    const participant = harness.participants[0]!;
+    assert.deepEqual(participant.externalFilters, [null]);
+
+    const set = await harness.manager.execute(command('/filter karaoke'));
+    assert.match(set.message, /karaokê/);
+    assert.match(set.message, /próxima faixa/);
+    assert.equal(participant.externalFilters.length, 1, 'a faixa atual não é reiniciada');
+
+    // Segunda entra na fila; o filtro só vale quando ela de fato começa a tocar.
+    await harness.manager.execute(command('/play Segunda'));
+    assert.equal(participant.externalFilters.length, 1);
+    await harness.manager.execute(command('/skip'));
+    assert.equal(participant.externalFilters.at(-1), 'pan=stereo|c0=c0-c1|c1=c1-c0');
+
+    await harness.manager.execute(command('/filter off'));
+    await harness.manager.execute(command('/play Terceira'));
+    await harness.manager.execute(command('/skip'));
+    assert.equal(participant.externalFilters.at(-1), null);
+  });
 });
 
 describe('fila: remove, move, jump e shuffle', () => {
