@@ -1,12 +1,28 @@
+import type { NexplayNative } from '@nexplay/shared';
+
+declare global {
+  interface Window {
+    NexplayNative?: NexplayNative;
+  }
+}
+
 // Copia texto pra área de transferência e diz se conseguiu.
 //
-// `navigator.clipboard.writeText` é o caminho certo, mas no app desktop o
-// Electron nega a permissão de escrita (o processo principal só libera mídia,
-// tela cheia, captura de tela e alto-falante), e a chamada rejeita com
-// NotAllowedError mesmo com a janela focada. Como o desktop carrega o site de
-// produção, o plano B abaixo (`execCommand('copy')` num textarea temporário, que
-// não depende dessa permissão) conserta a cópia também nas versões já instaladas.
+// No app desktop, a ponte nativa `window.NexplayNative.clipboard.copy` é o
+// caminho 100% confiável: ela escreve pela área de transferência do Electron no
+// processo principal, sem depender da permissão de clipboard da web (que o
+// Electron nega, rejeitando `navigator.clipboard.writeText` com NotAllowedError).
+// Na web pura essa ponte não existe, então seguem os caminhos padrão:
+// `navigator.clipboard` e, por fim, o plano B `execCommand('copy')`.
 export async function copyText(text: string): Promise<boolean> {
+  try {
+    const native = typeof window !== 'undefined' ? window.NexplayNative : undefined;
+    if (native?.clipboard?.copy) {
+      if (await native.clipboard.copy(text)) return true;
+    }
+  } catch {
+    // Ponte indisponível ou falhou: segue para os caminhos web abaixo.
+  }
   try {
     if (typeof navigator !== 'undefined' && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
       await navigator.clipboard.writeText(text);
