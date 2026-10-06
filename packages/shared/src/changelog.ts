@@ -98,6 +98,15 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Os filtros valem para músicas do YouTube e do Spotify (que toca pelo YouTube). Arquivos enviados ainda não recebem filtro.',
     ],
   },
+  {
+    id: '2026-10-06-janela-lembra-e-copiar-no-desktop',
+    date: '2026-10-06',
+    title: 'A janela do computador lembra como você deixou',
+    items: [
+      'No app do computador, a janela reabre com o mesmo tamanho, posição e estado (maximizada ou não) da última vez, em vez de sempre abrir num tamanho fixo.',
+      'Copiar textos e IDs no app do computador ficou mais confiável.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';
