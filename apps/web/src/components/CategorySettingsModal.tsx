@@ -1,6 +1,7 @@
 import { useId, useImperativeHandle, useRef, useState, forwardRef } from 'react';
 import { CATEGORY_NAME_MAX_LENGTH, type Category } from '@nexplay/shared';
 import { api } from '../api';
+import { ChannelPermissionsPane } from './ChannelPermissionsPane';
 
 export interface CategorySettingsModalHandle {
   open: () => void;
@@ -20,12 +21,15 @@ export const CategorySettingsModal = forwardRef<CategorySettingsModalHandle, {
   const [staffOnly, setStaffOnly] = useState(category.staffOnly);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // O diálogo fica montado na barra lateral: as permissões só carregam com ele aberto.
+  const [open, setOpen] = useState(false);
 
   useImperativeHandle(ref, () => ({
     open: () => {
       setName(category.name);
       setStaffOnly(category.staffOnly);
       setError('');
+      setOpen(true);
       dialog.current?.showModal();
     },
   }));
@@ -46,7 +50,7 @@ export const CategorySettingsModal = forwardRef<CategorySettingsModalHandle, {
   }
 
   return (
-    <dialog ref={dialog} className="channel-dialog category-settings-dialog" aria-labelledby={titleId}
+    <dialog ref={dialog} className="channel-dialog category-settings-dialog" aria-labelledby={titleId} onClose={() => setOpen(false)}
       onCancel={(event) => { if (saving) event.preventDefault(); }}>
       <header><h2 id={titleId}>Editar categoria</h2></header>
       <label htmlFor={`${titleId}-name`}>Nome da categoria</label>
@@ -57,6 +61,8 @@ export const CategorySettingsModal = forwardRef<CategorySettingsModalHandle, {
         <input type="checkbox" checked={staffOnly} onChange={(event) => setStaffOnly(event.target.checked)} />
       </label>
       <small>Só membros com algum cargo de moderação/administração veem esta categoria e seus canais.</small>
+      <h3 className="channel-settings-subtitle">Permissões</h3>
+      {open && <ChannelPermissionsPane serverId={serverId} kind="category" channelId={category.id} />}
       {error && <p className="form-error" role="alert">{error}</p>}
       <footer>
         <button type="button" className="dialog-cancel" disabled={saving} onClick={() => dialog.current?.close()}>Cancelar</button>

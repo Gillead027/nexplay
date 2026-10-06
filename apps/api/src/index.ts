@@ -171,6 +171,17 @@ import { authorizeVoiceDisconnect, authorizeVoiceMove } from './voiceModeration.
 import { deleteAccount, planAccountDeletion } from './accountDeletion.js';
 import { callElapsedMs, endCall } from './callSessions.js';
 import { DmCallRegistry, dmChannelIdFromRoom, dmRoomName, type DmCallState } from './dmCalls.js';
+import {
+  canInChannel,
+  canViewChannel,
+  channelPermissions,
+  deleteChannelOverwrites,
+  deleteOverwrite,
+  deleteTargetOverwrites,
+  filterVisibleChannels,
+  listOverwrites,
+  setOverwrite,
+} from './channelPermissions.js';
 import { attachRealtime, broadcast, disconnectUser, presence, refreshPresence, sendToServerMembers, sendToUser, sendToUsers, setActivity, visibleActivity, visiblePresenceStatus } from './realtime.js';
 import { normalizeServerLayout, parseStoredServerLayout, serverLayoutSchema } from './serverLayout.js';
 import {
@@ -1635,7 +1646,11 @@ app.delete(
 );
 
 app.get('/api/servers/:serverId/channels', requireSession, requireServerMembership, (_request, response) => {
-  response.json({ channels: listChannelsForServer(currentServerId(response)) });
+  const serverId = currentServerId(response);
+  const userId = currentUser(response).id;
+  const channels = listChannelsForServer(serverId).filter((channel) =>
+    canViewChannel(userId, serverId, channel.type === 'TEXT' ? 'text' : 'voice', channel.id));
+  response.json({ channels });
 });
 
 app.get(
@@ -1721,8 +1736,10 @@ app.get('/api/music/thumbnail', requireSession, async (request, response) => {
 
 app.get('/api/servers/:serverId/text-channels', requireSession, requireServerMembership, (_request, response) => {
   const serverId = currentServerId(response);
-  const channels = filterChannelsByCategoryAccess(serverId, currentUser(response).id, listTextChannels(serverId));
-  response.json({ channels });
+  const userId = currentUser(response).id;
+  const channels = filterVisibleChannels(userId, 'text', filterChannelsByCategoryAccess(serverId, userId, listTextChannels(serverId)));
+  // O que a pessoa pode fazer em cada canal (o app esconde a caixa de mensagem onde ela não pode escrever).
+  response.json({ channels: channels.map((channel) => ({ ...channel, myPermissions: channelPermissions(userId, serverId, 'text', channel.id) })) });
 });
 
 app.get('/api/servers/:serverId/categories', requireSession, requireServerMembership, (_request, response) => {
@@ -1790,6 +1807,7 @@ app.delete(
       return;
     }
     deleteCategory(categoryId as string);
+    deleteChannelOverwrites('category', categoryId as string);
     sendToServerMembers(serverId, { type: 'CATEGORY_DELETE', serverId, categoryId: categoryId as string });
     response.status(204).end();
   },
@@ -1819,6 +1837,114 @@ app.patch(
     }
     const prefs = setCategoryPrefs(currentUser(response).id, categoryId as string, body.data);
     response.json({ prefs });
+  },
+);
+
+// Porteiro de todas as rotas de um canal de texto (/text-channels/:channelId/...): quem não pode ver o canal recebe
+// "não encontrado"; mandar mensagem, anexo ou "digitando" exige poder escrever NESTE canal. Ver channelPermissions.ts.
+function textChannelGate(request: Request, response: Response, next: NextFunction): void {
+  const serverId = currentServerId(response);
+  const channelId = String(request.params.channelId ?? '');
+  const channel = getTextChannelById(channelId);
+  // Canal inexistente: a própria rota responde 404.
+  if (!channel || channel.serverId !== serverId) {
+    next();
+    return;
+  }
+  const permissions = channelPermissions(currentUser(response).id, serverId, 'text', channelId);
+  if ((permissions & Permission.VIEW_CHANNELS) === 0) {
+    response.status(404).json({ error: 'Canal de texto não encontrado.' });
+    return;
+  }
+  const sending = request.method === 'POST' && ['/messages', '/attachments', '/typing'].includes(request.path);
+  if (sending && (permissions & Permission.SEND_MESSAGES) === 0) {
+    response.status(403).json({ error: 'Você não tem permissão para enviar mensagens neste canal.' });
+    return;
+  }
+  next();
+}
+app.use('/api/servers/:serverId/text-channels/:channelId', requireSession, requireServerMembership, textChannelGate);
+
+// Ajustes de permissão de um canal ou categoria ("Permissões" nas configurações do canal). Exige Gerenciar cargos,
+// como no Discord. O canal precisa ser deste servidor; o alvo, um cargo deste servidor ou um membro dele.
+const channelKindSchema = z.enum(['text', 'voice', 'category']);
+const overwriteSchema = z.object({
+  targetType: z.enum(['role', 'member']),
+  targetId: z.string().min(1).max(64),
+  allow: z.number().int().min(0),
+  deny: z.number().int().min(0),
+});
+
+function overwriteChannelOf(serverId: string, kind: string, channelId: string): boolean {
+  const channel = kind === 'text' ? getTextChannelById(channelId) : kind === 'voice' ? getVoiceChannelById(channelId) : getCategoryById(channelId);
+  return Boolean(channel && channel.serverId === serverId);
+}
+
+app.get(
+  '/api/servers/:serverId/channel-overwrites/:kind/:channelId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_ROLES),
+  (request, response) => {
+    const kind = channelKindSchema.safeParse(request.params.kind);
+    const channelId = String(request.params.channelId);
+    if (!kind.success || !overwriteChannelOf(currentServerId(response), kind.data, channelId)) {
+      response.status(404).json({ error: 'Canal não encontrado.' });
+      return;
+    }
+    response.json({ overwrites: listOverwrites(kind.data, channelId) });
+  },
+);
+
+app.put(
+  '/api/servers/:serverId/channel-overwrites/:kind/:channelId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_ROLES),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const kind = channelKindSchema.safeParse(request.params.kind);
+    const channelId = String(request.params.channelId);
+    const body = overwriteSchema.safeParse(request.body);
+    if (!kind.success || !overwriteChannelOf(serverId, kind.data, channelId)) {
+      response.status(404).json({ error: 'Canal não encontrado.' });
+      return;
+    }
+    if (!body.success) {
+      response.status(400).json({ error: 'Ajuste de permissão inválido.' });
+      return;
+    }
+    const target = body.data;
+    const validTarget = target.targetType === 'role'
+      ? getRoleById(target.targetId)?.serverId === serverId
+      : isServerMember(serverId, target.targetId);
+    if (!validTarget) {
+      response.status(400).json({ error: target.targetType === 'role' ? 'Cargo não encontrado.' : 'Membro não encontrado.' });
+      return;
+    }
+    setOverwrite(kind.data, channelId, serverId, target);
+    sendToServerMembers(serverId, { type: 'CHANNEL_PERMISSIONS_UPDATE', serverId });
+    response.json({ overwrites: listOverwrites(kind.data, channelId) });
+  },
+);
+
+app.delete(
+  '/api/servers/:serverId/channel-overwrites/:kind/:channelId/:targetType/:targetId',
+  requireSession,
+  requireServerMembership,
+  requireServerPermission(Permission.MANAGE_ROLES),
+  (request, response) => {
+    const serverId = currentServerId(response);
+    const kind = channelKindSchema.safeParse(request.params.kind);
+    const targetType = z.enum(['role', 'member']).safeParse(request.params.targetType);
+    const channelId = String(request.params.channelId);
+    if (!kind.success || !targetType.success || !overwriteChannelOf(serverId, kind.data, channelId)) {
+      response.status(404).json({ error: 'Canal não encontrado.' });
+      return;
+    }
+    deleteOverwrite(kind.data, channelId, targetType.data, String(request.params.targetId));
+    sendToServerMembers(serverId, { type: 'CHANNEL_PERMISSIONS_UPDATE', serverId });
+    response.json({ overwrites: listOverwrites(kind.data, channelId) });
   },
 );
 
@@ -1940,6 +2066,7 @@ app.delete(
       return;
     }
     deleteTextChannel(channelId as string);
+    deleteChannelOverwrites('text', channelId as string);
     sendToServerMembers(serverId, { type: 'TEXT_CHANNEL_DELETE', serverId, channelId: channelId as string });
     response.status(204).end();
   },
@@ -2612,6 +2739,11 @@ app.post(
       if (rejectIfTimedOut(resolved.serverId, user.id, response)) return;
       const destination = getTextChannelById(resolved.channelId);
       if (destination && rejectIfUpdatesChannelReadOnly(destination, user.id, response)) return;
+      // O destino também tem permissões por canal: precisa ver e poder escrever nele.
+      if (!canInChannel(user.id, resolved.serverId, 'text', resolved.channelId, Permission.SEND_MESSAGES)) {
+        response.status(403).json({ error: 'Você não tem permissão para enviar mensagens nesse canal.' });
+        return;
+      }
       const message = createForwardedTextMessage(resolved.channelId, source.text, user, forwardedFrom);
       sendToServerMembers(resolved.serverId, { type: 'TEXT_MESSAGE_CREATE', serverId: resolved.serverId, channelId: resolved.channelId, message });
       response.status(201).json({ message });
@@ -2722,7 +2854,8 @@ async function computeRoomSummary(channel: VoiceChannel): Promise<RoomSummary> {
 
 app.get('/api/servers/:serverId/rooms', requireSession, requireServerMembership, async (_request, response) => {
   const serverId = currentServerId(response);
-  const channels = filterChannelsByCategoryAccess(serverId, currentUser(response).id, listVoiceChannels(serverId));
+  const userId = currentUser(response).id;
+  const channels = filterVisibleChannels(userId, 'voice', filterChannelsByCategoryAccess(serverId, userId, listVoiceChannels(serverId)));
   try {
     const activeRoomNames = new Set(
       (await roomService.listRooms(channels.map((channel) => channel.id))).map(
@@ -2860,6 +2993,7 @@ app.delete(
       return;
     }
     deleteVoiceChannel(channelId as string);
+    deleteChannelOverwrites('voice', channelId as string);
     sendToServerMembers(serverId, { type: 'VOICE_CHANNEL_DELETE', serverId, channelId: channelId as string });
     response.status(204).end();
   },
@@ -3021,6 +3155,7 @@ app.delete(
       }
       return;
     }
+    deleteTargetOverwrites(serverId, 'role', roleId as string);
     sendToServerMembers(serverId, { type: 'ROLE_DELETE', serverId, roleId: roleId as string });
     response.status(204).end();
   },
@@ -3882,7 +4017,10 @@ app.post(
         response.status(409).json({ error: 'Essa pessoa não pode entrar em canais de voz agora (timeout).' });
         return;
       }
-      if (filterChannelsByCategoryAccess(serverId, targetId, [toRoom]).length === 0) {
+      if (
+        filterChannelsByCategoryAccess(serverId, targetId, [toRoom]).length === 0
+        || !canInChannel(targetId, serverId, 'voice', toRoom.id, Permission.CONNECT)
+      ) {
         response.status(403).json({ error: 'Essa pessoa não tem acesso a esse canal.' });
         return;
       }
@@ -4028,6 +4166,11 @@ app.post(
     return;
   }
   if (rejectIfTimedOut(serverId, currentUser(response).id, response)) return;
+  // Permissões por canal: precisa ver o canal e poder conectar nele.
+  if (!canInChannel(currentUser(response).id, serverId, 'voice', room.id, Permission.CONNECT)) {
+    response.status(403).json({ error: 'Você não tem permissão para entrar neste canal de voz.' });
+    return;
+  }
 
   const user = currentUser(response);
 

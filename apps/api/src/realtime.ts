@@ -12,6 +12,7 @@ import {
   type PresenceStatus,
   type RealtimeEvent,
 } from '@nexplay/shared';
+import { canViewChannel } from './channelPermissions.js';
 import { config } from './config.js';
 import { isBanned } from './moderation.js';
 import { PresenceTracker } from './presence.js';
@@ -124,7 +125,37 @@ export function broadcast(event: RealtimeEvent): void {
 // que a filiação mude com frequência.
 export function sendToServerMembers(serverId: string, event: RealtimeEvent): void {
   const memberIds = new Set(listMemberUserIdsForServer(serverId));
+  const scope = channelScope(event);
+  // Evento de um canal só vai para quem pode ver aquele canal (permissões por canal; ver channelPermissions.ts).
+  if (scope) {
+    for (const userId of [...memberIds]) {
+      if (!canViewChannel(userId, serverId, scope.kind, scope.channelId)) memberIds.delete(userId);
+    }
+  }
   deliver(event, (userId) => memberIds.has(userId));
+}
+
+// De qual canal é o evento, quando ele mostra conteúdo do canal. Remoções (só o id) vão para todos: quem não via o canal
+// simplesmente não tem o que remover.
+function channelScope(event: RealtimeEvent): { kind: 'text' | 'voice'; channelId: string } | null {
+  switch (event.type) {
+    case 'TEXT_MESSAGE_CREATE':
+    case 'TEXT_MESSAGE_UPSERT':
+    case 'TEXT_MESSAGE_REACTION_ADD':
+    case 'TEXT_MESSAGE_REACTION_REMOVE':
+    case 'TYPING_START':
+      return { kind: 'text', channelId: event.channelId };
+    case 'TEXT_CHANNEL_CREATE':
+    case 'TEXT_CHANNEL_UPDATE':
+      return { kind: 'text', channelId: event.channel.id };
+    case 'VOICE_CHANNEL_CREATE':
+    case 'VOICE_CHANNEL_UPDATE':
+      return { kind: 'voice', channelId: event.channel.id };
+    case 'ROOM_STATE_UPDATE':
+      return { kind: 'voice', channelId: event.room.id };
+    default:
+      return null;
+  }
 }
 
 // Manda um evento só pros usuários listados (ex.: os 2 participantes de um

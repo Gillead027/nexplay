@@ -12,6 +12,7 @@ import {
 } from '@nexplay/shared';
 import { api } from '../api';
 import { SettingsIcon, TrashIcon } from './Icons';
+import { ChannelPermissionsPane } from './ChannelPermissionsPane';
 
 function slowModeLabel(seconds: number): string {
   if (seconds === 0) return 'Desligado';
@@ -44,6 +45,8 @@ export function VoiceChannelSettingsModal({
   const [userLimit, setUserLimit] = useState(channel.userLimit);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  // O diálogo fica montado na barra lateral: as permissões só carregam com ele aberto.
+  const [open, setOpen] = useState(false);
 
   function reset() {
     setName(channel.name);
@@ -99,10 +102,10 @@ export function VoiceChannelSettingsModal({
   return <>
     <button type="button" className="rename-channel-button" title="Configurações do canal"
       aria-label={`Configurações do canal ${channel.name}`}
-      onClick={() => { reset(); dialog.current?.showModal(); }}>
+      onClick={() => { reset(); setOpen(true); dialog.current?.showModal(); }}>
       <SettingsIcon size={14} />
     </button>
-    <dialog ref={dialog} className="channel-dialog voice-channel-settings-dialog" aria-labelledby={titleId}
+    <dialog ref={dialog} className="channel-dialog voice-channel-settings-dialog" aria-labelledby={titleId} onClose={() => setOpen(false)}
       onCancel={(event) => { if (saving) event.preventDefault(); }}>
       <header><h2 id={titleId}>Visão geral</h2></header>
       <div className="channel-settings-section">
@@ -156,6 +159,10 @@ export function VoiceChannelSettingsModal({
             {saving ? 'Salvando…' : 'Salvar alterações'}
           </button>
         </div>
+      </div>
+      <div className="channel-settings-section">
+        <h3 className="channel-settings-subtitle">Permissões</h3>
+        {open && <ChannelPermissionsPane serverId={serverId} kind="voice" channelId={channel.id} />}
       </div>
     </dialog>
   </>;

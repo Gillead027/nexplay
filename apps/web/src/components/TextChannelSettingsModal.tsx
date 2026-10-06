@@ -15,6 +15,7 @@ import { api } from '../api';
 import { SettingsIcon, SmileIcon, TrashIcon } from './Icons';
 import { EmojiPicker } from './EmojiPicker';
 import { InvitesPane } from './ServerSettings';
+import { ChannelPermissionsPane } from './ChannelPermissionsPane';
 import { fileToResizedDataUrl } from '../imageResize';
 import { copyLabel, useCopyFeedback } from '../useCopyFeedback';
 
@@ -186,11 +187,7 @@ export function TextChannelSettingsModal({
               </div>
             </div>
           )}
-          {tab === 'permissions' && (
-            <p className="channel-settings-stub">
-              Permissões específicas deste canal ainda não são suportadas — gerencie o acesso pelos Cargos do servidor.
-            </p>
-          )}
+          {tab === 'permissions' && <ChannelPermissionsPane serverId={serverId} kind="text" channelId={channel.id} />}
           {tab === 'invites' && <InvitesPane serverId={serverId} canManageServer={canManageServer} />}
           {tab === 'integrations' && (
             <WebhooksPane serverId={serverId} channelId={channel.id} canManageWebhooks={canManageWebhooks} />

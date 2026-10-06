@@ -767,3 +767,20 @@ db.exec(`
     started_at INTEGER NOT NULL
   );
 `);
+
+// Permissões por canal ("permission overwrites" do Discord): para um canal de texto, de voz ou uma categoria, um cargo
+// ou membro ganha bits permitidos (allow) e negados (deny). Ver computeChannelPermissions em @nexplay/shared.
+// channel_kind faz parte da chave porque canais de texto e de voz moram em tabelas diferentes.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS channel_overwrites (
+    channel_kind TEXT NOT NULL CHECK (channel_kind IN ('text', 'voice', 'category')),
+    channel_id TEXT NOT NULL,
+    server_id TEXT NOT NULL REFERENCES servers(id) ON DELETE CASCADE,
+    target_type TEXT NOT NULL CHECK (target_type IN ('role', 'member')),
+    target_id TEXT NOT NULL,
+    allow INTEGER NOT NULL DEFAULT 0,
+    deny INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (channel_kind, channel_id, target_type, target_id)
+  );
+  CREATE INDEX IF NOT EXISTS channel_overwrites_server ON channel_overwrites (server_id);
+`);

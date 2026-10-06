@@ -194,6 +194,18 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'O NexPlay também percebe sozinho quando a conexão travou sem cair e reconecta.',
     ],
   },
+  {
+    id: '2026-10-06-permissoes-por-canal',
+    date: '2026-10-06',
+    title: 'Permissões por canal: canais privados e canais só de leitura',
+    items: [
+      'Nas configurações de um canal (e de uma categoria), a aba Permissões agora funciona, como no Discord.',
+      'Ligue "Canal privado" e escolha quais cargos ou pessoas podem ver o canal. Quem não pode, nem vê o canal na lista.',
+      'Para cada cargo ou pessoa dá para negar (✕), herdar (/) ou permitir (✓): ver o canal, enviar mensagens e, nos canais de voz, conectar.',
+      'Um canal sem ajustes segue as permissões da categoria dele, então dá para fechar uma categoria inteira de uma vez.',
+      'Quem gerencia as permissões dos canais é quem tem a permissão Gerenciar cargos.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

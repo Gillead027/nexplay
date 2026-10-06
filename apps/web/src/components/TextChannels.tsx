@@ -766,7 +766,10 @@ export function TextChannelView({
   const isTimedOut = Boolean(member?.timeoutUntil && member.timeoutUntil > Date.now());
   const canManageMessages = hasPermission(member?.permissions ?? 0, Permission.MANAGE_MESSAGES);
   // O canal "atualizações" é do NexPlay (as novidades são publicadas sozinhas): membros comuns só leem.
-  const isReadOnly = channel.isUpdates && !canManageMessages;
+  const isUpdatesReadOnly = channel.isUpdates && !canManageMessages;
+  // Permissões por canal: a lista de canais diz o que a pessoa pode em cada um (ausente em servidor antigo = pode).
+  const cannotSendHere = channel.myPermissions !== undefined && (channel.myPermissions & Permission.SEND_MESSAGES) === 0;
+  const isReadOnly = isUpdatesReadOnly || cannotSendHere;
 
   async function handleFilesSelected(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -1157,7 +1160,7 @@ export function TextChannelView({
           </button>
         </div>
       )}
-      {isReadOnly && (
+      {isUpdatesReadOnly && (
         <div className="reply-composer-banner timeout-composer-banner">
           <span>Este canal é do NexPlay: aqui você acompanha as novidades de cada atualização, e só o NexPlay publica.</span>
         </div>
@@ -1238,7 +1241,8 @@ export function TextChannelView({
               }
             }}
             placeholder={
-              isReadOnly ? 'Só o NexPlay publica neste canal'
+              isUpdatesReadOnly ? 'Só o NexPlay publica neste canal'
+                : cannotSendHere ? 'Você não tem permissão para enviar mensagens neste canal.'
                 : isTimedOut ? 'Você está em timeout'
                 : uploading ? 'Enviando arquivo…'
                 : postAsSystem ? `Publicar como o servidor em #${channel.name}`

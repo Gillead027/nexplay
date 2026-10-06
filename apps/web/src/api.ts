@@ -38,6 +38,9 @@ import type {
   TextWebhook,
   UserCosmetics,
   UserSession,
+  ChannelKind,
+  OverwriteTargetType,
+  PermissionOverwrite,
   VideoQuality,
   VoiceChannel,
 } from '@nexplay/shared';
@@ -417,6 +420,19 @@ export const api = {
     request<void>(`${s(serverId)}/roles/${encodeURIComponent(roleId)}/members/${encodeURIComponent(userId)}`, {
       method: 'DELETE',
     }),
+  // Permissões por canal (ajustes de cargo/membro). kind: 'text' | 'voice' | 'category'.
+  getChannelOverwrites: (serverId: string, kind: ChannelKind, channelId: string) =>
+    request<{ overwrites: PermissionOverwrite[] }>(`${s(serverId)}/channel-overwrites/${kind}/${encodeURIComponent(channelId)}`),
+  setChannelOverwrite: (serverId: string, kind: ChannelKind, channelId: string, overwrite: PermissionOverwrite) =>
+    request<{ overwrites: PermissionOverwrite[] }>(`${s(serverId)}/channel-overwrites/${kind}/${encodeURIComponent(channelId)}`, {
+      method: 'PUT',
+      body: JSON.stringify(overwrite),
+    }),
+  deleteChannelOverwrite: (serverId: string, kind: ChannelKind, channelId: string, targetType: OverwriteTargetType, targetId: string) =>
+    request<{ overwrites: PermissionOverwrite[] }>(
+      `${s(serverId)}/channel-overwrites/${kind}/${encodeURIComponent(channelId)}/${targetType}/${encodeURIComponent(targetId)}`,
+      { method: 'DELETE' },
+    ),
   getMembers: (serverId: string) => request<{ members: MemberSummary[] }>(`${s(serverId)}/members`),
   getPresence: (serverId: string) =>
     request<{ onlineUserIds: string[]; statuses?: Record<string, PresenceStatus>; activities?: Record<string, Activity> }>(`${s(serverId)}/presence`),

@@ -2481,6 +2481,13 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     refresh();
     const unsubscribeConnect = onRealtimeConnect(refresh);
     const unsubscribeEvent = onRealtimeEvent((event) => {
+      if (
+        (event.type === 'CHANNEL_PERMISSIONS_UPDATE' && event.serverId === activeServerId)
+        || (event.type === 'MEMBER_ROLES_UPDATE' && event.serverId === activeServerId && event.userId === session.id)
+      ) {
+        refresh();
+        return;
+      }
       if (event.type === 'ROOM_STATE_UPDATE') {
         if (event.serverId !== activeServerId) return;
         setRooms((current) => current.map((room) => (room.id === event.room.id ? stampRoom(event.room) : room)));
@@ -2557,8 +2564,19 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
     refresh();
     const unsubscribeConnect = onRealtimeConnect(refresh);
     const unsubscribeEvent = onRealtimeEvent((event) => {
+      // Permissões por canal mudaram, ou os cargos da própria pessoa: a lista (e o que ela pode em cada canal) muda.
+      if (
+        (event.type === 'CHANNEL_PERMISSIONS_UPDATE' && event.serverId === activeServerId)
+        || (event.type === 'MEMBER_ROLES_UPDATE' && event.serverId === activeServerId && event.userId === session.id)
+      ) {
+        refresh();
+        return;
+      }
       if (event.type === 'TEXT_CHANNEL_UPDATE' && event.serverId === activeServerId) {
-        setTextChannels((current) => current.map((channel) => channel.id === event.channel.id ? event.channel : channel));
+        // O evento não traz o que a pessoa pode no canal: mantém o que já se sabia.
+        setTextChannels((current) => current.map((channel) => channel.id === event.channel.id
+          ? { ...event.channel, ...(channel.myPermissions !== undefined ? { myPermissions: channel.myPermissions } : {}) }
+          : channel));
         return;
       }
       if (event.type === 'TEXT_CHANNEL_DELETE' && event.serverId === activeServerId) {

@@ -1,4 +1,5 @@
 export * from './changelog.js';
+export * from './channelPermissions.js';
 export * from './cosmetics.js';
 import type { Nameplate, UserCosmetics } from './cosmetics.js';
 export * from './emoji-data.js';
@@ -1017,6 +1018,9 @@ export interface TextChannel {
   latestAnnouncementAt?: number;
   createdBy: string | null;
   createdAt: number;
+  // O que a pessoa que pediu a lista pode fazer neste canal (bits de Permission, já com as permissões por canal).
+  // Só vem em GET .../text-channels; ausente em servidores antigos.
+  myPermissions?: number;
 }
 
 export interface MessageReactionGroup {
@@ -1285,6 +1289,8 @@ export type RealtimeEvent =
   | { type: 'PRESENCE_STATUS_CHOICE'; status: PresenceStatus }
   | { type: 'SERVER_LAYOUT_UPDATE'; layout: ServerLayout }
   | { type: 'TYPING_START'; serverId: string; channelId: string; userId: string; displayName: string }
+  // As permissões de um canal ou categoria mudaram: quem está no servidor recarrega a lista de canais (pode ter ganhado ou perdido acesso).
+  | { type: 'CHANNEL_PERMISSIONS_UPDATE'; serverId: string }
   | { type: 'DM_TYPING_START'; dmChannelId: string; userId: string; displayName: string }
   | { type: 'SERVER_CREATE'; server: Server }
   | { type: 'SERVER_UPDATE'; server: Server }
