@@ -119,6 +119,17 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'A caixa de mensagem ficou mais limpa: Enter envia, e a contagem de caracteres só aparece perto do limite.',
     ],
   },
+  {
+    id: '2026-10-06-janelas-menus-perfil-estilo-discord',
+    date: '2026-10-06',
+    title: 'Janelas, menus e cartão de perfil no estilo do Discord',
+    items: [
+      'O cartão que abre ao clicar em alguém ficou como o do Discord: capa no topo, foto grande sobre a capa e botões logo abaixo.',
+      'Os menus do botão direito ficaram escuros e compactos, com o item destacado em roxo ao passar o mouse.',
+      'As janelas de criar canal, criar categoria e adicionar servidor ganharam o visual do Discord, com o rodapé escuro e os botões Cancelar e Criar.',
+      'Ao criar um canal, o tipo (texto ou voz) é escolhido numa lista com bolinha de seleção.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

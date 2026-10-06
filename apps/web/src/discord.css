@@ -65,6 +65,9 @@
   --dc-message-hover: #2e3035;
   --dc-input-placeholder: #6d6f78;
   --dc-divider: #3f4147;
+  --dc-input-bg: #1e1f22;    /* primary-700: campos de texto em janelas */
+  --dc-modal-bg: var(--main);
+  --dc-modal-footer: var(--sidebar);
 }
 
 /* Ash = theme-dark atual do Discord (neutral-73 / 69 / 66) */
@@ -74,7 +77,7 @@
   --hover: rgba(255, 255, 255, .06); --selected: rgba(255, 255, 255, .1);
   --border: #26272b; --border-light: #44454c;
   --text-primary: #f3f3f4; --text-secondary: #c5c6ca; --text-muted: #abacb2; --text-normal: #f3f3f4;
-  --dc-hover-solid: #3a3b42; --dc-selected-solid: #44454c; --dc-message-hover: #3a3b42; --dc-divider: #44454c;
+  --dc-hover-solid: #3a3b42; --dc-selected-solid: #44454c; --dc-message-hover: #3a3b42; --dc-divider: #44454c; --dc-input-bg: #26272b;
 }
 /* Onyx = theme-midnight (preto) */
 [data-theme="onyx"] {
@@ -83,7 +86,7 @@
   --hover: rgba(255, 255, 255, .08); --selected: rgba(255, 255, 255, .14);
   --border: #1a1a1e; --border-light: #26262b;
   --text-primary: #d4d5d8; --text-secondary: #a7a8ae; --text-muted: #81828a; --text-normal: #d4d5d8;
-  --dc-hover-solid: #141416; --dc-selected-solid: #1e1e22; --dc-message-hover: #0a0a0c; --dc-divider: #26262b;
+  --dc-hover-solid: #141416; --dc-selected-solid: #1e1e22; --dc-message-hover: #0a0a0c; --dc-divider: #26262b; --dc-input-bg: #141416; --dc-modal-bg: #0a0a0c; --dc-modal-footer: #000000;
 }
 /* Claro = theme-light */
 [data-theme="claro"] {
@@ -92,7 +95,7 @@
   --hover: rgba(116, 127, 141, .16); --selected: rgba(116, 127, 141, .24);
   --border: #e1e2e4; --border-light: #d4d7dc;
   --text-primary: #060607; --text-secondary: #4e5058; --text-muted: #5c5e66; --text-normal: #313338;
-  --dc-hover-solid: #e0e1e5; --dc-selected-solid: #d4d7dc; --dc-message-hover: #f5f5f5; --dc-divider: #e1e2e4;
+  --dc-hover-solid: #e0e1e5; --dc-selected-solid: #d4d7dc; --dc-message-hover: #f5f5f5; --dc-divider: #e1e2e4; --dc-input-bg: #e3e5e8;
   --dc-input-placeholder: #80848e;
   --dc-header-shadow: 0 1px 0 rgba(6, 6, 7, .08), 0 1.5px 0 rgba(6, 6, 7, .025), 0 2px 0 rgba(6, 6, 7, .025);
 }
@@ -681,3 +684,159 @@ button:hover > .avatar, .avatar:hover { box-shadow: none; }
 .permission-row strong { color: var(--text-primary); font-size: 16px; font-weight: 500; }
 .permission-row span, .permission-row p { color: var(--text-secondary); font-size: 14px; }
 .role-create-row .primary-button { height: 32px; border-radius: 3px; }
+
+/* ==========================================================================
+   Passada 5: popups e janelas (cartão de perfil, menus de contexto, modais)
+   Medidas tiradas do CSS do Discord: menu com itens de 32px; modal 440px com rodapé
+   escuro; cartão de perfil 300px com avatar de 80px e borda de 6px da cor do cartão.
+   ========================================================================== */
+
+/* ---------- modais ---------- */
+.dialog-overlay { top: 32px; padding: 24px; background: rgba(0, 0, 0, .85); backdrop-filter: none; }
+.channel-dialog {
+  width: min(440px, 100%); max-height: calc(100vh - 96px); padding: 24px 16px 0; border: 0; border-radius: 8px;
+  background: var(--dc-modal-bg); box-shadow: 0 0 0 1px rgba(32, 34, 37, .6), 0 2px 10px 0 rgba(0, 0, 0, .2);
+}
+.channel-dialog header { margin: 0 0 16px; }
+.channel-dialog header > div { flex: 1; }
+.channel-dialog h2 { color: var(--text-primary); font-size: 20px; line-height: 24px; font-weight: 600; }
+.channel-dialog header p { margin-top: 4px; color: var(--text-muted); font-size: 14px; line-height: 18px; }
+.channel-dialog header > button { width: 24px; height: 24px; margin: -8px -4px 0 0; border-radius: 4px; color: var(--text-muted); background: transparent; }
+.channel-dialog header > button:hover { color: var(--text-primary); background: transparent; }
+.channel-dialog > label, .channel-dialog form > label {
+  display: flex; justify-content: space-between; margin: 20px 0 8px; color: var(--text-muted);
+  font-size: 12px; line-height: 16px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
+}
+.channel-dialog > label span, .channel-dialog form > label span { color: var(--text-muted); font-weight: 500; text-transform: none; letter-spacing: 0; }
+.channel-dialog > input, .channel-dialog form > input, .channel-dialog .channel-name-field {
+  width: 100%; height: 40px; border: 0; border-radius: 3px; color: var(--text-normal); background: var(--dc-input-bg);
+  font-size: 16px; box-shadow: none;
+}
+.channel-dialog > input, .channel-dialog form > input { padding: 0 10px; }
+.channel-dialog > input:focus, .channel-dialog form > input:focus { outline: 0; box-shadow: none; }
+.channel-dialog input::placeholder { color: var(--dc-input-placeholder); }
+.channel-dialog .channel-name-field { padding: 0 8px 0 10px; gap: 4px; }
+.channel-dialog .channel-name-field span { color: var(--text-normal); font-size: 18px; }
+.channel-dialog .channel-name-field input, .channel-dialog .channel-name-field input:focus { height: 40px; padding: 0 4px; border: 0; outline: 0; box-shadow: none; background: transparent; font-size: 16px; }
+.channel-dialog footer {
+  position: sticky; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; margin: 24px -16px 0; padding: 16px;
+  border: 0; border-radius: 0 0 8px 8px; background: var(--dc-modal-footer);
+}
+.channel-dialog .primary-button {
+  min-width: 96px; height: 38px; min-height: 38px; padding: 2px 16px; border: 0; border-radius: 3px;
+  color: #fff; background: var(--accent); font-size: 14px; font-weight: 500; box-shadow: none;
+}
+.channel-dialog .primary-button:hover:not(:disabled) { background: var(--accent-hover); transform: none; box-shadow: none; }
+.channel-dialog .primary-button:disabled { opacity: .5; cursor: not-allowed; }
+.channel-dialog .primary-button::after { display: none; }
+.dialog-cancel, .channel-dialog .dialog-cancel {
+  min-width: 96px; height: 38px; min-height: 38px; padding: 2px 16px; border: 0; border-radius: 3px;
+  color: var(--text-normal); background: transparent; font-size: 14px; font-weight: 500; box-shadow: none; transform: none;
+}
+.dialog-cancel:hover:not(:disabled), .channel-dialog .dialog-cancel:hover:not(:disabled) { border: 0; color: var(--text-normal); background: transparent; text-decoration: underline; transform: none; }
+.channel-dialog .form-error { margin-top: 8px; padding: 0; border: 0; color: var(--danger); background: transparent; font-size: 12px; }
+.channel-dialog .toggle-row { align-items: center; margin: 20px 0 0; color: var(--text-normal); font-size: 16px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+
+/* Tipo de canal: linhas de rádio empilhadas, como no "Criar canal" do Discord */
+.channel-type-grid { display: grid; grid-template-columns: 1fr; gap: 8px; }
+.channel-type-card {
+  position: relative; min-height: 0; display: flex; flex-direction: row; align-items: center; gap: 12px;
+  padding: 10px 44px 10px 12px; border: 0; border-radius: 4px; color: var(--text-muted); background: var(--dc-modal-footer); box-shadow: none;
+  transition: background-color 120ms ease;
+}
+.channel-type-card:hover { background: var(--dc-hover-solid); }
+.channel-type-card.selected { border: 0; color: var(--text-primary); background: var(--dc-selected-solid); box-shadow: none; }
+.channel-type-card > svg { flex: 0 0 24px; width: 24px; height: 24px; }
+.channel-type-card > span { gap: 2px; }
+.channel-type-card strong { color: var(--text-normal); font-size: 16px; line-height: 20px; font-weight: 500; }
+.channel-type-card small { color: var(--text-muted); font-size: 14px; line-height: 18px; }
+.channel-type-card::after {
+  content: ''; position: absolute; top: 50%; right: 12px; width: 20px; height: 20px; margin-top: -10px; box-sizing: border-box;
+  border: 2px solid var(--text-muted); border-radius: 50%; transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.channel-type-card.selected::after { border-color: var(--text-primary); box-shadow: inset 0 0 0 3px var(--dc-selected-solid), inset 0 0 0 10px var(--text-primary); }
+.channel-type-card > i { display: none; }
+
+/* Criar ou entrar: abas sublinhadas no lugar do seletor deslizante */
+.add-server-dialog .entry-mode-toggle {
+  display: flex; gap: 16px; margin: 0 0 4px; padding: 0; border: 0; border-bottom: 1px solid var(--dc-divider); border-radius: 0; background: transparent;
+}
+.add-server-dialog .entry-mode-toggle::before { display: none; }
+.add-server-dialog .entry-mode-toggle button {
+  height: 36px; padding: 0 2px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; margin-bottom: -1px;
+  color: var(--text-muted); background: transparent; font-size: 16px; font-weight: 500;
+}
+.add-server-dialog .entry-mode-toggle button:hover { color: var(--text-normal); border-bottom-color: var(--text-muted); }
+.add-server-dialog .entry-mode-toggle button.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+
+/* Confirmações de exclusão: botão vermelho */
+.delete-server-confirm .primary-button { background: #da373c; }
+.delete-server-confirm .primary-button:hover:not(:disabled) { background: #a12828; }
+
+/* ---------- menus de contexto ---------- */
+.context-menu {
+  min-width: 188px; max-width: 320px; padding: 6px 8px; border: 0; border-radius: 4px;
+  background: #111214; box-shadow: 0 8px 16px rgba(0, 0, 0, .24); animation: dc-menu-in 100ms ease-out;
+}
+[data-theme="claro"] .context-menu { background: #fff; box-shadow: 0 0 0 1px rgba(6, 6, 7, .08), 0 8px 16px rgba(0, 0, 0, .16); }
+.context-menu-section { display: flex; flex-direction: column; }
+.context-menu-divider { height: 0; margin: 4px; border-bottom: 1px solid rgba(78, 80, 88, .48); background: transparent; }
+.context-menu .context-menu-item {
+  min-height: 32px; margin: 2px 0; padding: 6px 8px; border-radius: 2px; color: #b5bac1;
+  font-size: 14px; line-height: 18px; font-weight: 500;
+}
+[data-theme="claro"] .context-menu .context-menu-item { color: #4e5058; }
+.context-menu .context-menu-item:hover:not(:disabled), .context-menu .context-menu-item:focus-visible { color: #fff; background: var(--accent-hover); outline: 0; }
+.context-menu .context-menu-item.danger { color: var(--danger); }
+.context-menu .context-menu-item.danger:hover:not(:disabled) { color: #fff; background: var(--danger); }
+.context-menu .context-menu-item:disabled { opacity: 1; color: var(--text-muted); cursor: default; }
+.context-menu-check { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 3px; color: #fff; background: var(--accent); font-size: 12px; }
+.context-menu-slider { padding: 8px; }
+@keyframes dc-menu-in { from { opacity: 0; transform: scale(.96); } to { opacity: 1; transform: none; } }
+
+/* ---------- cartão de perfil ---------- */
+.profile-popover {
+  width: 300px; border: 0; border-radius: 8px; background: #232428;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, .24), 0 0 0 1px rgba(32, 34, 37, .6);
+  animation: dc-popout-in 150ms cubic-bezier(.2, .9, .3, 1.1);
+}
+[data-theme="claro"] .profile-popover { background: #fff; }
+.profile-popover .profile-preview {
+  min-height: 0; margin: 0; padding: 108px 16px 16px; border: 0; border-radius: 0; background: transparent; overflow: visible;
+}
+.profile-popover .profile-preview-banner { height: 60px; border-radius: 8px 8px 0 0; opacity: 1; }
+.profile-popover .profile-preview-banner.has-image { height: 105px; }
+.profile-popover .profile-preview:has(.profile-preview-banner.has-image) { padding-top: 156px; }
+.profile-popover .profile-preview > .avatar, .profile-popover .profile-preview > .avatar-ring { position: absolute; left: 16px; top: 16px; margin: 0; }
+.profile-popover .profile-preview:has(.profile-preview-banner.has-image) > .avatar,
+.profile-popover .profile-preview:has(.profile-preview-banner.has-image) > .avatar-ring { top: 61px; }
+.profile-popover .profile-preview .avatar { width: 92px; height: 92px; border: 6px solid #232428; font-size: 32px; box-sizing: border-box; }
+.profile-popover .profile-preview .avatar-ring { --ring: 4px; }
+.profile-popover .profile-preview .avatar-ring .avatar { width: 80px; height: 80px; border: 0; }
+.profile-popover .profile-preview > strong { margin-top: 0; color: var(--text-primary); font-size: 20px; line-height: 24px; font-weight: 700; }
+.profile-popover .profile-preview > em { margin-top: 2px; color: var(--text-normal); font-size: 14px; font-style: normal; }
+.profile-popover .profile-preview > span { margin-top: 8px; color: var(--text-normal); font-size: 14px; line-height: 18px; }
+.profile-popover .profile-preview > p {
+  width: 100%; margin: 12px 0 0; padding: 12px; border-radius: 8px; color: var(--text-normal); background: #111214; font-size: 14px; line-height: 18px;
+}
+.profile-popover .profile-activity-line { width: 100%; margin-top: 12px; padding: 12px; border-radius: 8px; background: #111214; }
+[data-theme="claro"] .profile-popover .profile-preview .avatar { border-color: #fff; }
+[data-theme="claro"] .profile-popover .profile-preview > p, [data-theme="claro"] .profile-popover .profile-activity-line { background: #f2f3f5; }
+.profile-popover-close { top: 8px; right: 8px; width: 28px; height: 28px; color: #fff; background: rgba(0, 0, 0, .4); transition: background-color 120ms ease; }
+.profile-popover-close:hover { background: rgba(0, 0, 0, .7); }
+.profile-popover-actions { display: flex; flex-wrap: wrap; gap: 8px; width: 100%; margin-top: 16px; }
+.profile-popover-actions .secondary-pill {
+  flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; min-height: 32px; padding: 2px 12px;
+  border: 0; border-radius: 3px; color: #fff; background: #4e5058; font-size: 14px; font-weight: 500; box-shadow: none; transform: none;
+}
+.profile-popover-actions .secondary-pill:first-child { background: var(--accent); }
+.profile-popover-actions .secondary-pill:hover:not(:disabled) { border: 0; color: #fff; background: #6d6f78; transform: none; }
+.profile-popover-actions .secondary-pill:first-child:hover:not(:disabled) { background: var(--accent-hover); }
+.profile-popover-actions .secondary-pill.danger-pill { flex: 0 0 auto; color: var(--danger); background: transparent; }
+.profile-popover-actions .secondary-pill.danger-pill:hover:not(:disabled) { color: #fff; background: var(--danger); }
+.profile-popover-loading { padding: 24px 16px; color: var(--text-muted); font-size: 14px; }
+@keyframes dc-popout-in { from { opacity: 0; transform: scale(.95); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .context-menu, .profile-popover, .channel-dialog, .dialog-overlay { animation: none; }
+}
