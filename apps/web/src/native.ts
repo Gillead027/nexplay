@@ -99,3 +99,38 @@ export function native(): NexplayNative | null {
 export function isDesktop(): boolean {
   return native() !== null;
 }
+
+// Recursos que nem toda versão instalada do app tem. A ponte nova (0.2.19+) tem todos; na legada, cada um
+// chegou numa versão, e a tela esconde o botão quando o app instalado ainda não tem o recurso.
+export type NativeFeature =
+  | 'updates' // 0.2.12
+  | 'logs' // 0.2.12
+  | 'deepLink' // 0.2.13
+  | 'activity'
+  | 'desktopSettings' // 0.2.17
+  | 'globalHotkeys' // 0.2.18
+  | 'mediaSettings'
+  | 'mediaStatus'
+  | 'fullscreen'
+  | 'screenPicker';
+
+const LEGACY_METHOD: Record<NativeFeature, keyof LegacyDesktop> = {
+  updates: 'checkForUpdates',
+  logs: 'openLogs',
+  deepLink: 'onDeepLink',
+  activity: 'onActivityChanged',
+  desktopSettings: 'getDesktopSettings',
+  globalHotkeys: 'onGlobalMuteHotkey',
+  mediaSettings: 'openMediaSettings',
+  mediaStatus: 'getMediaAccessStatus',
+  fullscreen: 'setFullscreen',
+  screenPicker: 'chooseShareSource',
+};
+
+/** true quando o app desktop instalado tem o recurso (sempre false no navegador). */
+export function nativeSupports(feature: NativeFeature): boolean {
+  if (typeof window === 'undefined') return false;
+  if (window.NexplayNative) return true;
+  const legacy = window.desktop;
+  return Boolean(legacy && legacy[LEGACY_METHOD[feature]]);
+}

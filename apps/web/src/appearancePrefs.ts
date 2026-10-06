@@ -1,3 +1,5 @@
+import { native } from './native';
+
 export const CHAT_FONT_SCALES = [85, 100, 115, 130, 150] as const;
 export const MESSAGE_SPACING_SCALES = [75, 100, 125, 150, 175] as const;
 export const UI_ZOOM_SCALES = [90, 100, 110, 125, 150] as const;
@@ -97,7 +99,7 @@ export function applyUiZoomStep(step: number): void {
   // calculados antes do fator aplicar). O zoom nativo do Electron/Chromium (o
   // mesmo do Ctrl+scroll) recalcula as unidades de viewport de verdade — por
   // isso essa função pede pro processo principal aplicar, em vez de mexer no CSS.
-  window.desktop?.setZoomFactor?.((UI_ZOOM_SCALES[step] ?? 100) / 100);
+  native()?.window.setZoomFactor((UI_ZOOM_SCALES[step] ?? 100) / 100);
 }
 
 export function setChatFontStep(step: number): void {

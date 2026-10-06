@@ -1,4 +1,5 @@
 import { connectivityMessage, type ConnectivityState } from '../connectivity';
+import { native, nativeSupports } from '../native';
 
 // Avisos fixos no topo, visíveis em qualquer tela (canal de texto, voz, amigos...): sem
 // conexão com o servidor, erro de voz (com atalho quando é permissão negada) e aviso de
@@ -34,7 +35,7 @@ export function StatusNotices({
 }) {
   const connectionText = connectivityMessage(connectivity);
   const target = errorAction === 'camera' ? 'a câmera' : 'o microfone';
-  const canOpenSystemSettings = Boolean(window.desktop?.openMediaSettings);
+  const canOpenSystemSettings = nativeSupports('mediaSettings');
 
   if (!connectionText && !error && !notice && !inviteMessage && !newVersion) return null;
   return (
@@ -56,7 +57,7 @@ export function StatusNotices({
             )}
           </span>
           {errorAction && canOpenSystemSettings && (
-            <button type="button" onClick={() => void window.desktop?.openMediaSettings?.(errorAction)}>
+            <button type="button" onClick={() => void native()?.media.openSettings(errorAction)}>
               Abrir configurações do Windows
             </button>
           )}

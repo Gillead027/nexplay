@@ -7,6 +7,7 @@ import { bootDensity } from './density';
 import { bootAppearancePrefs } from './appearancePrefs';
 import { migrateLegacyStorageKeys } from './legacyStorageMigration';
 import { installRangeFill } from './rangeFill';
+import { native } from './native';
 import { extractDeepLinkInvite, extractInviteCode, PENDING_INVITE_EVENT, savePendingInvite } from './pendingInvite';
 import './styles.css';
 import './design.css';
@@ -21,7 +22,7 @@ if (inviteCode) {
 }
 
 // App desktop 0.2.13 em diante: clicar num link nexplay://convite/... entrega o código aqui.
-window.desktop?.onDeepLink?.((url) => {
+native()?.deepLink.onLink((url) => {
   const code = extractDeepLinkInvite(url);
   if (!code) return;
   savePendingInvite(code);

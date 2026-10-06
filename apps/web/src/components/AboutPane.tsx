@@ -4,6 +4,7 @@ import licenses from '../licenses.json';
 import { PRIVACY_POLICY, TERMS_OF_USE, type LegalDocument } from '../legalTexts';
 import { copyLabel, useCopyFeedback } from '../useCopyFeedback';
 import { UpdateCheck } from './UpdateCheck';
+import { isDesktop, native, nativeSupports } from '../native';
 
 const dateTime = new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 
@@ -53,7 +54,7 @@ function LicenseList() {
 export function AboutPane() {
   const { copy, statusFor } = useCopyFeedback();
   const [reading, setReading] = useState<Reading>(null);
-  const desktop = Boolean(window.desktop);
+  const desktop = isDesktop();
   const desktopVersion = parseDesktopVersion(navigator.userAgent);
   const engineVersion = parseEngineVersion(navigator.userAgent);
   const build = __BUILD_INFO__;
@@ -74,8 +75,8 @@ export function AboutPane() {
           {statusFor('version') === 'idle' ? 'Copiar versão' : copyLabel(statusFor('version'))}
         </button>
         <UpdateCheck />
-        {desktop && window.desktop?.openLogs && (
-          <button type="button" className="secondary-pill" onClick={() => void window.desktop?.openLogs?.()}>Abrir pasta de logs</button>
+        {desktop && nativeSupports('logs') && (
+          <button type="button" className="secondary-pill" onClick={() => void native()?.app.openLogs()}>Abrir pasta de logs</button>
         )}
       </div>
       <div className="about-actions about-legal-buttons" role="group" aria-label="Documentos">

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { native } from '../native';
 
 export interface DesktopSettingsView {
   closeToTray: boolean;
@@ -121,8 +122,8 @@ export function DesktopPane() {
 
   useEffect(() => {
     let active = true;
-    void window.desktop?.getDesktopSettings?.().then((loaded) => {
-      if (active) setSettings(loaded);
+    void native()?.settings.get().then((loaded) => {
+      if (active && loaded) setSettings(loaded as DesktopSettingsView);
     });
     return () => {
       active = false;
@@ -134,7 +135,7 @@ export function DesktopPane() {
   ) {
     if (!settings) return;
     setSettings({ ...settings, ...patch });
-    const applied = await window.desktop?.setDesktopSettings?.(patch);
+    const applied = (await native()?.settings.set(patch)) as DesktopSettingsView | undefined;
     if (applied) setSettings(applied);
   }
 

@@ -4,6 +4,7 @@ import { api } from '../api';
 import { DESKTOP_DOWNLOAD_URL } from '../appLinks';
 import { deepLinkUrl, peekPendingInvite } from '../pendingInvite';
 import { DownloadIcon } from './Icons';
+import { isDesktop } from '../native';
 
 interface EntryScreenProps {
   onAuthenticated: (session: UserSession) => void | Promise<void>;
@@ -57,7 +58,7 @@ export function EntryScreen({ onAuthenticated, notice }: EntryScreenProps) {
 
   const login = mode === 'login';
   // O app desktop já é o aplicativo: só o navegador mostra a coluna do download.
-  const inBrowser = !window.desktop;
+  const inBrowser = !isDesktop();
 
   return (
     <main className="entry-screen">

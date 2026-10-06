@@ -1,4 +1,5 @@
 import { onRealtimeEvent } from '../realtime';
+import { native, nativeSupports } from '../native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ConnectionQuality,
@@ -526,8 +527,10 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
     // alguém que já estava com o Spotify tocando antes mesmo da janela
     // abrir) — nesse caso o "push" via onActivityChanged já passou e se
     // perdeu no ar, então também puxamos o valor atual explicitamente aqui.
-    void window.desktop?.getCurrentActivity?.().then((activity) => applyActivity(activity ?? null));
-    return window.desktop?.onActivityChanged?.(applyActivity);
+    const shell = nativeSupports('activity') ? native() : null;
+    if (!shell) return undefined;
+    void shell.activity.getCurrent().then((activity) => applyActivity((activity as Activity | null) ?? null));
+    return shell.activity.onChanged((activity) => applyActivity(activity as Activity | null));
   }, [applyActivity]);
 
   // Aparelho escolhido que sumiu (fone desconectado, câmera removida): volta pro padrão do
@@ -750,10 +753,10 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
 
   // Atalhos globais (app desktop, Configurações > Aplicativo): disparam mesmo com o NexPlay em
   // segundo plano, via globalShortcut no processo principal — diferente do push-to-talk acima,
-  // que só funciona com a janela em foco. Sem window.desktop (navegador), os métodos não existem
-  // e o efeito não faz nada.
-  useEffect(() => window.desktop?.onGlobalMuteHotkey?.(() => void toggleMicrophone()), [toggleMicrophone]);
-  useEffect(() => window.desktop?.onGlobalDeafenHotkey?.(() => void toggleDeafen()), [toggleDeafen]);
+  // que só funciona com a janela em foco. No navegador, ou num app antigo sem os atalhos, o
+  // efeito não faz nada.
+  useEffect(() => (nativeSupports('globalHotkeys') ? native()?.hotkeys.onMuteToggle(() => void toggleMicrophone()) : undefined), [toggleMicrophone]);
+  useEffect(() => (nativeSupports('globalHotkeys') ? native()?.hotkeys.onDeafenToggle(() => void toggleDeafen()) : undefined), [toggleDeafen]);
 
   const setInputMode = useCallback(
     (mode: InputMode) => {

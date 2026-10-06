@@ -1,3 +1,5 @@
+import { native, nativeSupports } from './native';
+
 export type MediaAccessKind = 'camera' | 'microphone' | 'screen';
 
 function baseMediaError(error: unknown): string {
@@ -32,7 +34,7 @@ export async function describeMediaError(error: unknown, mediaType?: MediaAccess
 
   const target = mediaType === 'camera' ? { to: 'à câmera', of: 'da câmera' } : { to: 'ao microfone', of: 'do microfone' };
   try {
-    const status = await window.desktop?.getMediaAccessStatus?.(mediaType);
+    const status = nativeSupports('mediaStatus') ? await native()?.media.getAccessStatus(mediaType) : undefined;
     if (status === 'denied' || status === 'restricted') {
       return `O Windows bloqueou o acesso ${target.to}. Abra Privacidade e permita o acesso para aplicativos da área de trabalho.`;
     }

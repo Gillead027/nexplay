@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { activityIdentity, publicActivity, type Activity } from '@nexplay/shared';
 import { api } from './api';
 import { onRealtimeConnect } from './realtime';
+import { native, nativeSupports } from './native';
 
 // Conta pro servidor o que a pessoa está jogando ou ouvindo (detectado pelo app desktop) para aparecer na lista de membros
 // de todos os servidores dela, como no Discord. Só o essencial vai: o jogo, ou a faixa e o artista (sem capa nem tempo, que
@@ -9,8 +10,8 @@ import { onRealtimeConnect } from './realtime';
 // tudo quando a pessoa sai ou ele reinicia. No navegador não há detecção, então não faz nada.
 export function useShareActivity(): void {
   useEffect(() => {
-    const desktop = window.desktop;
-    if (!desktop?.onActivityChanged) return;
+    const shell = nativeSupports('activity') ? native() : null;
+    if (!shell) return;
 
     let latest: Activity | null = null;
     let sentIdentity: string | null = null;
@@ -32,8 +33,8 @@ export function useShareActivity(): void {
     };
 
     // A primeira detecção pode ter acontecido antes deste efeito montar (Spotify já tocando antes de abrir a janela).
-    void desktop.getCurrentActivity?.().then((activity) => apply(activity ?? null));
-    const unsubscribeActivity = desktop.onActivityChanged(apply);
+    void shell.activity.getCurrent().then((activity) => apply((activity as Activity | null) ?? null));
+    const unsubscribeActivity = shell.activity.onChanged((activity) => apply(activity as Activity | null));
     const unsubscribeConnect = onRealtimeConnect(() => publish(true));
 
     return () => {

@@ -1,10 +1,12 @@
 import { useState } from 'react';
-import { describeUpdate } from '../aboutInfo';
+import { describeUpdate, type UpdateCheckOutcome } from '../aboutInfo';
+import { native, nativeSupports } from '../native';
 
 // "Verificar atualizações" do app desktop. Só existe quando o app instalado tem a função
 // (desktop 0.2.12 em diante); no navegador e em versões antigas o botão não aparece.
 export function UpdateCheck() {
-  const check = window.desktop?.checkForUpdates;
+  const shell = nativeSupports('updates') ? native() : null;
+  const check = shell ? () => shell.app.checkForUpdates() as Promise<UpdateCheckOutcome> : undefined;
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   if (!check) return null;

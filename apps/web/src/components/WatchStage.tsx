@@ -4,6 +4,7 @@ import type { ScreenTrackView } from '../livekit/useVoiceRoom';
 import { ChevronIcon, EyeIcon, EyeOffIcon, FullscreenIcon, SpeakerIcon } from './Icons';
 import { viewerCountLabel } from '../streamViewers';
 import { useEscapeLayer } from '../escapeLayers';
+import { native, nativeSupports } from '../native';
 
 export function attachVideo(view: ScreenTrackView, element: HTMLVideoElement | null): (() => void) | undefined {
   const track = view.publication.track;
@@ -22,9 +23,10 @@ function useStageFullscreen(stageRef: RefObject<HTMLElement | null>) {
     const handleFullscreenChange = () => setFullscreen(document.fullscreenElement === stageRef.current);
     document.addEventListener('fullscreenchange', handleFullscreenChange);
     let unsubscribeDesktop: (() => void) | undefined;
-    if (window.desktop?.getFullscreen) {
-      void window.desktop.getFullscreen().then(setFullscreen).catch(() => {});
-      unsubscribeDesktop = window.desktop.onFullscreenChanged?.(setFullscreen);
+    const shell = nativeSupports('fullscreen') ? native() : null;
+    if (shell) {
+      void shell.window.getFullscreen().then(setFullscreen).catch(() => {});
+      unsubscribeDesktop = shell.window.onFullscreenChanged(setFullscreen);
     }
     return () => {
       document.removeEventListener('fullscreenchange', handleFullscreenChange);
@@ -32,8 +34,8 @@ function useStageFullscreen(stageRef: RefObject<HTMLElement | null>) {
     };
   }, [stageRef]);
 
-  useEscapeLayer(fullscreen && Boolean(window.desktop?.setFullscreen), () => {
-    void window.desktop?.setFullscreen?.(false);
+  useEscapeLayer(fullscreen && nativeSupports('fullscreen'), () => {
+    void native()?.window.setFullscreen(false);
   });
 
   async function toggle() {
@@ -41,9 +43,10 @@ function useStageFullscreen(stageRef: RefObject<HTMLElement | null>) {
     if (!stage) return;
     setError('');
     try {
-      if (window.desktop?.setFullscreen) {
+      const shell = nativeSupports('fullscreen') ? native() : null;
+      if (shell) {
         const nextFullscreen = !fullscreen;
-        await window.desktop.setFullscreen(nextFullscreen);
+        await shell.window.setFullscreen(nextFullscreen);
         setFullscreen(nextFullscreen);
         return;
       }

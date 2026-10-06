@@ -109,6 +109,7 @@ import { DEFAULT_PERSON_VOLUME, loadVolumes, saveVolumes, volumeStorageKey } fro
 import { DmChannelView } from './DmChannelView';
 import { Store } from './Store';
 import { useRailTooltip } from './RailTooltip';
+import { native, nativeSupports } from '../native';
 import { FriendsHome, FriendsSidebar, isBlockedByMe as computeIsBlockedByMe, relationshipStatus, useFriendsState } from './Friends';
 import { ProfilePopover, type ProfilePopoverTarget } from './ProfilePopover';
 import { RemoteAudioSink } from './RemoteAudioSink';
@@ -840,8 +841,8 @@ function CameraPreview({ deviceId }: { deviceId: string }) {
       {previewError && (
         <div className="camera-permission-error" role="alert">
           <span>{previewError}</span>
-          {window.desktop?.openMediaSettings && (
-            <button type="button" onClick={() => void window.desktop?.openMediaSettings?.('camera')}>
+          {nativeSupports('mediaSettings') && (
+            <button type="button" onClick={() => void native()?.media.openSettings('camera')}>
               Abrir permissões
             </button>
           )}
@@ -1203,7 +1204,7 @@ function SettingsModal({
           <button type="button" className={section === 'notifications' ? 'active' : ''} onClick={() => setSection('notifications')}>
             <BellIcon size={15} /> Notificações
           </button>
-          {window.desktop?.getDesktopSettings && (
+          {nativeSupports('desktopSettings') && (
             <button type="button" className={section === 'app' ? 'active' : ''} onClick={() => setSection('app')}>
               <SettingsIcon size={15} /> Aplicativo
             </button>
@@ -1234,7 +1235,7 @@ function SettingsModal({
         <div className="settings-content">
           {section === 'about' && <AboutPane />}
           {section === 'notifications' && <NotificationsPane />}
-          {section === 'app' && window.desktop?.getDesktopSettings && <DesktopPane />}
+          {section === 'app' && nativeSupports('desktopSettings') && <DesktopPane />}
           {section === 'admin' && isInstanceAdmin && <AdminOverviewPane ownUserId={session.id} />}
           {section === 'trust-safety' && isInstanceAdmin && <TrustSafetyPane />}
           {section === 'profile' && (
@@ -2696,14 +2697,15 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
       await voice.toggleScreenShare(quality);
       return;
     }
-    if (!window.desktop) {
+    const shell = nativeSupports('screenPicker') ? native() : null;
+    if (!shell) {
       // Fora do app empacotado (ex.: navegador comum durante o desenvolvimento)
       // não existe picker nativo — cai no fluxo antigo com a qualidade já
       // escolhida em Configurações.
       await voice.toggleScreenShare(quality);
       return;
     }
-    const choice = await window.desktop.chooseShareSource();
+    const choice = await shell.screenShare.pick();
     if (!choice) return;
     setQuality(choice.quality);
     await voice.toggleScreenShare(choice.quality, choice.shareAudio);
