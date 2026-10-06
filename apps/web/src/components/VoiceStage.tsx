@@ -251,9 +251,10 @@ export function VoiceStage({
 
   const gridRef = useRef<HTMLDivElement>(null);
   const watching = heroes.length > 0;
-  const tileWidth = useTileWidth(gridRef, entries.length + streams.length, !watching);
-  const invite = useInviteCopy(copyInvite);
   const alone = entries.length === 1 && streams.length === 0 && !watching;
+  // Sozinho na chamada, o convite vira um segundo quadro ao lado do seu (como no Discord), então conta na grade.
+  const tileWidth = useTileWidth(gridRef, entries.length + streams.length + (alone ? 1 : 0), !watching);
+  const invite = useInviteCopy(copyInvite);
   const inviteLabel = invite.state === 'copied' ? 'Link copiado!' : invite.state === 'failed' ? 'Não foi possível copiar' : 'Convidar para voz';
 
   const tiles = (
@@ -288,21 +289,21 @@ export function VoiceStage({
     <div className="voice-stage">
       <div className="voice-tiles" ref={gridRef} style={{ '--tile-w': `${tileWidth}px` } as CSSProperties}>
         {tiles}
-      </div>
-
-      {alone && (
-        <div className="voice-invite">
-          <div className="voice-invite-text">
-            <strong>Só você por aqui</strong>
-            <span>Chame seus amigos para entrar em {channelName}.</span>
+        {alone && (
+          <div className="voice-invite voice-invite-tile">
+            <span className="voice-invite-icon" aria-hidden="true"><UserPlusIcon size={28} /></span>
+            <div className="voice-invite-text">
+              <strong>Só você por aqui</strong>
+              <span>Chame seus amigos para entrar em {channelName}.</span>
+            </div>
+            {copyInvite && (
+              <button type="button" className={`voice-invite-button ${invite.state}`} onClick={() => void invite.run()}>
+                {inviteLabel}
+              </button>
+            )}
           </div>
-          {copyInvite && (
-            <button type="button" className={`primary-button voice-invite-button ${invite.state}`} onClick={() => void invite.run()}>
-              <UserPlusIcon size={16} /> {inviteLabel}
-            </button>
-          )}
-        </div>
-      )}
+        )}
+      </div>
 
       {!alone && copyInvite && (
         <button

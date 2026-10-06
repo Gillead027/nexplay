@@ -206,6 +206,20 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Quem gerencia as permissões dos canais é quem tem a permissão Gerenciar cargos.',
     ],
   },
+  {
+    id: '2026-10-06-correcoes-chamada-e-visual',
+    date: '2026-10-06',
+    title: 'Correções: botões da janela, chamada, configurações de voz e mais',
+    items: [
+      'App do computador: os botões de minimizar, maximizar e fechar voltaram (versão 0.2.21). Também voltaram os atalhos globais, o jogo/música na lista de membros e os links de convite, que tinham parado junto.',
+      'Chamada: quando você está sozinho, o convite aparece como um quadro ao lado do seu, como no Discord. O chat da chamada ficou igual ao dos canais.',
+      'O painel "Voz conectada" ganhou botões do mesmo tamanho e o de sair fica vermelho.',
+      'Configurações > Voz e vídeo agora é uma coluna só, sem campos cortados, com a câmera no fim da página.',
+      'Mensagens do NexPlay e do NexMusic: foto redonda, data como "Hoje às" e o fundo ao passar o mouse ocupando a linha toda.',
+      'Lista de amigos: a borda animada da foto ficou centralizada e as linhas entre amigos ficaram retas.',
+      'O contorno azul de foco só aparece quando você navega com a tecla Tab.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

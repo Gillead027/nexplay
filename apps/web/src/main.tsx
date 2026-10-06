@@ -29,6 +29,15 @@ native()?.deepLink.onLink((url) => {
   window.dispatchEvent(new Event(PENDING_INVITE_EVENT));
 });
 
+// "Modo teclado" do Discord: o anel de foco só aparece depois de navegar com Tab, e some no primeiro clique.
+// Sem isso, fechar uma janela com Esc devolvia o foco a um botão e ele ficava com o anel azul.
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Tab') document.documentElement.dataset.keyboard = 'true';
+}, true);
+window.addEventListener('pointerdown', () => {
+  delete document.documentElement.dataset.keyboard;
+}, true);
+
 migrateLegacyStorageKeys();
 bootPerfMode();
 bootTheme();

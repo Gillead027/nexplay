@@ -157,7 +157,7 @@ function GameTextMessageRow({
           <strong className="game-bot-name">{message.senderName}</strong>
           <span className="nexmusic-app-badge">APP</span>
           <time dateTime={new Date(message.sentAt).toISOString()}>
-            {new Date(message.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            {discordTimestamp(message.sentAt)}
           </time>
         </header>
         {message.text && <p><MarkdownText text={message.text} /></p>}
@@ -182,7 +182,7 @@ function BotTextMessageRow({
           <strong>{message.senderName}</strong>
           <span className="nexmusic-app-badge">APP</span>
           <time dateTime={new Date(message.sentAt).toISOString()}>
-            {new Date(message.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            {discordTimestamp(message.sentAt)}
           </time>
           <span className="nexmusic-sleep-mark" aria-hidden="true">zZ</span>
         </header>
@@ -213,8 +213,8 @@ function SystemTextMessageRow({ message }: { message: TextMessage }) {
         <header className="system-message-header">
           <strong>{message.senderName}</strong>
           <span className="system-app-badge">APP</span>
-          <time dateTime={new Date(message.sentAt).toISOString()}>
-            {new Date(message.sentAt).toLocaleDateString('pt-BR')} {new Date(message.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+          <time dateTime={new Date(message.sentAt).toISOString()} title={new Date(message.sentAt).toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short' })}>
+            {discordTimestamp(message.sentAt)}
           </time>
         </header>
         <p className="system-message-body"><MarkdownText text={message.text} /></p>

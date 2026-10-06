@@ -1380,3 +1380,141 @@ button:hover > .avatar, .avatar:hover { box-shadow: none; }
 @media (max-width: 640px) { .channel-permissions-body { grid-template-columns: minmax(0, 1fr); } .channel-permissions-targets { border-right: 0; padding-right: 0; } }
 .channel-settings-dialog { width: min(900px, calc(100vw - 48px)); }
 .channel-settings-dialog:focus, .channel-settings-dialog:focus-visible { outline: none; }
+
+/* ==========================================================================
+   Correções 1: mensagens de bot/sistema, anéis de avatar e divisórias de amigos
+   ========================================================================== */
+/* Mensagens do NexPlay, do NexMusic, de webhooks e do jogo: mesma grade das mensagens normais (avatar redondo de 40px,
+   largura total para o fundo do hover), selo APP do Discord. */
+.messages .message.system-message, .messages .message.nexmusic-message, .messages .message.game-message {
+  display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 0 16px; max-width: none; width: auto;
+  margin: 17px 0 0; padding: 2px 48px 2px 16px; align-items: start;
+}
+.messages .message.system-message:hover, .messages .message.nexmusic-message:hover, .messages .message.game-message:hover { background: var(--dc-message-hover); }
+.system-message-avatar, .nexmusic-bot-avatar, .game-bot-avatar {
+  width: 40px; height: 40px; margin-top: 2px; border: 0; border-radius: 50%; box-shadow: none; overflow: hidden;
+}
+.system-message-avatar img { width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
+.system-message-content, .nexmusic-message-content, .game-message-content { width: auto; min-width: 0; }
+.system-message-header, .nexmusic-message-header { min-height: 22px; gap: 4px !important; margin-bottom: 0; line-height: 22px; }
+.system-message-header strong, .nexmusic-message-header strong { font-size: 16px !important; font-weight: 500 !important; }
+.system-message-header time, .nexmusic-message-header time { margin-left: 4px; font-size: 12px !important; font-weight: 500; }
+.system-app-badge, .nexmusic-app-badge {
+  height: 15px; padding: 0 4px; gap: 2px; border-radius: 3px; color: #fff; background: #5865f2;
+  font-size: 10px; font-weight: 600; letter-spacing: 0; line-height: 15px; text-transform: uppercase;
+}
+.system-app-badge::before, .nexmusic-app-badge::before { font-size: 10px; }
+.system-message-body { margin: 0; color: var(--text-normal); font-size: 16px; line-height: 1.375rem; }
+
+/* Anel animado do avatar: o tamanho vai na foto, nunca no anel (o anel soma a própria espessura em volta).
+   Forçar o anel deixava a foto deslocada para cima e para a esquerda. */
+.friend-row-identity .avatar-ring, .dm-channel-button .avatar-ring, .member-row .avatar-ring { width: auto; height: auto; }
+.friend-row-identity .avatar-ring { grid-row: 1 / span 2; justify-self: center; }
+.friend-row-identity .avatar-ring .avatar { width: 32px; height: 32px; }
+
+/* Divisória entre amigos reta, como no Discord (antes era a borda de cima com canto arredondado, que entortava nas pontas). */
+.friends-home .friend-row { border-top: 0; border-radius: 8px; }
+.friends-home .friend-row::before {
+  content: ''; position: absolute; top: 0; left: 10px; right: 10px; height: 1px; background: var(--dc-divider); pointer-events: none;
+}
+.friends-home .friend-row:first-child::before, .friends-home .friend-row:hover::before, .friends-home .friend-row:hover + .friend-row::before { display: none; }
+
+/* Voz e vídeo em uma coluna só, como no Discord: entrada e saída lado a lado, volumes embaixo, e a câmera numa seção
+   "Configurações de vídeo" no fim (antes ficava espremida numa coluna à direita). */
+.settings-pane.two-column:has(#camera-device), .settings-pane.two-column:has(#mic-device) { display: block; max-width: 660px; }
+.settings-pane.two-column:has(#mic-device) .settings-pane-side { position: static; margin-top: 32px; padding-top: 32px; border-top: 1px solid var(--dc-divider); }
+.settings-pane.two-column:has(#mic-device) .settings-side-title {
+  display: block; margin: 0 0 8px; color: var(--text-secondary); font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase;
+}
+.settings-pane-heading-row { flex-direction: column; align-items: stretch; gap: 16px; margin-bottom: 24px; }
+.settings-pane-heading-row h2 { margin: 0 0 8px; }
+.settings-search { width: 100%; max-width: none; }
+.settings-search input { width: 100%; height: 32px; padding: 0 8px 0 32px; border: 0; border-radius: 4px; background: var(--dc-input-bg); font-size: 14px; }
+.settings-field-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 16px; max-width: none; padding: 0; border: 0; border-radius: 0; background: transparent;
+}
+.settings-field-row > div { min-width: 0; }
+.settings-field-row label { display: block; margin-bottom: 8px; color: var(--text-secondary); font-size: 12px; font-weight: 700; letter-spacing: .02em; text-transform: uppercase; }
+.settings-field-row select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.pref-slider-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pref-slider-row input[type="range"] { flex: 1; min-width: 0; }
+.pref-slider-row output, .pref-slider-row span { flex: 0 0 auto; min-width: 40px; color: var(--text-normal); font-size: 14px; text-align: right; }
+.mic-profile-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; max-width: none; }
+.mic-profile-cards .input-mode-card, .input-mode-card {
+  min-height: 0; padding: 12px; border: 1px solid transparent; border-radius: 8px; background: var(--sidebar);
+}
+.input-mode-card.active { border-color: var(--accent); background: var(--dc-selected-solid); }
+.input-mode-card p, .input-mode-card small { color: var(--text-secondary); font-size: 12px; line-height: 16px; }
+.camera-preview-frame { border-radius: 8px; background: var(--dc-input-bg); }
+
+/* ==========================================================================
+   Correções 2: chamada (convite, chat, painel de voz conectada) e foco
+   ========================================================================== */
+
+/* Sozinho na chamada: o convite é um quadro ao lado do seu, do mesmo tamanho, como no Discord. */
+.voice-tiles .voice-invite.voice-invite-tile {
+  position: relative; flex: 0 0 auto; width: var(--tile-w, 420px); aspect-ratio: 16 / 9; margin: 0; padding: 24px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center;
+  border: 1px dashed rgba(255, 255, 255, .14); border-radius: 8px; background: #1e1f22; box-shadow: none; backdrop-filter: none;
+  animation: dc-fade-in 150ms ease-out backwards;
+}
+.voice-invite-icon { width: 56px; height: 56px; display: grid; place-items: center; border-radius: 50%; color: #fff; background: var(--accent); }
+.voice-invite-tile .voice-invite-text { display: flex; flex-direction: column; gap: 4px; text-align: center; }
+.voice-invite-tile .voice-invite-text strong { color: #fff; font-size: 20px; line-height: 24px; font-weight: 700; }
+.voice-invite-tile .voice-invite-text span { color: #b5bac1; font-size: 14px; line-height: 18px; }
+.voice-invite-tile .voice-invite-button {
+  display: inline-flex; align-items: center; gap: 6px; height: 32px; min-height: 32px; padding: 2px 16px; border: 0; border-radius: 3px;
+  color: #fff; background: var(--accent); font-size: 14px; font-weight: 500; box-shadow: none; cursor: pointer;
+}
+.voice-invite-tile .voice-invite-button:hover { background: var(--accent-hover); }
+.voice-invite-tile .voice-invite-button.copied { background: #248046; }
+.voice-invite-tile .voice-invite-button.failed { background: var(--danger); }
+
+/* Chat da chamada ("texto na voz" do Discord): painel do tamanho do chat, título com o canal e a mesma caixa de
+   mensagem dos canais de texto. */
+.chat-panel { min-width: 0; overflow: hidden; border-left: 0; background: var(--main); box-shadow: -1px 0 0 rgba(0, 0, 0, .3); }
+.chat-heading { height: 48px; flex: 0 0 48px; padding: 0 8px 0 16px; border-bottom: 0; box-shadow: var(--dc-header-shadow); }
+.chat-heading-info > div { gap: 8px; }
+.chat-heading svg { color: var(--text-muted); }
+.chat-heading strong { color: var(--text-primary); font-size: 16px; font-weight: 600; }
+.chat-close { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 4px; color: var(--text-secondary); background: transparent; }
+.chat-close:hover { color: var(--text-normal); background: transparent; }
+.chat-panel .messages { padding: 16px 0 8px; }
+.chat-panel .messages .message { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 0 16px; margin: 17px 0 0; padding: 2px 16px; }
+.chat-panel .messages .message.continued { margin-top: 0; }
+.chat-panel .messages .message .avatar { width: 40px; height: 40px; font-size: 16px; }
+.chat-panel .messages .message.continued > :first-child { visibility: hidden; height: 0; }
+.chat-panel .messages .message.continued header { display: none; }
+.chat-panel .messages .message:hover { background: var(--dc-message-hover); }
+.chat-panel .messages .message header { display: flex; align-items: baseline; gap: 8px; }
+.chat-panel .messages .message header time { color: var(--text-muted); font-size: 12px; }
+.chat-panel .messages .message p { margin: 0; color: var(--text-normal); font-size: 16px; line-height: 1.375rem; overflow-wrap: anywhere; }
+.empty-chat { justify-content: flex-end; align-items: flex-start; height: 100%; padding: 16px; text-align: left; }
+.empty-chat-icon { width: 68px; height: 68px; display: grid; place-items: center; margin-bottom: 8px; border-radius: 50%; color: #fff; background: var(--dc-selected-solid); }
+.empty-chat strong { color: var(--text-primary); font-size: 24px; line-height: 30px; font-weight: 700; }
+.empty-chat span:not(.empty-chat-icon) { margin-top: 4px; color: var(--text-secondary); font-size: 14px; }
+.chat-form { display: block; padding: 0 16px 24px; border-top: 0; background: transparent; }
+.chat-form input {
+  width: 100%; height: 44px; padding: 0 16px; border: 0; border-radius: 8px; color: var(--text-normal); background: var(--panel-raised); font-size: 16px;
+}
+.chat-form input:focus { border: 0; outline: 0; box-shadow: none; }
+.chat-form input::placeholder { color: var(--dc-input-placeholder); }
+
+/* Painel "Voz conectada" acima do painel do usuário: botões de 32px iguais, o de sair com o ícone vermelho. */
+.voice-status-panel { padding: 8px; gap: 8px; border-top: 1px solid var(--dc-divider); background: var(--sidebar-footer); }
+.voice-status-info strong { color: #23a55a; font-size: 14px; font-weight: 600; }
+.voice-status-info span { color: var(--text-muted); font-size: 12px; }
+.voice-status-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.voice-status-actions .icon-button {
+  width: auto; height: 32px; display: grid; place-items: center; border: 0; border-radius: 4px;
+  color: var(--text-normal); background: var(--dc-hover-solid); transform: none;
+}
+.voice-status-actions .icon-button:hover:not(:disabled) { color: #fff; background: var(--dc-selected-solid); transform: none; }
+.voice-status-actions .icon-button.selected { color: #fff; background: var(--accent); }
+.voice-status-actions .icon-button.danger, .voice-status-actions .icon-button:last-child:not(.selected) { color: var(--danger); }
+.voice-status-actions .icon-button:last-child:hover:not(:disabled) { color: #fff; background: var(--danger); }
+
+/* Modo teclado: anel de foco só depois de usar Tab (ver main.tsx). Com Tab, o anel é o azul do Discord. */
+html:not([data-keyboard]) :is(button, a, [role="switch"], [role="tab"], [role="radio"], summary):focus-visible { outline: none !important; box-shadow: none; }
+html[data-keyboard] :is(button, a, input, select, textarea, [role="switch"]):focus-visible { outline: 2px solid #00a8fc; outline-offset: 2px; }
+.chat-form input { box-sizing: border-box; }

@@ -138,7 +138,7 @@ import { inviteUrl, PENDING_INVITE_EVENT, takePendingInvite } from '../pendingIn
 import { AddServerModal, useActiveServerMember, useServersState } from './Servers';
 import { ServerSettings } from './ServerSettings';
 import { SoundboardPanel, SoundboardToast } from './Soundboard';
-import { CreateTextChannelDialog, TextChannelView } from './TextChannels';
+import { CreateTextChannelDialog, discordTimestamp, TextChannelView } from './TextChannels';
 import { MusicCard } from './MusicCard';
 
 type MessageStyle = 'default' | 'compact' | 'grouped';
@@ -3043,8 +3043,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           <aside className="chat-panel">
             <div className="chat-heading">
               <div className="chat-heading-info">
-                <div><MessageIcon size={16} /><strong>Chat</strong></div>
-                <span>{voice.currentChannel?.name || 'sem canal'}</span>
+                <div><VoiceIcon size={20} /><strong>{voice.currentChannel?.name || 'Chat'}</strong></div>
               </div>
               <button type="button" className="chat-close" onClick={() => setChatOpen(false)} aria-label="Fechar chat">
                 <CloseIcon size={14} />
@@ -3055,7 +3054,11 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
               aria-live="polite"
             >
               {voice.messages.length === 0 ? (
-                <div className="empty-chat"><strong>Nenhuma mensagem</strong><span>As mensagens pertencem ao canal atual.</span></div>
+                <div className="empty-chat">
+                  <span className="empty-chat-icon" aria-hidden="true"><VoiceIcon size={36} /></span>
+                  <strong>Boas-vindas a {voice.currentChannel?.name ?? 'este canal'}!</strong>
+                  <span>Este é o começo do chat de texto da chamada.</span>
+                </div>
               ) : voice.messages.map((message, index) => {
                 const previous = voice.messages[index - 1];
                 const continued =
@@ -3091,7 +3094,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                             {message.senderName}
                           </button>
                         )}
-                        <time>{new Date(message.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</time>
+                        <time>{discordTimestamp(message.sentAt)}</time>
                       </header>
                       <p>{message.text}</p>
                       {message.musicCard && <MusicCard card={message.musicCard} />}
@@ -3108,9 +3111,9 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                 disabled={!voice.connected}
                 value={chatText}
                 onChange={(event) => setChatText(event.target.value)}
-                placeholder={voice.connected ? 'Enviar mensagem' : 'Entre em um canal'}
+                placeholder={voice.connected ? `Conversar em 🔊${voice.currentChannel?.name ?? ''}` : 'Entre em um canal'}
               />
-              <button type="submit" disabled={!voice.connected || !chatText.trim()}>Enviar</button>
+              <button type="submit" className="sr-only" disabled={!voice.connected || !chatText.trim()}>Enviar</button>
             </form>
           </aside>
           )}
