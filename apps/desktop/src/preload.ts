@@ -96,6 +96,9 @@ const nexplayNative: NexplayNative = {
     getFullscreen: (): Promise<boolean> => ipcRenderer.invoke(CH.window.getFullscreen),
     onFullscreenChanged: (listener: (enabled: boolean) => void): (() => void) =>
       onEvent(CH.window.fullscreenChanged, (enabled) => listener(Boolean(enabled))),
+    isMaximized: (): Promise<boolean> => ipcRenderer.invoke(CH.window.getMaximized),
+    onMaximizedChanged: (listener: (maximized: boolean) => void): (() => void) =>
+      onEvent(CH.window.maximizedChanged, (maximized) => listener(Boolean(maximized))),
   },
   settings: {
     get: (): Promise<unknown> => ipcRenderer.invoke(CH.settings.get),

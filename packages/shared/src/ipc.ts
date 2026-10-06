@@ -20,6 +20,8 @@ export const IpcChannels = {
     setFullscreen: 'window:set-fullscreen',
     getFullscreen: 'window:get-fullscreen',
     fullscreenChanged: 'window:fullscreen-changed', // evt main->renderer
+    getMaximized: 'window:get-maximized', // novo
+    maximizedChanged: 'window:maximized-changed', // novo, evt
   },
   settings: {
     get: 'desktop:get-settings',
@@ -95,6 +97,8 @@ export interface NexplayNative {
     setFullscreen(enabled: boolean): Promise<boolean>;
     getFullscreen(): Promise<boolean>;
     onFullscreenChanged(listener: (enabled: boolean) => void): () => void;
+    isMaximized(): Promise<boolean>;
+    onMaximizedChanged(listener: (maximized: boolean) => void): () => void;
   };
   settings: {
     get(): Promise<unknown>;

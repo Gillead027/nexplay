@@ -41,6 +41,8 @@ function fromLegacy(d: LegacyDesktop): NexplayNative {
       setFullscreen: (enabled) => d.setFullscreen?.(enabled) ?? Promise.resolve(false),
       getFullscreen: () => d.getFullscreen?.() ?? Promise.resolve(false),
       onFullscreenChanged: (listener) => d.onFullscreenChanged?.(listener) ?? noopUnsub,
+      isMaximized: async () => false,
+      onMaximizedChanged: () => noopUnsub,
     },
     settings: {
       get: () => d.getDesktopSettings?.() ?? Promise.resolve(undefined),

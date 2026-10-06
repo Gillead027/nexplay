@@ -262,6 +262,11 @@ function installPickerIpc(): void {
     return mainWindow.isFullScreen();
   });
 
+  ipcMain.handle(CH.window.getMaximized, (event) => {
+    if (!mainWindow || event.sender !== mainWindow.webContents) return false;
+    return mainWindow.isMaximized();
+  });
+
   ipcMain.handle('media:get-access-status', (event, mediaType: unknown) => {
     if (!mainWindow || event.sender !== mainWindow.webContents) return 'unknown';
     if (mediaType !== 'camera' && mediaType !== 'microphone') return 'unknown';
@@ -877,10 +882,17 @@ function createMainWindow(appUrl: URL): BrowserWindow {
   // Salva o estado da janela quando a pessoa a move, redimensiona ou (des)maximiza,
   // e uma última vez ao fechar — para reabrir exatamente como ficou.
   const onWindowStateChange = () => scheduleSaveWindowState(window);
+  const onMaximizeChange = () => {
+    scheduleSaveWindowState(window);
+    // Avisa o renderer para o ícone trocar entre Maximizar e Restaurar.
+    if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
+      window.webContents.send(CH.window.maximizedChanged, window.isMaximized());
+    }
+  };
   window.on('resize', onWindowStateChange);
   window.on('move', onWindowStateChange);
-  window.on('maximize', onWindowStateChange);
-  window.on('unmaximize', onWindowStateChange);
+  window.on('maximize', onMaximizeChange);
+  window.on('unmaximize', onMaximizeChange);
   window.on('close', () => saveWindowState(window));
 
   // Links de mensagem são <a target="_blank">. Antes este tratador negava tudo e
