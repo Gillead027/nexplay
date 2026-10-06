@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Room } from 'livekit-client';
 import { diagnose, diagnosisReport, readStreamStats, type Diagnosis, type StreamStat } from '../callDiagnostics';
+import { copyText } from '../clipboard';
 
 const REFRESH_MS = 2000;
 
@@ -35,11 +36,12 @@ export function CallDiagnosticsPane({ room, connected }: { room: Room; connected
 
   async function copyReport() {
     if (!diagnosis) return;
-    try {
-      await navigator.clipboard.writeText(diagnosisReport(diagnosis, new Date()));
+    // copyText usa a área de transferência nativa no desktop (onde
+    // navigator.clipboard é negado) e cai para os planos B na web.
+    if (await copyText(diagnosisReport(diagnosis, new Date()))) {
       setCopied(true);
       window.setTimeout(() => setCopied(false), 2500);
-    } catch {
+    } else {
       setCopied(false);
     }
   }
