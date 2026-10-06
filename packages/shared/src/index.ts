@@ -1,6 +1,7 @@
 export * from './changelog.js';
 export * from './emoji-data.js';
 export * from './imageFormat.js';
+export * from './ipc.js';
 
 export const DISPLAY_NAME_MIN_LENGTH = 2;
 export const DISPLAY_NAME_MAX_LENGTH = 24;

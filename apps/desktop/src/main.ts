@@ -1,12 +1,14 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   desktopCapturer,
   dialog,
   globalShortcut,
   ipcMain,
   Menu,
   nativeImage,
+  safeStorage,
   session,
   shell,
   systemPreferences,
@@ -15,7 +17,8 @@ import {
 } from 'electron';
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { Activity } from '@nexplay/shared';
+import type { Activity, DesktopAppInfo } from '@nexplay/shared';
+import { IpcChannels as CH } from '@nexplay/shared';
 import { checkForUpdatesNow, initAutoUpdater } from './updater.js';
 import { externalWebUrl, findDeepLink, isAllowedPermission } from './policy.js';
 import {
@@ -288,6 +291,75 @@ function installPickerIpc(): void {
   ipcMain.handle('activity:get-current', (event) => {
     if (event.sender !== mainWindow?.webContents) return null;
     return currentActivity;
+  });
+
+  // --- Novos na reescrita (Fase 1): áreas que o DiscordNative expõe e o NexPlay ainda não tinha ---
+  const fromMain = (event: Electron.IpcMainInvokeEvent | Electron.IpcMainEvent): boolean =>
+    event.sender === mainWindow?.webContents;
+
+  ipcMain.handle(CH.app.getInfo, (event): DesktopAppInfo | null => {
+    if (!fromMain(event)) return null;
+    return {
+      appVersion: app.getVersion(),
+      electron: process.versions.electron ?? '',
+      chrome: process.versions.chrome ?? '',
+      node: process.versions.node ?? '',
+      platform: process.platform,
+      arch: process.arch,
+    };
+  });
+
+  // getPath restrito a nomes seguros (não expõe caminho arbitrário ao renderer).
+  const ALLOWED_PATHS = new Set(['userData', 'downloads', 'documents', 'desktop', 'temp', 'home', 'logs']);
+  ipcMain.handle(CH.app.getPath, (event, name: unknown): string => {
+    if (!fromMain(event) || typeof name !== 'string' || !ALLOWED_PATHS.has(name)) return '';
+    try {
+      return app.getPath(name as Parameters<typeof app.getPath>[0]);
+    } catch {
+      return '';
+    }
+  });
+
+  ipcMain.on(CH.app.relaunch, (event) => {
+    if (!fromMain(event)) return;
+    app.relaunch();
+    app.exit(0);
+  });
+
+  // Área de transferência nativa — resolve de vez o CLIPBOARD_COPY_DESKTOP (a
+  // permissão clipboard-write da web fica negada no Electron; aqui é nativo).
+  // `await` cobre as duas formas do tipo (no main process é síncrono; os tipos
+  // desta versão, com lib DOM, expõem a forma assíncrona modelada na W3C).
+  ipcMain.handle(CH.clipboard.copy, async (event, text: unknown): Promise<boolean> => {
+    if (!fromMain(event) || typeof text !== 'string') return false;
+    await clipboard.writeText(text);
+    return true;
+  });
+  ipcMain.handle(CH.clipboard.read, async (event): Promise<string> => {
+    if (!fromMain(event)) return '';
+    return await clipboard.readText();
+  });
+
+  // Armazenamento seguro de segredos (DPAPI no Windows), como o DiscordNative.safeStorage.
+  ipcMain.handle(CH.safeStorage.isAvailable, (event): boolean => {
+    if (!fromMain(event)) return false;
+    try {
+      return safeStorage.isEncryptionAvailable();
+    } catch {
+      return false;
+    }
+  });
+  ipcMain.handle(CH.safeStorage.encrypt, (event, plain: unknown): string => {
+    if (!fromMain(event) || typeof plain !== 'string' || !safeStorage.isEncryptionAvailable()) return '';
+    return safeStorage.encryptString(plain).toString('base64');
+  });
+  ipcMain.handle(CH.safeStorage.decrypt, (event, base64: unknown): string => {
+    if (!fromMain(event) || typeof base64 !== 'string' || !safeStorage.isEncryptionAvailable()) return '';
+    try {
+      return safeStorage.decryptString(Buffer.from(base64, 'base64'));
+    } catch {
+      return '';
+    }
   });
 }
 

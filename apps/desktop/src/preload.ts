@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { Activity } from '@nexplay/shared';
+import type { Activity, NexplayNative, SharePickerChoice as SharePickerChoiceShared, MediaAccessStatus as MediaAccessStatusShared, DesktopAppInfo } from '@nexplay/shared';
+import { IpcChannels as CH } from '@nexplay/shared';
 
 // Repassa exceções e rejeições não tratadas pro console.error, que o main
 // process já captura via webContents 'console-message' — sem isso, um erro
@@ -65,3 +66,68 @@ contextBridge.exposeInMainWorld('desktop', {
     return () => ipcRenderer.removeListener('global-hotkey:deafen-toggle', wrapped);
   },
 });
+
+// -----------------------------------------------------------------------------
+// Ponte CANÔNICA `window.NexplayNative` — shape inspirado no `window.DiscordNative`
+// do Discord (uma só exposeInMainWorld, organizada por domínio). Fonte dos canais:
+// `IpcChannels` do @nexplay/shared. O `window.desktop` acima segue como camada de
+// compatibilidade até o `apps/web` migrar para esta ponte (ver DISCORD_REWRITE_BLUEPRINT.md).
+// -----------------------------------------------------------------------------
+function onEvent(channel: string, listener: (...args: unknown[]) => void): () => void {
+  const wrapped = (_e: Electron.IpcRendererEvent, ...args: unknown[]) => listener(...args);
+  ipcRenderer.on(channel, wrapped);
+  return () => ipcRenderer.removeListener(channel, wrapped);
+}
+
+const nexplayNative: NexplayNative = {
+  app: {
+    getInfo: (): Promise<DesktopAppInfo> => ipcRenderer.invoke(CH.app.getInfo),
+    getPath: (name: string): Promise<string> => ipcRenderer.invoke(CH.app.getPath, name),
+    relaunch: (): void => ipcRenderer.send(CH.app.relaunch),
+    checkForUpdates: (): Promise<unknown> => ipcRenderer.invoke(CH.app.checkUpdates),
+    openLogs: (): Promise<boolean> => ipcRenderer.invoke(CH.app.openLogs),
+  },
+  window: {
+    minimize: (): void => ipcRenderer.send(CH.window.action, 'minimize'),
+    toggleMaximize: (): void => ipcRenderer.send(CH.window.action, 'toggle-maximize'),
+    close: (): void => ipcRenderer.send(CH.window.action, 'close'),
+    setZoomFactor: (factor: number): void => ipcRenderer.send(CH.window.setZoom, Number(factor)),
+    setFullscreen: (enabled: boolean): Promise<boolean> => ipcRenderer.invoke(CH.window.setFullscreen, Boolean(enabled)),
+    getFullscreen: (): Promise<boolean> => ipcRenderer.invoke(CH.window.getFullscreen),
+    onFullscreenChanged: (listener: (enabled: boolean) => void): (() => void) =>
+      onEvent(CH.window.fullscreenChanged, (enabled) => listener(Boolean(enabled))),
+  },
+  settings: {
+    get: (): Promise<unknown> => ipcRenderer.invoke(CH.settings.get),
+    set: (patch: unknown): Promise<unknown> => ipcRenderer.invoke(CH.settings.set, patch),
+  },
+  screenShare: {
+    pick: (): Promise<SharePickerChoiceShared | null> => ipcRenderer.invoke(CH.screenShare.open),
+  },
+  media: {
+    getAccessStatus: (kind): Promise<MediaAccessStatusShared> => ipcRenderer.invoke(CH.media.getAccessStatus, kind),
+    openSettings: (kind): Promise<boolean> => ipcRenderer.invoke(CH.media.openSettings, kind),
+  },
+  activity: {
+    getCurrent: (): Promise<Activity | null> => ipcRenderer.invoke(CH.activity.getCurrent),
+    onChanged: (listener): (() => void) => onEvent(CH.activity.changed, (activity) => listener(activity as Activity | null)),
+  },
+  deepLink: {
+    onLink: (listener): (() => void) => onEvent(CH.deepLink.link, (url) => listener(String(url))),
+  },
+  hotkeys: {
+    onMuteToggle: (listener): (() => void) => onEvent(CH.hotkeys.muteToggle, () => listener()),
+    onDeafenToggle: (listener): (() => void) => onEvent(CH.hotkeys.deafenToggle, () => listener()),
+  },
+  clipboard: {
+    copy: (text: string): Promise<boolean> => ipcRenderer.invoke(CH.clipboard.copy, String(text)),
+    read: (): Promise<string> => ipcRenderer.invoke(CH.clipboard.read),
+  },
+  safeStorage: {
+    isAvailable: (): Promise<boolean> => ipcRenderer.invoke(CH.safeStorage.isAvailable),
+    encrypt: (plain: string): Promise<string> => ipcRenderer.invoke(CH.safeStorage.encrypt, String(plain)),
+    decrypt: (base64: string): Promise<string> => ipcRenderer.invoke(CH.safeStorage.decrypt, String(base64)),
+  },
+};
+
+contextBridge.exposeInMainWorld('NexplayNative', nexplayNative);
