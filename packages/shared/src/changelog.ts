@@ -107,6 +107,18 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Copiar textos e IDs no app do computador ficou mais confiável.',
     ],
   },
+  {
+    id: '2026-10-06-visual-novo-estilo-discord',
+    date: '2026-10-06',
+    title: 'Visual novo: o NexPlay agora segue o desenho do Discord',
+    items: [
+      'Cores, tamanhos e espaçamentos iguais aos do Discord: cinzas no lugar do azul-marinho, roxo como cor de destaque e colunas coladas, sem cartões flutuando.',
+      'Canal de texto com a lista de membros do lado direito (o botão de pessoas no topo mostra ou esconde).',
+      'Mensagens seguidas da mesma pessoa ficam juntas, com a foto e o nome só na primeira. A hora aparece como "Hoje às 10:21".',
+      'O topo do canal ficou numa linha só, com nome, descrição e os botões de mensagens fixadas, membros e busca.',
+      'A caixa de mensagem ficou mais limpa: Enter envia, e a contagem de caracteres só aparece perto do limite.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

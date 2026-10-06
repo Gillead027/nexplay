@@ -10,6 +10,7 @@ import { installRangeFill } from './rangeFill';
 import { extractDeepLinkInvite, extractInviteCode, PENDING_INVITE_EVENT, savePendingInvite } from './pendingInvite';
 import './styles.css';
 import './design.css';
+import './discord.css';
 
 // Link de convite (/convite/CÓDIGO): guarda o código e volta para o endereço normal. Depois de
 // entrar (ou criar a conta) a pessoa é levada ao servidor.

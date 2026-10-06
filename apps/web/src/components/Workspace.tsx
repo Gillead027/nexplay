@@ -144,7 +144,18 @@ const VALID_MESSAGE_STYLES: MessageStyle[] = ['default', 'compact', 'grouped'];
 
 function loadMessageStyle(): MessageStyle {
   const stored = localStorage.getItem(MESSAGE_STYLE_KEY);
-  return VALID_MESSAGE_STYLES.includes(stored as MessageStyle) ? (stored as MessageStyle) : 'default';
+  // Padrão = "agrupadas", o modo "Cozy" do Discord (avatar e nome só na primeira de cada grupo).
+  return VALID_MESSAGE_STYLES.includes(stored as MessageStyle) ? (stored as MessageStyle) : 'grouped';
+}
+
+// Lista de membros ao lado do canal de texto (Discord: aberta por padrão, lembra a escolha).
+const TEXT_MEMBERS_KEY = 'np:text-members-open';
+function loadTextMembersOpen(): boolean {
+  try {
+    return localStorage.getItem(TEXT_MEMBERS_KEY) !== '0';
+  } catch {
+    return true;
+  }
 }
 
 const THEME_OPTIONS: { value: ThemeMode; label: string; swatch: string }[] = [
@@ -2306,6 +2317,17 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   }
   const [perfMode, setPerfModeState] = useState<PerfMode>(() => getPerfMode());
   const [messageStyle, setMessageStyleState] = useState<MessageStyle>(() => loadMessageStyle());
+  const [textMembersOpen, setTextMembersOpen] = useState<boolean>(() => loadTextMembersOpen());
+  const toggleTextMembers = useCallback(() => {
+    setTextMembersOpen((open) => {
+      try {
+        localStorage.setItem(TEXT_MEMBERS_KEY, open ? '0' : '1');
+      } catch {
+        // sem armazenamento: só não lembra a escolha
+      }
+      return !open;
+    });
+  }, []);
   const [themeMode, setThemeModeState] = useState<ThemeMode>(() => getTheme());
   const [density, setDensityState] = useState<Density>(() => getDensity());
   const [chatFontStep, setChatFontStepState] = useState(() => getChatFontStep());
@@ -3727,18 +3749,25 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         </header>
 
         {activeTextChannel ? (
-          <TextChannelView
-            channel={activeTextChannel}
-            session={session}
-            member={member}
-            nameColors={nameColors}
-            messageStyle={messageStyle}
-            voiceChannelId={voice.currentChannel?.id ?? null}
-            onOpenProfile={openUserProfile}
-            onForward={(message) =>
-              setForwardingMessage({ kind: 'channel', serverId: activeTextChannel.serverId, channelId: activeTextChannel.id, messageId: message.id })
-            }
-          />
+          <div className={`text-channel-layout ${textMembersOpen ? 'with-members' : ''}`}>
+            <TextChannelView
+              channel={activeTextChannel}
+              session={session}
+              member={member}
+              nameColors={nameColors}
+              messageStyle={messageStyle}
+              voiceChannelId={voice.currentChannel?.id ?? null}
+              onOpenProfile={openUserProfile}
+              onForward={(message) =>
+                setForwardingMessage({ kind: 'channel', serverId: activeTextChannel.serverId, channelId: activeTextChannel.id, messageId: message.id })
+              }
+              membersOpen={textMembersOpen}
+              onToggleMembers={toggleTextMembers}
+            />
+            {textMembersOpen && (
+              <MemberList data={memberData} ownId={session.id} ownStatus={session.presenceStatus} onOpenProfile={openUserProfile} />
+            )}
+          </div>
         ) : (
         <>
         {!voice.canPlaybackAudio && voice.connected && (

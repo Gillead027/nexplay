@@ -1,0 +1,428 @@
+/* ==========================================================================
+   NexPlay — camada de engenharia visual do Discord
+   Carregada por ÚLTIMO (depois de styles.css e design.css). Reproduz as medidas,
+   cores, tipografia e movimento do cliente do Discord, lidos do próprio app
+   (CSS do cliente em cache: tokens --primary-*, --neutral-*, --chat-avatar-size,
+   --chat-markup-line-height etc.). Só a marca (nome NexPlay e logo) é própria.
+   Valores de referência: rail 72px, canais 240px, membros 240px, cabeçalho 48px,
+   painel do usuário 52px, avatar do chat 40px, texto do chat 1rem / 1.375rem.
+   ========================================================================== */
+
+/* ---------- Tokens: tema escuro (padrão) = escuro clássico do Discord ---------- */
+:root,
+[data-theme="escuro"] {
+  --app: #1e1f22;            /* primary-700: barra de servidores e fundo */
+  --rail: #1e1f22;
+  --sidebar: #2b2d31;        /* primary-630: lista de canais e de membros */
+  --sidebar-footer: #232428; /* primary-660: painel do usuário */
+  --main: #313338;           /* primary-600: chat */
+  --panel: #2b2d31;
+  --panel-raised: #383a40;   /* primary-560: campo de mensagem */
+  --hover: rgba(78, 80, 88, .3);   /* hover de canal/membro (#35373c sobre a lista) */
+  --selected: rgba(78, 80, 88, .6); /* canal selecionado (#404249) */
+  --border: #1f2023;
+  --border-light: #3f4147;
+
+  --text-primary: #f2f3f5;   /* primary-130: títulos e nomes */
+  --text-secondary: #b5bac1; /* primary-330: ícones e texto secundário */
+  --text-muted: #949ba4;     /* primary-360: canais e texto apagado */
+  --text-normal: #dbdee1;    /* primary-230: texto das mensagens */
+
+  --accent: #5865f2;         /* brand-500 */
+  --accent-hover: #4752c4;   /* brand-560 */
+  --accent-2: #5865f2;
+  --accent-contrast: #ffffff;
+  --accent-gradient: #5865f2;
+  --accent-glow: transparent;
+  --accent-glow-strong: transparent;
+  --accent-soft: rgba(88, 101, 242, .15);
+
+  --danger: #f23f43;         /* red-400 */
+  --success: #23a55a;        /* green-360 */
+  --warning: #f0b232;        /* yellow-300 */
+  --link: #00a8fc;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 8px;
+
+  /* Elevações do Discord */
+  --shadow-sm: 0 1px 0 rgba(4, 4, 5, .2), 0 1.5px 0 rgba(6, 6, 7, .05), 0 2px 0 rgba(4, 4, 5, .05);
+  --shadow-md: 0 4px 4px rgba(0, 0, 0, .16);
+  --shadow-lg: 0 8px 16px rgba(0, 0, 0, .24);
+  --shadow-modal: 0 0 0 1px rgba(32, 34, 37, .6), 0 2px 10px 0 rgba(0, 0, 0, .2);
+
+  /* Movimento: o Discord usa transições curtas e sem "salto" */
+  --ease-out: cubic-bezier(.3, 0, 0, 1);
+  --ease-in-out: cubic-bezier(.33, 0, .67, 1);
+  --dur-fast: 100ms;
+  --dur: 150ms;
+  --dur-slow: 250ms;
+
+  --dc-header-shadow: 0 1px 0 rgba(4, 4, 5, .2), 0 1.5px 0 rgba(6, 6, 7, .05), 0 2px 0 rgba(4, 4, 5, .05);
+  --dc-hover-solid: #35373c;
+  --dc-selected-solid: #404249;
+  --dc-message-hover: #2e3035;
+  --dc-input-placeholder: #6d6f78;
+  --dc-divider: #3f4147;
+}
+
+/* Ash = theme-dark atual do Discord (neutral-73 / 69 / 66) */
+[data-theme="ash"] {
+  --app: #2c2d32; --rail: #2c2d32; --sidebar: #323339; --sidebar-footer: #2c2d32;
+  --main: #36373e; --panel: #323339; --panel-raised: #393a41;
+  --hover: rgba(255, 255, 255, .06); --selected: rgba(255, 255, 255, .1);
+  --border: #26272b; --border-light: #44454c;
+  --text-primary: #f3f3f4; --text-secondary: #c5c6ca; --text-muted: #abacb2; --text-normal: #f3f3f4;
+  --dc-hover-solid: #3a3b42; --dc-selected-solid: #44454c; --dc-message-hover: #3a3b42; --dc-divider: #44454c;
+}
+/* Onyx = theme-midnight (preto) */
+[data-theme="onyx"] {
+  --app: #000000; --rail: #000000; --sidebar: #000000; --sidebar-footer: #0a0a0c;
+  --main: #000000; --panel: #000000; --panel-raised: #0a0a0c;
+  --hover: rgba(255, 255, 255, .08); --selected: rgba(255, 255, 255, .14);
+  --border: #1a1a1e; --border-light: #26262b;
+  --text-primary: #d4d5d8; --text-secondary: #a7a8ae; --text-muted: #81828a; --text-normal: #d4d5d8;
+  --dc-hover-solid: #141416; --dc-selected-solid: #1e1e22; --dc-message-hover: #0a0a0c; --dc-divider: #26262b;
+}
+/* Claro = theme-light */
+[data-theme="claro"] {
+  --app: #e3e5e8; --rail: #e3e5e8; --sidebar: #f2f3f5; --sidebar-footer: #ebedef;
+  --main: #ffffff; --panel: #f2f3f5; --panel-raised: #ebedef;
+  --hover: rgba(116, 127, 141, .16); --selected: rgba(116, 127, 141, .24);
+  --border: #e1e2e4; --border-light: #d4d7dc;
+  --text-primary: #060607; --text-secondary: #4e5058; --text-muted: #5c5e66; --text-normal: #313338;
+  --dc-hover-solid: #e0e1e5; --dc-selected-solid: #d4d7dc; --dc-message-hover: #f5f5f5; --dc-divider: #e1e2e4;
+  --dc-input-placeholder: #80848e;
+  --dc-header-shadow: 0 1px 0 rgba(6, 6, 7, .08), 0 1.5px 0 rgba(6, 6, 7, .025), 0 2px 0 rgba(6, 6, 7, .025);
+}
+
+/* ---------- Base ---------- */
+body, .workspace { background: var(--app); }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-thumb { background: #1a1b1e; border: 2px solid transparent; border-radius: 4px; background-clip: padding-box; }
+::-webkit-scrollbar-track { background: transparent; }
+.channels::-webkit-scrollbar, .member-list-scroll::-webkit-scrollbar, .server-rail::-webkit-scrollbar { width: 4px; }
+
+/* ---------- Barra da janela (desktop) ---------- */
+.app-chrome { background: var(--app) !important; border-bottom: 0 !important; }
+
+/* ---------- Estrutura: 72px | 240px | conteúdo ---------- */
+.workspace { grid-template-columns: 72px 240px minmax(0, 1fr); }
+
+/* ---------- Barra de servidores ---------- */
+.server-rail { gap: 8px; padding: 12px 0; border-right: 0; background: var(--rail); }
+.server-button,
+.server-button.home,
+.server-button.server-current {
+  width: 48px; height: 48px; border: 0; border-radius: 50%; overflow: visible;
+  color: var(--text-normal); background: var(--main); box-shadow: none; transform: none;
+  font-size: 18px; font-weight: 500;
+  transition: border-radius var(--dur) var(--ease-out), background-color var(--dur) var(--ease-out), color var(--dur) var(--ease-out);
+}
+.server-button img { border-radius: inherit; }
+.server-button:hover:not(:disabled),
+.server-button.server-current:hover:not(:disabled),
+.server-button.active,
+.server-button.server-current.active {
+  border-radius: 16px; color: #fff; background: var(--accent); box-shadow: none; transform: none;
+}
+.server-button.has-icon:hover:not(:disabled), .server-button.has-icon.active { background: transparent; }
+.server-button.home, .server-button.home:hover:not(:disabled) { background: var(--main); }
+.server-button.home.active, .server-button.home:hover:not(:disabled) { background: var(--accent); border-radius: 16px; }
+.server-button.add, .server-button.add:hover:not(:disabled) { border: 0; color: var(--success); background: var(--main); }
+.server-button.add:hover:not(:disabled) { color: #fff; background: var(--success); border-radius: 16px; }
+.server-button:active:not(:disabled) { transform: translateY(1px); }
+
+/* Indicador ("pill") à esquerda: 8px não lida, 20px no hover, 40px selecionado */
+.server-button::before,
+.server-button.server-current::before {
+  content: ""; position: absolute; left: -12px; top: 50%; width: 4px; height: 0; margin-top: 0;
+  border-radius: 0 4px 4px 0; background: var(--text-primary); box-shadow: none; opacity: 1; animation: none;
+  transform: translateY(-50%); transition: height var(--dur) var(--ease-out);
+}
+.server-button.home::before { display: block; }
+.server-button:hover:not(:disabled)::before { height: 20px; }
+.server-button.active::before, .server-button.server-current.active::before { height: 40px; }
+.server-button.add::before { display: none; }
+
+.rail-divider { width: 32px; height: 2px; border-radius: 1px; background: var(--dc-divider); }
+
+/* ---------- Lista de canais ---------- */
+.sidebar { border-right: 0; background: var(--sidebar); }
+.sidebar-header {
+  height: 48px; flex-basis: 48px; padding: 0 16px; border-bottom: 0;
+  background: var(--sidebar); box-shadow: var(--dc-header-shadow); position: relative; z-index: 2;
+  transition: background-color var(--dur-fast);
+}
+.sidebar-header:hover, .server-menu-trigger:hover:not(:disabled) { background: var(--dc-hover-solid); }
+.sidebar-header strong, .server-menu-trigger strong { color: var(--text-primary); font-size: 16px; font-weight: 600; letter-spacing: 0; }
+.channels { padding: 8px 8px 0 8px; }
+.section-title {
+  padding: 18px 8px 4px 2px; margin: 0; color: var(--text-muted);
+  font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase;
+}
+.section-title:first-child { padding-top: 8px; }
+.section-title:not(:first-child) { margin-top: 0; }
+.section-title:hover { color: var(--text-normal); }
+.add-channel-button { width: 18px; height: 18px; border-radius: 4px; color: var(--text-muted); }
+.add-channel-button:hover { color: var(--text-normal); background: transparent; }
+.text-channel-list { gap: 0; }
+
+.text-channel-button,
+.channel-button {
+  height: 34px; padding: 6px 8px; margin: 1px 0; gap: 6px; border-radius: 4px; border: 0;
+  color: var(--text-muted); background: transparent; box-shadow: none; transform: none;
+  transition: background-color var(--dur-fast), color var(--dur-fast);
+}
+.text-channel-button > span:not(.channel-new-badge):not(.channel-hash) { font-size: 16px; font-weight: 500; line-height: 20px; }
+.channel-button > span, .channel-button strong { font-size: 16px; font-weight: 500; }
+.text-channel-button:hover:not(:disabled), .channel-button:hover:not(:disabled) { color: var(--text-normal); background: var(--hover); transform: none; }
+.text-channel-button.active, .channel-button.active { color: #fff; background: var(--selected); box-shadow: none; }
+[data-theme="claro"] .text-channel-button.active, [data-theme="claro"] .channel-button.active { color: #060607; }
+.text-channel-button.active::before, .channel-button.active::before { display: none; }
+.channel-hash { color: #80848e; font-size: 20px; font-weight: 400; width: 20px; text-align: center; }
+.channel-button svg, .text-channel-button svg { color: #80848e; }
+.channel-button.active svg, .text-channel-button.active .channel-hash { color: var(--text-secondary); }
+.channel-new-badge { background: var(--danger); }
+
+/* Painel do usuário: colado no fundo da lista, sem cartão */
+.sidebar-user {
+  height: 52px; flex: 0 0 52px; margin: 0; padding: 0 8px; border: 0; border-radius: 0;
+  background: var(--sidebar-footer); box-shadow: none;
+}
+.current-user-copy strong { color: var(--text-primary); font-size: 14px; font-weight: 600; }
+.current-user-copy span, .current-user-copy small { color: var(--text-secondary); font-size: 12px; }
+.sidebar-user button { border-radius: 4px; color: var(--text-secondary); }
+.sidebar-user button:hover:not(:disabled) { color: var(--text-normal); background: var(--hover); }
+.voice-status-panel, .sidebar-voice { border-radius: 0; background: var(--sidebar-footer); border: 0; border-bottom: 1px solid var(--border); }
+
+/* ---------- Área principal ---------- */
+.main-panel { background: var(--main); }
+.room-header {
+  height: 48px; flex-basis: 48px; padding: 0 8px 0 16px; border-bottom: 0;
+  background: var(--main); backdrop-filter: none; box-shadow: var(--dc-header-shadow); position: relative; z-index: 2;
+}
+.room-title { gap: 8px; }
+.room-title h1 { color: var(--text-primary); font-size: 16px; font-weight: 600; }
+.room-title p { color: var(--text-muted); font-size: 14px; }
+.room-title-hash, .room-title > svg { color: #80848e; font-size: 24px; }
+.main-panel > *, .room-content, .friends-home { animation: none; }
+
+/* Botões de ícone do cabeçalho */
+.room-header-actions button, .text-channel-toolbar button {
+  width: 32px; height: 32px; display: grid; place-items: center; border-radius: 4px;
+  color: var(--text-secondary); background: transparent; transition: color var(--dur-fast);
+}
+.room-header-actions button:hover:not(:disabled), .text-channel-toolbar button:hover:not(:disabled) { color: var(--text-normal); background: transparent; }
+.room-header-actions button.active, .text-channel-toolbar button.active { color: var(--text-primary); }
+
+/* ---------- Mensagens (modo "cozy") ---------- */
+.text-channel-view { background: var(--main); }
+.text-channel-messages { padding: 0 0 24px; }
+.message, .text-message {
+  grid-template-columns: 40px minmax(0, 1fr); gap: 16px; margin: 17px 0 0; padding: 2px 48px 2px 16px;
+  border-radius: 0; animation: none; transition: background-color 0s;
+}
+.message:hover, .text-message:hover { background: var(--dc-message-hover); }
+.messages.grouped .text-message.continued { margin-top: 0; }
+.text-message-avatar { width: 40px; height: 40px; font-size: 16px; font-weight: 500; color: #fff; }
+.message header { gap: 4px; align-items: baseline; }
+.message header strong, .message-name-trigger { color: var(--text-primary); font-size: 16px; font-weight: 500; line-height: 1.375rem; }
+.message time { color: var(--text-muted); font-size: 12px; font-weight: 500; margin-left: .25rem; }
+.message p { margin: 0; color: var(--text-normal); opacity: 1; font-size: 1rem; line-height: 1.375rem; }
+.message-edited-mark { color: var(--text-muted); font-size: 10px; }
+.message.pinned { background: transparent; }
+.messages.compact .message, .text-channel-messages.compact .text-message { margin-top: 0; padding: 2px 48px 2px 16px; }
+
+/* Boas-vindas do canal */
+.text-channel-welcome { padding: 16px; }
+.text-channel-welcome > span { width: 68px; height: 68px; color: #fff; background: var(--dc-selected-solid); font-size: 42px; font-weight: 400; }
+.text-channel-welcome h2 { margin: 8px 0 8px; color: var(--text-primary); font-size: 32px; font-weight: 700; line-height: 40px; }
+.text-channel-welcome p { color: var(--text-secondary); font-size: 16px; }
+
+/* ---------- Campo de mensagem ---------- */
+.text-channel-form {
+  margin: 0 16px 24px; border: 0; border-radius: 8px; background: var(--panel-raised); box-shadow: none;
+}
+.text-channel-form:focus-within { border: 0; box-shadow: none; }
+.text-channel-input-row { align-items: center; min-height: 44px; padding-left: 16px; }
+.text-channel-attach-button {
+  width: 24px; height: 24px; margin: 0 16px 0 0; border-radius: 50%;
+  color: var(--panel-raised); background: var(--text-secondary);
+}
+.text-channel-attach-button:hover:not(:disabled) { color: var(--panel-raised); background: var(--text-normal); }
+.text-channel-form textarea {
+  min-height: 44px; padding: 11px 10px 11px 0; color: var(--text-normal); font-size: 1rem; line-height: 1.375rem; resize: none;
+}
+.text-channel-form textarea::placeholder { color: var(--dc-input-placeholder); }
+
+/* ---------- Lista de membros ---------- */
+.member-list { border-left: 0; background: var(--sidebar); }
+.member-list-heading { height: auto; flex-basis: auto; padding: 24px 8px 4px 16px; border-bottom: 0; color: var(--text-muted); font-size: 12px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; }
+.member-list-scroll { padding: 0 8px 20px; }
+.member-group { margin-bottom: 0; }
+.member-group-title { padding: 24px 8px 4px 8px; color: var(--text-muted); font-size: 12px; font-weight: 600; letter-spacing: .02em; }
+.member-row { min-height: 42px; padding: 1px 8px; margin: 1px 0; gap: 12px; border-radius: 4px; transform: none; transition: background-color var(--dur-fast); }
+.member-row:hover { background: var(--hover); transform: none; }
+.member-row .avatar { width: 32px; height: 32px; }
+.member-copy strong { color: var(--text-muted); font-size: 16px; font-weight: 500; }
+.member-row.online .member-copy strong, .member-row:hover .member-copy strong { color: var(--text-normal); }
+.member-status-dot { width: 10px; height: 10px; border: 3px solid var(--sidebar); box-sizing: content-box; right: -3px; bottom: -3px; }
+.member-row.online .member-status-dot { background: var(--success); box-shadow: none; }
+.member-row.offline .member-avatar .avatar, .member-row.offline .member-copy { opacity: .3; }
+.member-row.offline:hover .member-avatar .avatar, .member-row.offline:hover .member-copy { opacity: 1; }
+
+/* ---------- Avatares e status ---------- */
+.avatar { box-shadow: none; }
+button:hover > .avatar, .avatar:hover { box-shadow: none; }
+.avatar.speaking { box-shadow: 0 0 0 2px var(--main), 0 0 0 4px var(--success); animation: none; }
+
+/* ---------- Menus, janelas e popovers ---------- */
+.dialog-overlay { background: rgba(0, 0, 0, .7); backdrop-filter: none; animation: dc-fade-in 200ms var(--ease-out) backwards; }
+.channel-dialog { border: 0; border-radius: 8px; background: var(--main); box-shadow: var(--shadow-modal); animation: dc-modal-in 250ms cubic-bezier(.2, .9, .3, 1.15) backwards; }
+.context-menu, .device-menu-popover, .emoji-picker, .soundboard-panel {
+  border: 0; border-radius: 4px; background: #111214; box-shadow: var(--shadow-lg); backdrop-filter: none;
+  padding: 6px 8px; animation: dc-pop-in 100ms var(--ease-out) backwards;
+}
+[data-theme="claro"] .context-menu, [data-theme="claro"] .device-menu-popover { background: #ffffff; }
+.context-menu button, .device-menu-popover button { border-radius: 2px; color: var(--text-secondary); font-size: 14px; font-weight: 500; padding: 6px 8px; min-height: 32px; }
+.context-menu button:hover:not(:disabled), .device-menu-popover button:hover:not(:disabled) { color: #fff; background: var(--accent); }
+.context-menu button.danger, .context-menu .danger { color: var(--danger); }
+.context-menu button.danger:hover:not(:disabled) { color: #fff; background: var(--danger); }
+
+/* Botões padrão (primário roxo, como o Discord) */
+.primary-button, button.primary, .btn-primary {
+  border-radius: 3px; background: var(--accent); color: #fff; box-shadow: none; transition: background-color 170ms ease;
+}
+.primary-button:hover:not(:disabled), button.primary:hover:not(:disabled), .btn-primary:hover:not(:disabled) { background: var(--accent-hover); transform: none; box-shadow: none; }
+
+/* ---------- Configurações (tela cheia, navegação à esquerda) ---------- */
+.settings-nav button { border-radius: 4px; color: var(--text-muted); font-size: 16px; font-weight: 500; padding: 6px 10px; transform: none; }
+.settings-nav button:hover:not(.active) { color: var(--text-normal); background: var(--hover); transform: none; }
+.settings-nav button.active { color: var(--text-primary); background: var(--selected); box-shadow: none; }
+.settings-pane { animation: dc-fade-in 200ms var(--ease-out) backwards; }
+.settings-pane h2 { color: var(--text-primary); font-size: 20px; font-weight: 600; letter-spacing: 0; }
+
+/* ---------- Movimento (curto, sem salto, como o Discord) ---------- */
+@keyframes dc-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dc-pop-in { from { opacity: 0; transform: scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes dc-modal-in { from { opacity: 0; transform: scale(.9); } to { opacity: 1; transform: none; } }
+
+/* ==========================================================================
+   Passada 2 — estrutura de tela do Discord
+   ========================================================================== */
+
+/* Barra de título de 32px com o nome do app à esquerda (como o alvo) */
+.app-frame { grid-template-rows: 32px minmax(0, 1fr); }
+.app-chrome { height: 32px; }
+.app-chrome-drag { display: flex; align-items: center; padding-left: 12px; }
+.app-chrome-title { color: var(--text-muted); font-size: 12px; font-weight: 600; letter-spacing: .01em; user-select: none; }
+.app-chrome-title::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 50%; background: var(--accent); vertical-align: 0; }
+.window-controls button { width: 46px; height: 32px; border-radius: 0; color: var(--text-muted); }
+.window-controls button:hover { color: var(--text-primary); background: rgba(255, 255, 255, .07); }
+.window-controls .window-close:hover { color: #fff; background: var(--danger); }
+
+/* Indicador da logo (início): só aparece no hover ou quando a tela de início está aberta */
+.server-button.home::before { height: 0; }
+.server-button.home:hover:not(:disabled)::before { height: 20px; }
+.server-button.home.active::before { height: 40px; }
+
+/* Cabeçalho de 48px numa linha só: "# nome | tópico"   ícones à direita */
+.main-panel { position: relative; }
+.room-title > div { display: flex; align-items: center; min-width: 0; }
+.room-title h1 { flex: none; line-height: 20px; }
+.room-title p {
+  margin: 0 0 0 8px; padding-left: 8px; border-left: 1px solid var(--dc-divider);
+  color: var(--text-muted); font-size: 14px; font-weight: 500; line-height: 18px;
+}
+.room-title p:empty { display: none; }
+
+/* A barra de ícones do canal (fixadas, membros, busca) fica dentro do cabeçalho */
+.text-channel-toolbar {
+  position: absolute; top: 0; right: 8px; height: 48px; z-index: 3;
+  display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent;
+}
+.text-channel-toolbar .icon-button { width: 24px; height: 24px; padding: 0; margin: 0 4px; border: 0; border-radius: 0; color: var(--text-secondary); background: transparent; }
+.text-channel-toolbar .icon-button:hover:not(:disabled) { color: var(--text-normal); background: transparent; }
+.text-channel-toolbar .icon-button.selected { color: var(--text-primary); background: transparent; }
+
+/* Painéis abertos pelos ícones (fixadas, busca) flutuam como popout do Discord */
+.channel-side-panel {
+  position: absolute; top: 52px; right: 16px; z-index: 20; width: 420px; max-height: 70vh;
+  border: 0; border-radius: 8px; background: var(--sidebar); box-shadow: var(--shadow-lg);
+  animation: dc-pop-in 120ms var(--ease-out) backwards; transform-origin: top right;
+}
+
+/* Canal de texto + lista de membros lado a lado */
+.text-channel-layout { min-width: 0; min-height: 0; flex: 1; display: flex; }
+.text-channel-layout > .text-channel-view { flex: 1; min-width: 0; }
+.text-channel-layout > .member-list { flex: 0 0 240px; width: 240px; }
+
+/* Mensagens agrupadas: sem avatar nem nome, só o texto alinhado em 72px */
+.text-channel-messages .text-message.continued { margin-top: 0; padding-top: 2px; padding-bottom: 2px; min-height: 22px; }
+.text-channel-messages .text-message.continued .message-avatar-trigger,
+.text-channel-messages .text-message.continued header { display: none; }
+.text-channel-messages .text-message.continued > div { grid-column: 2; }
+.message-gutter-time {
+  position: absolute; left: 0; top: 4px; width: 56px; text-align: right;
+  color: var(--text-muted); font-size: 11px; line-height: 1.375rem; opacity: 0; pointer-events: none;
+}
+.text-message.continued:hover .message-gutter-time { opacity: 1; }
+.text-channel-messages .text-message:first-child { margin-top: 16px; }
+
+/* Ações ao passar o mouse: caixinha flutuante no canto direito, como o Discord */
+.message-hover-actions {
+  top: -16px; right: 14px; padding: 0; gap: 0; border: 1px solid var(--border); border-radius: 4px;
+  background: var(--main); box-shadow: 0 0 0 1px rgba(4, 4, 5, .08);
+}
+.message-hover-actions button { width: 32px; height: 32px; border-radius: 0; color: var(--text-secondary); }
+.message-hover-actions button:hover { color: var(--text-normal); background: var(--dc-hover-solid); }
+
+/* Campo de mensagem: uma linha só, ferramentas à direita */
+.text-channel-input-row { padding-right: 8px; }
+.text-channel-tools { flex: none; display: flex; align-items: center; gap: 4px; height: 44px; }
+.text-channel-tool {
+  width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 0 !important;
+  border-radius: 4px; color: var(--text-secondary) !important; background: transparent !important; cursor: pointer;
+}
+.text-channel-tool:hover:not(:disabled) { color: var(--text-normal) !important; }
+.text-channel-tool.active { color: var(--accent) !important; }
+.text-channel-counter { padding: 0 6px; color: var(--text-muted); font-size: 12px; font-weight: 500; }
+.text-channel-counter.over { color: var(--danger); }
+.text-channel-form-meta { display: none; }
+
+/* ---------- Ajustes da passada 2 ---------- */
+/* Linha de canal ocupa a largura toda; ações (engrenagem, convite) ficam por cima, à direita */
+.text-channel-row, .channel-row-renamable { position: relative; display: block; }
+.text-channel-row > .text-channel-button, .channel-row-renamable > .channel-button { width: 100%; }
+.text-channel-row > .rename-channel-button, .channel-row-renamable > .rename-channel-button {
+  position: absolute; right: 8px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px;
+  display: grid; place-items: center; padding: 0; border: 0; background: transparent; color: var(--text-secondary);
+}
+.text-channel-row > .rename-channel-button:hover, .channel-row-renamable > .rename-channel-button:hover { color: var(--text-normal); }
+.text-channel-row:hover > .text-channel-button > span:not(.channel-hash) { padding-right: 20px; }
+
+/* Categorias no estilo do Discord */
+.channel-category { margin-top: 0; }
+.category-header {
+  padding: 16px 8px 4px 0; color: var(--text-muted); font-size: 12px; font-weight: 600; letter-spacing: .02em;
+}
+.category-header-toggle { gap: 2px; }
+.category-header svg { width: 12px; height: 12px; }
+.category-header:hover, .category-header-toggle:hover { color: var(--text-normal); }
+.category-header-actions .add-channel-button { color: var(--text-muted); }
+.create-category-button { border: 0; margin: 8px 0 0; width: 100%; padding: 6px 8px; border-radius: 4px; }
+.create-category-button:hover { background: var(--hover); color: var(--text-normal); }
+
+/* Grupo de mensagens: linhas seguintes alinhadas no texto (16 + 40 + 16 = 72px) */
+.messages.text-channel-messages .message.text-message.continued { grid-template-columns: 40px minmax(0, 1fr); gap: 16px; margin-bottom: 0; }
+.messages.text-channel-messages .message.text-message.continued p { margin-top: 0; }
+
+/* Lista de membros sem o título "MEMBROS": só os grupos, como no Discord */
+.member-list > .member-list-heading { display: none; }
+.member-list-scroll { padding-top: 0; }
+.member-group-title { padding-top: 24px; }
+/* Grupos: 17px acima de cada grupo novo, nada embaixo (Discord "cozy") */
+.messages.text-channel-messages .message.text-message { margin-bottom: 0; }
+.messages.text-channel-messages .message.text-message:not(.continued) { margin-top: 17px; }

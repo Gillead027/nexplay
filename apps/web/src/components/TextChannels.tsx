@@ -33,7 +33,6 @@ import { MarkdownText } from './Markdown';
 import { MusicCard } from './MusicCard';
 import { copyLabel, useCopyFeedback } from '../useCopyFeedback';
 import {
-  AttachmentIcon,
   CloseIcon,
   CheckIcon,
   CopyIcon,
@@ -42,11 +41,13 @@ import {
   ForwardIcon,
   MessageIcon,
   PinIcon,
+  PlusIcon,
   ReplyIcon,
   SearchIcon,
   SettingsIcon,
   SmileIcon,
   TrashIcon,
+  UsersIcon,
   VoiceIcon,
 } from './Icons';
 
@@ -55,6 +56,19 @@ const EmojiPicker = lazy(() =>
 );
 
 type MessageStyle = 'default' | 'compact' | 'grouped';
+
+// Hora da mensagem no formato do Discord em português: "Hoje às 10:21",
+// "Ontem às 22:05" ou "03/10/2026 14:30".
+export function discordTimestamp(sentAt: number, now = Date.now()): string {
+  const date = new Date(sentAt);
+  const time = date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const dayMs = 24 * 60 * 60 * 1000;
+  if (sentAt >= startOfToday.getTime()) return `Hoje às ${time}`;
+  if (sentAt >= startOfToday.getTime() - dayMs) return `Ontem às ${time}`;
+  return `${date.toLocaleDateString('pt-BR')} ${time}`;
+}
 
 // Único ponto de mescla de uma mensagem nova/atualizada no array local —
 // usado tanto pelo caminho otimista local (envio próprio) quanto pelos
@@ -430,13 +444,8 @@ function HumanTextMessageRow({
           >
             {message.senderName}
           </button>
-          <time dateTime={new Date(message.sentAt).toISOString()}>
-            {new Date(message.sentAt).toLocaleString('pt-BR', {
-              day: '2-digit',
-              month: '2-digit',
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
+          <time dateTime={new Date(message.sentAt).toISOString()} title={new Date(message.sentAt).toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short' })}>
+            {discordTimestamp(message.sentAt)}
           </time>
           {message.editedAt && <span className="message-edited-mark" title="Mensagem editada">(editado)</span>}
           {message.pinnedAt && <span className="message-pinned-mark" title="Mensagem fixada"><PinIcon size={11} /> fixada</span>}
@@ -452,6 +461,11 @@ function HumanTextMessageRow({
         {message.attachments?.length ? <MessageAttachments attachments={message.attachments} /> : null}
         <ReactionBar message={message} ownUserId={session.id} onToggle={onToggleReaction} />
       </div>
+      {continued && (
+        <time className="message-gutter-time" dateTime={new Date(message.sentAt).toISOString()} aria-hidden="true">
+          {new Date(message.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+        </time>
+      )}
       {!isEditing && (
         <div className="message-hover-actions" role="toolbar" aria-label="Ações da mensagem">
           <button type="button" title="Responder" aria-label="Responder" onClick={onReply}>
@@ -706,6 +720,8 @@ export function TextChannelView({
   voiceChannelId,
   onOpenProfile,
   onForward,
+  membersOpen,
+  onToggleMembers,
 }: {
   channel: TextChannel;
   session: UserSession;
@@ -715,6 +731,9 @@ export function TextChannelView({
   voiceChannelId: string | null;
   onOpenProfile: (userId: string, event: { currentTarget: HTMLElement }) => void;
   onForward: (message: TextMessage) => void;
+  // Botão "Mostrar lista de membros" do cabeçalho (como no Discord).
+  membersOpen?: boolean;
+  onToggleMembers?: () => void;
 }) {
   const [messages, setMessages] = useState<TextMessage[]>([]);
   const [draft, setDraft] = useState('');
@@ -1013,8 +1032,20 @@ export function TextChannelView({
             setSearchOpen(false);
           }}
         >
-          <PinIcon size={15} />
+          <PinIcon size={20} />
         </button>
+        {onToggleMembers && (
+          <button
+            type="button"
+            className={`icon-button ${membersOpen ? 'selected' : ''}`}
+            title={membersOpen ? 'Ocultar lista de membros' : 'Mostrar lista de membros'}
+            aria-label={membersOpen ? 'Ocultar lista de membros' : 'Mostrar lista de membros'}
+            aria-pressed={membersOpen}
+            onClick={onToggleMembers}
+          >
+            <UsersIcon size={20} />
+          </button>
+        )}
         <button
           type="button"
           className={`icon-button ${searchOpen ? 'selected' : ''}`}
@@ -1025,7 +1056,7 @@ export function TextChannelView({
             setPinsOpen(false);
           }}
         >
-          <SearchIcon size={15} />
+          <SearchIcon size={20} />
         </button>
       </div>
       {pinsOpen && (
@@ -1059,10 +1090,13 @@ export function TextChannelView({
           </div>
         ) : messages.map((message, index) => {
           const previous = messages[index - 1];
+          // Como o Discord: mensagens seguidas do mesmo autor em até 7 minutos viram um
+          // grupo só (avatar e nome na primeira). Resposta sempre abre um grupo novo.
           const continued =
-            messageStyle === 'grouped' &&
+            messageStyle !== 'default' &&
             previous?.senderId === message.senderId &&
-            message.sentAt - previous.sentAt < 5 * 60 * 1000;
+            !message.replyToMessageId &&
+            message.sentAt - previous.sentAt < 7 * 60 * 1000;
           return (
             <TextMessageRow
               key={message.id}
@@ -1183,7 +1217,7 @@ export function TextChannelView({
             disabled={isTimedOut || isReadOnly || uploading || pendingAttachments.length >= ATTACHMENT_MAX_PER_MESSAGE}
             onClick={() => fileInputRef.current?.click()}
           >
-            <AttachmentIcon size={17} />
+            <PlusIcon size={16} />
           </button>
           <label className="sr-only" htmlFor="text-channel-message">Mensagem para #{channel.name}</label>
           <textarea
@@ -1211,20 +1245,27 @@ export function TextChannelView({
                 : `Conversar em #${channel.name}`
             }
           />
+          <div className="text-channel-tools">
+            {/* Como o Discord: a contagem só aparece perto do limite de caracteres. */}
+            {draft.length > CHAT_MESSAGE_MAX_LENGTH * 0.8 && (
+              <span className={`text-channel-counter ${draft.length >= CHAT_MESSAGE_MAX_LENGTH ? 'over' : ''}`}>
+                {CHAT_MESSAGE_MAX_LENGTH - draft.length}
+              </span>
+            )}
+            {canManageMessages && (
+              <button type="button" className={`text-channel-tool system-post-toggle ${postAsSystem ? 'active' : ''}`}
+                title={postAsSystem ? 'Publicando como o servidor (clique para voltar a publicar como você)' : 'Publicar como o servidor (ícone e nome do servidor, selo APP)'}
+                aria-label={postAsSystem ? 'Publicando como o servidor' : 'Publicar como o servidor'}
+                aria-pressed={postAsSystem} onClick={() => setPostAsSystem((value) => !value)}>
+                <SettingsIcon size={20} />
+              </button>
+            )}
+          </div>
         </div>
-        <div className="text-channel-form-meta">
-          {canManageMessages && (
-            <button type="button" className={`system-post-toggle ${postAsSystem ? 'active' : ''}`}
-              title="Publicar como o servidor (aparece com o ícone e nome do servidor, selo APP)"
-              aria-pressed={postAsSystem} onClick={() => setPostAsSystem((value) => !value)}>
-              <SettingsIcon size={13} /> {postAsSystem ? 'Publicando como servidor' : 'Publicar como servidor'}
-            </button>
-          )}
-          <span>{draft.length}/{CHAT_MESSAGE_MAX_LENGTH}</span>
-          <button type="submit" disabled={isTimedOut || isReadOnly || sending || uploading || (!draft.trim() && pendingAttachments.length === 0)}>
-            {sending ? 'Enviando…' : 'Enviar'}
-          </button>
-        </div>
+        {/* Enter envia (como no Discord); o botão fica só para leitores de tela. */}
+        <button type="submit" className="sr-only" disabled={isTimedOut || isReadOnly || sending || uploading || (!draft.trim() && pendingAttachments.length === 0)}>
+          {sending ? 'Enviando…' : 'Enviar'}
+        </button>
       </form>
     </section>
   );

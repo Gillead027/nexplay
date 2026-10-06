@@ -28,7 +28,9 @@ export function AppChrome() {
 
   return (
     <header className="app-chrome">
-      <div className="app-chrome-drag" />
+      <div className="app-chrome-drag">
+        <span className="app-chrome-title">NexPlay</span>
+      </div>
       {shell && (
         <div className="window-controls" aria-label="Controles da janela">
           <button type="button" onClick={() => shell.window.minimize()} aria-label="Minimizar">
