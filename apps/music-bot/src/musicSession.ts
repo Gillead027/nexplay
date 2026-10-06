@@ -135,6 +135,14 @@ export class MusicSession {
           return this.volumeCommand(request.args.volume);
         case 'clear':
           return this.clearCommand();
+        case 'remove':
+          return this.removeCommand(request.args.position);
+        case 'move':
+          return this.moveCommand(request.args.from, request.args.to);
+        case 'jump':
+          return this.jumpCommand(request.args.position);
+        case 'shuffle':
+          return this.shuffleCommand();
       }
     });
   }
@@ -544,6 +552,54 @@ export class MusicSession {
     return reply(cleared > 0 ? `Fila limpa. ${cleared} faixa(s) removida(s).` : 'A fila já está vazia.', this.nowPlayingCard());
   }
 
+  // Posições da fila são 1-based (1 = a próxima faixa), como o /queue mostra.
+  private removeCommand(position: number): MusicCommandResponse {
+    const track = this.upcomingTracks[position - 1];
+    if (!track) return reply(this.outOfRangeMessage(position), this.nowPlayingCard());
+    this.upcomingTracks.splice(position - 1, 1);
+    this.options.log('queue track removed', { room: this.roomName, session: this.id, track: track.id, position });
+    return reply(`Removida da fila: ${track.title}.`, this.nowPlayingCard());
+  }
+
+  private moveCommand(from: number, to: number): MusicCommandResponse {
+    const [track] = this.upcomingTracks[from - 1] ? this.upcomingTracks.splice(from - 1, 1) : [];
+    if (!track) return reply(this.outOfRangeMessage(from), this.nowPlayingCard());
+    const target = Math.min(to, this.upcomingTracks.length + 1);
+    this.upcomingTracks.splice(target - 1, 0, track);
+    this.options.log('queue track moved', { room: this.roomName, session: this.id, track: track.id, from, to: target });
+    return reply(`${track.title} movida para a posição ${target}.`, this.nowPlayingCard());
+  }
+
+  // Pular até uma posição: as faixas antes dela saem da fila e a escolhida toca agora (como um skip que escolhe a faixa).
+  private async jumpCommand(position: number): Promise<MusicCommandResponse> {
+    if (!this.upcomingTracks[position - 1]) return reply(this.outOfRangeMessage(position), this.nowPlayingCard());
+    this.upcomingTracks.splice(0, position - 1);
+    if (!this.currentTrack) {
+      const next = await this.advanceQueue('SKIPPED');
+      return next ? reply(`Tocando agora: ${next.title}.`, this.nowPlayingCard()) : reply('A fila está vazia.');
+    }
+    return this.skipCommand();
+  }
+
+  // Embaralha só as faixas que ainda vão tocar (Fisher-Yates); a que está tocando não muda.
+  private shuffleCommand(): MusicCommandResponse {
+    const tracks = this.upcomingTracks;
+    if (tracks.length < 2) return reply('Não há faixas suficientes na fila para embaralhar.', this.nowPlayingCard());
+    for (let index = tracks.length - 1; index > 0; index -= 1) {
+      const swap = Math.floor(Math.random() * (index + 1));
+      [tracks[index], tracks[swap]] = [tracks[swap]!, tracks[index]!];
+    }
+    this.options.log('queue shuffled', { room: this.roomName, session: this.id, size: tracks.length });
+    return reply(`Fila embaralhada: ${tracks.length} faixa(s).`, this.nowPlayingCard());
+  }
+
+  private outOfRangeMessage(position: number): string {
+    const size = this.upcomingTracks.length;
+    return size === 0
+      ? `Não existe faixa na posição ${position}: a fila está vazia.`
+      : `Não existe faixa na posição ${position}. A fila tem ${size} faixa(s): use de 1 a ${size}.`;
+  }
+
   private queueCommand(): MusicCommandResponse {
     const now = this.currentTrack
       ? `${this.state === 'CONNECTING' ? 'Carregando' : 'Faixa atual'}: ${this.currentTrack.title} — ${formatTime(this.positionMs)} / ${formatTime(this.currentTrack.durationMs)}.`
@@ -599,7 +655,7 @@ export class MusicSessionManager {
   }
 
   async execute(request: MusicBotCommandRequest): Promise<MusicCommandResponse> {
-    const djCommands = new Set<MusicBotCommandRequest['command']>(['pause', 'resume', 'skip', 'stop', 'leave', 'volume', 'clear']);
+    const djCommands = new Set<MusicBotCommandRequest['command']>(['pause', 'resume', 'skip', 'stop', 'leave', 'volume', 'clear', 'remove', 'move', 'jump', 'shuffle']);
     if (this.djUserIds.size > 0 && djCommands.has(request.command) && !this.djUserIds.has(request.requestedBy.id)) {
       return reply('Este comando é restrito aos DJs configurados do SausiMusic.');
     }

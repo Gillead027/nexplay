@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { isMusicCommandInput, parseMusicCommand } from '@nexplay/shared';
+import { isMusicBotCommandRequest, isMusicCommandInput, parseMusicCommand } from '@nexplay/shared';
 
 describe('parseMusicCommand', () => {
   for (const [input, name] of [
@@ -74,5 +74,28 @@ describe('parseMusicCommand', () => {
     assert.equal(isMusicCommandInput('/pause abc'), true);
     assert.equal(parseMusicCommand('/play-file arquivo.mp3'), null);
     assert.equal(parseMusicCommand('play-file'), null);
+  });
+});
+
+describe('comandos de fila: remove, move, jump e shuffle', () => {
+  it('aceita posições e o embaralhar sem argumento', () => {
+    assert.deepEqual(parseMusicCommand('/remove 2')?.args, { position: 2 });
+    assert.deepEqual(parseMusicCommand('!jump 3')?.args, { position: 3 });
+    assert.deepEqual(parseMusicCommand('/move 1 4')?.args, { from: 1, to: 4 });
+    assert.equal(parseMusicCommand('/shuffle')?.name, 'shuffle');
+  });
+
+  it('recusa posições inválidas, faltando ou sobrando', () => {
+    for (const input of ['/remove', '/remove 0', '/remove -1', '/remove 1.5', '/remove 99999', '/jump abc', '/move 1', '/move 1 2 3', '/move 0 2', '/shuffle 1']) {
+      assert.equal(parseMusicCommand(input), null, input);
+    }
+  });
+
+  it('a validação da requisição aceita só o formato certo para cada comando', () => {
+    const requestedBy = { id: 'user-1', displayName: 'Gillezin' };
+    assert.equal(isMusicBotCommandRequest({ channelId: 'geral', command: 'move', args: { from: 1, to: 3 }, requestedBy }), true);
+    assert.equal(isMusicBotCommandRequest({ channelId: 'geral', command: 'move', args: { from: 1 }, requestedBy }), false);
+    assert.equal(isMusicBotCommandRequest({ channelId: 'geral', command: 'remove', args: { position: 0 }, requestedBy }), false);
+    assert.equal(isMusicBotCommandRequest({ channelId: 'geral', command: 'shuffle', args: {}, requestedBy }), true);
   });
 });

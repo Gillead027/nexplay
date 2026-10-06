@@ -576,6 +576,10 @@ export const MUSIC_COMMAND_ALIASES = {
   np: 'nowplaying',
   volume: 'volume',
   clear: 'clear',
+  remove: 'remove',
+  move: 'move',
+  jump: 'jump',
+  shuffle: 'shuffle',
 } as const;
 
 export type MusicCommandName = (typeof MUSIC_COMMAND_ALIASES)[keyof typeof MUSIC_COMMAND_ALIASES];
@@ -596,6 +600,11 @@ export interface MusicCommandArgsByName {
   nowplaying: Record<never, never>;
   volume: { volume: number };
   clear: Record<never, never>;
+  // Posições são 1-based, como a fila que o /queue mostra.
+  remove: { position: number };
+  move: { from: number; to: number };
+  jump: { position: number };
+  shuffle: Record<never, never>;
 }
 
 export type ParsedMusicCommand = {
@@ -605,6 +614,15 @@ export type ParsedMusicCommand = {
     args: MusicCommandArgsByName[Name];
   };
 }[MusicCommandName];
+
+const MAX_QUEUE_POSITION = 9_999;
+
+// Posição de fila: inteiro de 1 a 9999 (1 é a próxima faixa). Qualquer outra coisa não é posição.
+function parseQueuePosition(value: string | undefined): number | null {
+  if (!value || !/^\d{1,4}$/.test(value)) return null;
+  const position = Number(value);
+  return position >= 1 && position <= MAX_QUEUE_POSITION ? position : null;
+}
 
 /** Normaliza aliases e argumentos; a API ainda valida autenticação e voice state. */
 export function parseMusicCommand(value: string): ParsedMusicCommand | null {
@@ -626,6 +644,19 @@ export function parseMusicCommand(value: string): ParsedMusicCommand | null {
     const volume = Number(rawArgs);
     if (!Number.isInteger(volume) || volume < 0 || volume > 100) return null;
     return { name, prefix, args: { volume } };
+  }
+
+  if (name === 'remove' || name === 'jump') {
+    const position = parseQueuePosition(rawArgs);
+    return position === null ? null : { name, prefix, args: { position } };
+  }
+
+  if (name === 'move') {
+    const [from, to, extra] = (rawArgs ?? '').split(/\s+/);
+    const fromPosition = parseQueuePosition(from);
+    const toPosition = parseQueuePosition(to);
+    if (fromPosition === null || toPosition === null || extra !== undefined) return null;
+    return { name, prefix, args: { from: fromPosition, to: toPosition } };
   }
 
   if (rawArgs) return null;
@@ -703,6 +734,15 @@ export function isMusicBotCommandRequest(value: unknown): value is MusicBotComma
         (volume as number) >= 0 &&
         (volume as number) <= 100
       );
+    }
+    const isPosition = (value: unknown) => Number.isInteger(value) && (value as number) >= 1 && (value as number) <= MAX_QUEUE_POSITION;
+    if (candidate.command === 'remove' || candidate.command === 'jump') {
+      const { position } = candidate.args as { position?: unknown };
+      return Object.keys(candidate.args).length === 1 && isPosition(position);
+    }
+    if (candidate.command === 'move') {
+      const { from, to } = candidate.args as { from?: unknown; to?: unknown };
+      return Object.keys(candidate.args).length === 2 && isPosition(from) && isPosition(to);
     }
     return Object.keys(candidate.args).length === 0;
   }

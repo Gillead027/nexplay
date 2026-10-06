@@ -77,6 +77,17 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'O NexMusic recebeu uma atualização para manter a busca e a reprodução de músicas do YouTube compatíveis com as mudanças recentes da plataforma.',
     ],
   },
+  {
+    id: '2026-10-06-nexmusic-fila',
+    date: '2026-10-06',
+    title: 'NexMusic: remover, mover, pular e embaralhar a fila',
+    items: [
+      '/remove 2 tira a faixa da posição 2 da fila. /move 1 4 muda a faixa da posição 1 para a posição 4.',
+      '/jump 3 toca a terceira faixa da fila agora, e as duas primeiras saem da fila.',
+      '/shuffle embaralha a fila. A música que está tocando não muda.',
+      'Esses comandos seguem a regra de DJs configurada no bot.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

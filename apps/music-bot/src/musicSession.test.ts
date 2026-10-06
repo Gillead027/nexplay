@@ -608,3 +608,66 @@ describe('MusicSession player stateful', () => {
 
 
 });
+
+describe('fila: remove, move, jump e shuffle', () => {
+  // Depois de 4 /play-file: a primeira toca e a fila tem 3 faixas, nessa ordem.
+  async function queueOfFour() {
+    const harness = createHarness();
+    for (let index = 0; index < 4; index += 1) await harness.manager.execute(command('/play-file'));
+    const session = harness.manager.getSession('geral');
+    assert.ok(session);
+    return { harness, session };
+  }
+
+  it('remove tira a faixa pela posição (1 = próxima) e avisa quando a posição não existe', async () => {
+    const { harness, session } = await queueOfFour();
+    const [, second, third] = session.queue.map((track) => track.id);
+    const removed = await harness.manager.execute(command('/remove 1'));
+    assert.match(removed.message, /Removida da fila/);
+    assert.deepEqual(session.queue.map((track) => track.id), [second, third]);
+    const missing = await harness.manager.execute(command('/remove 9'));
+    assert.match(missing.message, /Não existe faixa na posição 9/);
+    assert.equal(session.queue.length, 2);
+  });
+
+  it('move reposiciona uma faixa da fila e não mexe na que está tocando', async () => {
+    const { harness, session } = await queueOfFour();
+    const current = session.currentTrack?.id;
+    const [first, second, third] = session.queue.map((track) => track.id);
+    await harness.manager.execute(command('/move 1 3'));
+    assert.deepEqual(session.queue.map((track) => track.id), [second, third, first]);
+    assert.equal(session.currentTrack?.id, current);
+  });
+
+  it('move com destino além do fim põe a faixa no fim da fila', async () => {
+    const { harness, session } = await queueOfFour();
+    const [first, second, third] = session.queue.map((track) => track.id);
+    await harness.manager.execute(command('/move 1 50'));
+    assert.deepEqual(session.queue.map((track) => track.id), [second, third, first]);
+  });
+
+  it('jump toca a faixa escolhida e tira da fila só as que estavam antes dela', async () => {
+    const { harness, session } = await queueOfFour();
+    const [, second, third] = session.queue.map((track) => track.id);
+    await harness.manager.execute(command('/jump 2'));
+    assert.equal(session.currentTrack?.id, second);
+    assert.equal(session.state, 'PLAYING');
+    assert.deepEqual(session.queue.map((track) => track.id), [third]);
+  });
+
+  it('shuffle embaralha só a fila, sem mexer na faixa que está tocando', async () => {
+    const { harness, session } = await queueOfFour();
+    const current = session.currentTrack?.id;
+    const before = session.queue.map((track) => track.id);
+    await harness.manager.execute(command('/shuffle'));
+    assert.equal(session.currentTrack?.id, current);
+    assert.deepEqual([...session.queue.map((track) => track.id)].sort(), [...before].sort());
+  });
+
+  it('remove, move, jump e shuffle são restritos aos DJs quando configurados', async () => {
+    const harness = createHarness(undefined, new Set(['dj-1']));
+    await harness.manager.execute(command('/play-file'));
+    const denied = await harness.manager.execute(command('/shuffle'));
+    assert.match(denied.message, /restrito aos DJs/);
+  });
+});
