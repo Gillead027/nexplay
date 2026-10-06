@@ -14,9 +14,9 @@ import { FailedMessages } from './FailedMessages';
 import { MessageSkeleton } from './Skeleton';
 import { onRealtimeConnect, onRealtimeEvent } from '../realtime';
 import { MarkdownText } from './Markdown';
-import { MessageAttachments } from './TextChannels';
+import { discordTimestamp, MessageAttachments } from './TextChannels';
 import { Avatar } from './Workspace';
-import { AttachmentIcon, CheckIcon, CloseIcon, CopyIcon, EditIcon, FileIcon, ForwardIcon, TrashIcon, PhoneIcon } from './Icons';
+import { PlusIcon, CheckIcon, CloseIcon, CopyIcon, EditIcon, FileIcon, ForwardIcon, TrashIcon, PhoneIcon } from './Icons';
 import { copyLabel, useCopyFeedback } from '../useCopyFeedback';
 import { TypingIndicator } from './TypingIndicator';
 import { useTypingIndicator, useTypingSender } from '../useTypingIndicator';
@@ -289,7 +289,7 @@ export function DmChannelView({
         </button>
         {call && (
           <button type="button" className="dm-call-button" onClick={call.onClick} disabled={call.disabled} title={call.label} aria-label={call.label}>
-            <PhoneIcon size={16} /> <span>{call.label}</span>
+            <PhoneIcon size={20} />
           </button>
         )}
       </header>
@@ -298,17 +298,23 @@ export function DmChannelView({
         {loading ? (
           <MessageSkeleton />
         ) : messages.length === 0 ? (
-          <div className="text-channel-welcome">
-            <span aria-hidden="true">@</span>
-            <h2>Essa é a conversa com {other.displayName}</h2>
-            <p>Diga oi!</p>
+          <div className="text-channel-welcome dm-welcome">
+            <Avatar name={other.displayName} accentColor={other.accentColor} avatarUrl={other.avatarUrl} frame={other.avatarFrame} />
+            <h2>{other.displayName}</h2>
+            <p>Este é o começo do seu histórico de mensagens diretas com <strong>{other.displayName}</strong>.</p>
           </div>
         ) : (
-          messages.map((message) => {
+          messages.map((message, index) => {
             const sender = channel.participants.find((participant) => participant.id === message.senderId) ?? other;
             const isOwn = message.senderId === session.id;
+            const previous = messages[index - 1];
+            // Mesmo agrupamento dos canais: mensagens seguidas da mesma pessoa em até 7 minutos.
+            const continued =
+              previous?.senderId === message.senderId &&
+              !message.forwardedFromAuthorName &&
+              message.sentAt - previous.sentAt < 7 * 60 * 1000;
             return (
-              <article className="message text-message" key={message.id}>
+              <article className={`message text-message ${continued ? 'continued' : ''}`} key={message.id}>
                 <button type="button" className="message-avatar-trigger" onClick={(event) => onOpenProfile(sender.id, event)}>
                   <Avatar name={sender.displayName} accentColor={sender.accentColor} avatarUrl={sender.avatarUrl} frame={sender.avatarFrame} compact />
                 </button>
@@ -317,8 +323,8 @@ export function DmChannelView({
                     <button type="button" className="message-name-trigger" onClick={(event) => onOpenProfile(sender.id, event)}>
                       {sender.displayName}
                     </button>
-                    <time dateTime={new Date(message.sentAt).toISOString()}>
-                      {new Date(message.sentAt).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                    <time dateTime={new Date(message.sentAt).toISOString()} title={new Date(message.sentAt).toLocaleString('pt-BR', { dateStyle: 'full', timeStyle: 'short' })}>
+                      {discordTimestamp(message.sentAt)}
                     </time>
                     {message.editedAt && <span className="message-edited-mark" title="Mensagem editada">(editado)</span>}
                   </header>
@@ -332,6 +338,11 @@ export function DmChannelView({
                   ) : null}
                   {message.attachments?.length ? <MessageAttachments attachments={message.attachments} /> : null}
                 </div>
+                {continued && (
+                  <time className="message-gutter-time" dateTime={new Date(message.sentAt).toISOString()} aria-hidden="true">
+                    {new Date(message.sentAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                  </time>
+                )}
                 <div className="message-hover-actions" role="toolbar" aria-label="Ações da mensagem">
                   <button
                     type="button"
@@ -410,7 +421,7 @@ export function DmChannelView({
             disabled={composerDisabled || uploading || pendingAttachments.length >= ATTACHMENT_MAX_PER_MESSAGE}
             onClick={() => fileInputRef.current?.click()}
           >
-            <AttachmentIcon size={17} />
+            <PlusIcon size={20} />
           </button>
           <label className="sr-only" htmlFor="dm-message">Mensagem para {other.displayName}</label>
           <textarea
@@ -430,7 +441,7 @@ export function DmChannelView({
                 event.currentTarget.form?.requestSubmit();
               }
             }}
-            placeholder={composerDisabled ? '' : uploading ? 'Enviando arquivo…' : `Conversar com ${other.displayName}`}
+            placeholder={composerDisabled ? '' : uploading ? 'Enviando arquivo…' : `Conversar com @${other.displayName}`}
           />
         </div>
         <div className="text-channel-form-meta">

@@ -840,3 +840,140 @@ button:hover > .avatar, .avatar:hover { box-shadow: none; }
 @media (prefers-reduced-motion: reduce) {
   .context-menu, .profile-popover, .channel-dialog, .dialog-overlay { animation: none; }
 }
+
+/* ==========================================================================
+   Passada 6: Início, Amigos e mensagens diretas
+   Barra lateral com a busca de conversas no topo; itens de 42px com avatar de 32px;
+   página de amigos com topo de 48px, abas, busca e linhas de 62px com divisória.
+   ========================================================================== */
+
+/* ---------- barra lateral do Início ---------- */
+.sidebar-header.dm-search-header { padding: 0 10px; cursor: default; }
+.sidebar-header.dm-search-header:hover { background: transparent; }
+.dm-search { display: block; width: 100%; }
+.dm-search input {
+  width: 100%; height: 28px; padding: 1px 6px; border: 0; border-radius: 4px; outline: 0;
+  color: var(--text-normal); background: var(--dc-input-bg); font-size: 14px; font-weight: 500; line-height: 24px;
+}
+.dm-search input::placeholder { color: var(--text-muted); }
+.dm-nav-list { padding: 8px 8px 0; }
+.dm-nav-list .text-channel-button.dm-home-button {
+  height: 42px; margin: 0; padding: 0 8px; gap: 12px; border-radius: 4px;
+}
+.dm-home-button svg { width: 24px; height: 24px; flex: 0 0 24px; }
+.dm-home-button .dm-pending-badge {
+  min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; color: #fff; background: var(--danger);
+  font-size: 12px; font-weight: 700; line-height: 16px; text-align: center;
+}
+.section-title.dm-section-title { padding: 18px 8px 4px 18px; text-transform: uppercase; }
+.dm-channel-button.text-channel-button { height: 42px; margin: 1px 8px; padding: 0 8px; gap: 12px; border-radius: 4px; }
+.dm-channel-button .avatar { width: 32px; height: 32px; flex: 0 0 32px; font-size: 14px; }
+.dm-channel-button.active > span { color: var(--text-primary); }
+.dm-list-empty { padding: 16px; color: var(--text-muted); font-size: 14px; text-align: center; }
+
+/* ---------- página de Amigos ---------- */
+.friends-home { max-width: none; height: 100%; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.friends-header {
+  flex: 0 0 48px; height: 48px; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 16px;
+  box-shadow: var(--dc-header-shadow); position: relative; z-index: 2;
+}
+.friends-header-title { display: flex; align-items: center; gap: 8px; color: var(--text-muted); }
+.friends-header-title h1 { margin: 0; color: var(--text-primary); font-size: 16px; line-height: 20px; font-weight: 600; }
+.friends-header-divider { width: 1px; height: 24px; margin: 0 8px; background: var(--dc-divider); }
+.friends-home .friends-tabs { display: flex; align-items: center; gap: 0; margin: 0; padding: 0; border: 0; flex-wrap: nowrap; }
+.friends-home .friends-tabs button {
+  display: inline-flex; align-items: center; gap: 6px; height: auto; margin: 0 8px; padding: 2px 8px; border: 0; border-radius: 4px;
+  color: var(--text-secondary); background: transparent; font-size: 16px; line-height: 20px; font-weight: 500; white-space: nowrap; transform: none;
+}
+.friends-home .friends-tabs button:hover { color: var(--text-normal); background: var(--hover); }
+.friends-home .friends-tabs button.active { color: var(--text-primary); background: var(--selected); }
+.friends-home .friends-tabs .friends-tab-add { margin-left: 8px; color: #fff; background: #248046; }
+.friends-home .friends-tabs .friends-tab-add:hover { color: #fff; background: #1a6334; }
+.friends-home .friends-tabs .friends-tab-add.active { color: #2dc770; background: transparent; }
+.friends-tab-badge {
+  min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; color: #fff; background: var(--danger);
+  font-size: 12px; font-weight: 700; line-height: 16px; text-align: center;
+}
+.friends-search { position: relative; display: flex; align-items: center; margin: 16px 20px 8px 30px; }
+.friends-search input {
+  width: 100%; height: 34px; padding: 0 36px 0 8px; border: 0; border-radius: 4px; outline: 0;
+  color: var(--text-normal); background: var(--dc-input-bg); font-size: 16px;
+}
+.friends-search input::placeholder { color: var(--text-muted); }
+.friends-search svg { position: absolute; right: 8px; color: var(--text-muted); pointer-events: none; }
+.friends-section-title {
+  margin: 16px 20px 8px 30px; color: var(--text-secondary); font-size: 12px; line-height: 16px; font-weight: 600;
+  letter-spacing: .02em; text-transform: uppercase;
+}
+.friends-search + .friends-section-title { margin-top: 8px; }
+.friends-home .friends-list { flex: 1; min-height: 0; display: block; padding: 0 12px 16px 20px; overflow-y: auto; }
+.friends-home .friend-row {
+  position: relative; display: flex; align-items: center; height: 62px; margin: 0 0 0 10px; padding: 0 10px; gap: 12px;
+  border: 0; border-top: 1px solid var(--dc-divider); border-radius: 8px 8px 8px 8px; background: transparent; transform: none; cursor: pointer;
+  transition: background-color 100ms ease;
+}
+.friends-home .friend-row:first-child { border-top-color: transparent; }
+.friends-home .friend-row:hover { margin-left: 0; margin-right: -10px; padding: 0 20px; border-top-color: transparent; background: var(--dc-hover-solid); transform: none; }
+.friends-home .friend-row:hover + .friend-row { border-top-color: transparent; }
+.friend-row-identity {
+  display: grid; grid-template-columns: 32px minmax(0, 1fr); grid-template-rows: auto auto; column-gap: 12px; align-items: center;
+  border: 0; background: none; text-align: left; cursor: pointer;
+}
+.friend-row-identity .avatar, .friend-row-identity .avatar-ring { grid-row: 1 / span 2; width: 32px; height: 32px; font-size: 14px; }
+.friend-row-identity .avatar-ring .avatar { width: 32px; height: 32px; }
+.friend-row-identity .friend-row-name { grid-column: 2; color: var(--text-primary); font-size: 16px; line-height: 20px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.friend-row-identity small { grid-column: 2; color: var(--text-secondary); font-size: 14px; line-height: 18px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.friend-row-identity:not(:has(small)) .friend-row-name { grid-row: 1 / span 2; }
+.friend-row-actions { gap: 10px; }
+.friends-home .friend-row-actions .icon-button {
+  width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 50%;
+  color: var(--text-secondary); background: var(--sidebar); transform: none;
+}
+.friends-home .friend-row:hover .friend-row-actions .icon-button { background: var(--dc-input-bg); }
+.friends-home .friend-row-actions .icon-button:hover:not(:disabled) { color: var(--text-normal); background: var(--dc-input-bg); transform: none; }
+.friends-home .friend-row-actions .icon-button:last-child:hover:not(:disabled) { color: var(--danger); }
+.friends-home .friend-row-actions .secondary-pill {
+  height: 32px; min-height: 32px; padding: 2px 16px; border: 0; border-radius: 3px; color: #fff; background: #4e5058;
+  font-size: 14px; font-weight: 500; transform: none; box-shadow: none;
+}
+.friends-home .friend-row-actions .secondary-pill:hover:not(:disabled) { border: 0; color: #fff; background: #6d6f78; transform: none; }
+.friend-row-status, .friend-row-feedback { color: var(--text-muted); font-size: 14px; }
+.friends-home .friends-empty {
+  flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  padding: 40px 0; color: var(--text-muted); font-size: 16px; text-align: center;
+}
+.friends-home .friends-empty .secondary-pill {
+  height: 38px; padding: 2px 16px; border: 0; border-radius: 3px; color: #fff; background: var(--accent); font-size: 14px; font-weight: 500; transform: none;
+}
+.friends-home .friends-empty .secondary-pill:hover:not(:disabled) { border: 0; background: var(--accent-hover); transform: none; }
+
+/* Adicionar amigo: bloco de título e campo grande, como no Discord */
+.friends-add-tab { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 0; }
+.friends-add-header { padding: 20px 30px 0; }
+.friends-add-header h2 { margin: 0 0 8px; color: var(--text-primary); font-size: 16px; line-height: 20px; font-weight: 600; text-transform: uppercase; }
+.friends-add-header p { margin: 0; color: var(--text-secondary); font-size: 14px; line-height: 20px; }
+.friends-add-tab .friends-add-search {
+  width: auto; height: 52px; display: flex; align-items: center; gap: 10px; margin: 16px 30px; padding: 0 12px;
+  border: 1px solid var(--dc-input-bg); border-radius: 8px; background: var(--dc-input-bg);
+}
+.friends-add-tab .friends-add-search:focus-within { border-color: #00a8fc; }
+.friends-add-tab .friends-add-search input { flex: 1; height: 100%; border: 0; outline: 0; background: transparent; color: var(--text-normal); font-size: 16px; }
+.friends-add-tab .friends-list { padding-top: 8px; border-top: 1px solid var(--dc-divider); }
+
+/* ---------- conversa direta ---------- */
+.dm-channel-header { gap: 8px; padding: 0 8px 0 16px; }
+.dm-header-identity { display: flex; align-items: center; gap: 8px; border: 0; background: transparent; cursor: pointer; }
+.dm-header-identity .avatar { width: 24px; height: 24px; font-size: 11px; }
+.dm-header-identity strong { color: var(--text-primary); font-size: 16px; font-weight: 600; }
+.dm-call-button {
+  width: 32px; height: 32px; margin-left: auto; display: grid; place-items: center; padding: 0; border: 0; border-radius: 4px;
+  color: var(--text-secondary); background: transparent; box-shadow: none;
+}
+.dm-call-button:hover:not(:disabled) { color: var(--text-normal); background: transparent; filter: none; transform: none; }
+.dm-call-button:disabled { opacity: .5; }
+.dm-welcome { display: flex; flex-direction: column; align-items: flex-start; padding: 16px; }
+.dm-welcome .avatar { width: 80px; height: 80px; font-size: 32px; }
+.dm-welcome h2 { margin: 8px 0; }
+.dm-welcome p strong { color: var(--text-normal); font-weight: 600; }
+.dm-channel-button.text-channel-button { width: auto; }
+.dm-channel-view .message-avatar-trigger .avatar { width: 40px; height: 40px; font-size: 16px; }

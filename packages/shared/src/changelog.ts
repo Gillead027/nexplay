@@ -130,6 +130,17 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Ao criar um canal, o tipo (texto ou voz) é escolhido numa lista com bolinha de seleção.',
     ],
   },
+  {
+    id: '2026-10-06-amigos-e-conversas-estilo-discord',
+    date: '2026-10-06',
+    title: 'Amigos e conversas privadas no estilo do Discord',
+    items: [
+      'A página de Amigos ganhou o topo do Discord, com as abas Todos, Pendentes, Bloqueados e o botão verde Adicionar amigo.',
+      'Na aba Todos há uma busca para achar um amigo pelo nome, e os pedidos pendentes aparecem com um número vermelho na aba.',
+      'No topo da lista de conversas tem o campo "Encontre ou comece uma conversa" para filtrar suas conversas pelo nome.',
+      'Nas conversas privadas, mensagens seguidas da mesma pessoa ficam juntas e a hora aparece como "Hoje às 10:21", igual aos canais.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';

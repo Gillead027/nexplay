@@ -104,12 +104,16 @@ export function FriendsSidebar({
   onSelectDm: (dmChannelId: string) => void;
   onBackToHome: () => void;
 }) {
+  const [dmQuery, setDmQuery] = useState('');
+  const dmFilter = dmQuery.trim().toLowerCase();
+
   return (
     <>
-      <header className="sidebar-header">
-        <button type="button" className="server-menu-trigger" onClick={onBackToHome}>
-          <strong>Amigos</strong>
-        </button>
+      <header className="sidebar-header dm-search-header">
+        <label className="dm-search">
+          <span className="sr-only">Encontrar uma conversa</span>
+          <input placeholder="Encontre ou comece uma conversa" value={dmQuery} onChange={(event) => setDmQuery(event.target.value)} />
+        </label>
       </header>
       <nav className="channels" aria-label="Conversas diretas">
         <div className="dm-nav-list">
@@ -119,7 +123,7 @@ export function FriendsSidebar({
             {pendingCount > 0 && <span className="dm-pending-badge">{pendingCount}</span>}
           </button>
         </div>
-        <div className="section-title"><span>MENSAGENS DIRETAS</span></div>
+        <div className="section-title dm-section-title"><span>Mensagens diretas</span></div>
         <div className="text-channel-list">
           {dmChannels.length === 0 ? (
             <div className="dm-list-empty">
@@ -130,6 +134,7 @@ export function FriendsSidebar({
             dmChannels.map((channel) => {
               const other = channel.participants.find((participant) => participant.id !== ownId);
               if (!other) return null;
+              if (dmFilter && !other.displayName.toLowerCase().includes(dmFilter)) return null;
               const active = channel.id === activeDmChannelId;
               return (
                 <button
@@ -206,6 +211,10 @@ function AddFriendTab({
 
   return (
     <div className="friends-add-tab">
+      <header className="friends-add-header">
+        <h2>Adicionar amigo</h2>
+        <p>Você pode adicionar como amigo quem está nos mesmos servidores que você.</p>
+      </header>
       <label className="roles-search friends-add-search">
         <SearchIcon size={14} />
         <input placeholder="Buscar por nome" value={search} onChange={(event) => setSearch(event.target.value)} />
@@ -217,7 +226,7 @@ function AddFriendTab({
             <div className="friend-row" key={member.id}>
               <button type="button" className="friend-row-identity" onClick={(event) => onOpenProfile(member.id, event)}>
                 <Avatar name={member.displayName} accentColor={member.accentColor} avatarUrl={member.avatarUrl} frame={member.avatarFrame} />
-                <span>{member.displayName}</span>
+                <span className="friend-row-name">{member.displayName}</span>
               </button>
               <div className="friend-row-actions">
                 {feedback[member.id] && <small className="friend-row-feedback">{feedback[member.id]}</small>}
@@ -257,6 +266,11 @@ export function FriendsHome({
   onRefresh: () => void;
 }) {
   const [tab, setTab] = useState<FriendsTab>(state.incoming.length > 0 ? 'pending' : 'all');
+  const [friendQuery, setFriendQuery] = useState('');
+  const friendFilter = friendQuery.trim().toLowerCase();
+  const visibleFriends = friendFilter
+    ? state.friends.filter((friend) => friend.displayName.toLowerCase().includes(friendFilter))
+    : state.friends;
 
   async function respond(userId: string, accept: boolean) {
     try {
@@ -289,23 +303,41 @@ export function FriendsHome({
 
   return (
     <div className="friends-home">
-      <div className="server-page-title">
-        <div><h1>Amigos</h1><p>Gerencie suas amizades, pedidos e bloqueios.</p></div>
-      </div>
-      <div className="friends-tabs">
-        <button type="button" className={tab === 'all' ? 'active' : ''} onClick={() => setTab('all')}>
-          Todos — {state.friends.length}
-        </button>
-        <button type="button" className={tab === 'pending' ? 'active' : ''} onClick={() => setTab('pending')}>
-          Pendentes {state.incoming.length > 0 ? `— ${state.incoming.length}` : ''}
-        </button>
-        <button type="button" className={tab === 'blocked' ? 'active' : ''} onClick={() => setTab('blocked')}>
-          Bloqueados — {state.blocked.length}
-        </button>
-        <button type="button" className={`friends-tab-add ${tab === 'add' ? 'active' : ''}`} onClick={() => setTab('add')}>
-          <UserPlusIcon size={14} /> Adicionar amigo
-        </button>
-      </div>
+      <header className="friends-header">
+        <div className="friends-header-title">
+          <UserIcon size={20} />
+          <h1>Amigos</h1>
+        </div>
+        <span className="friends-header-divider" aria-hidden="true" />
+        <div className="friends-tabs" role="tablist" aria-label="Amigos">
+          <button type="button" role="tab" aria-selected={tab === 'all'} className={tab === 'all' ? 'active' : ''} onClick={() => setTab('all')}>
+            Todos
+          </button>
+          <button type="button" role="tab" aria-selected={tab === 'pending'} className={tab === 'pending' ? 'active' : ''} onClick={() => setTab('pending')}>
+            Pendentes
+            {state.incoming.length > 0 && <span className="friends-tab-badge">{state.incoming.length}</span>}
+          </button>
+          <button type="button" role="tab" aria-selected={tab === 'blocked'} className={tab === 'blocked' ? 'active' : ''} onClick={() => setTab('blocked')}>
+            Bloqueados
+          </button>
+          <button type="button" role="tab" aria-selected={tab === 'add'} className={`friends-tab-add ${tab === 'add' ? 'active' : ''}`} onClick={() => setTab('add')}>
+            Adicionar amigo
+          </button>
+        </div>
+      </header>
+
+      {tab === 'all' && state.friends.length > 0 && (
+        <label className="friends-search">
+          <span className="sr-only">Buscar amigos</span>
+          <input placeholder="Buscar" value={friendQuery} onChange={(event) => setFriendQuery(event.target.value)} />
+          <SearchIcon size={18} />
+        </label>
+      )}
+      {tab === 'all' && state.friends.length > 0 && <h2 className="friends-section-title">Todos os amigos — {visibleFriends.length}</h2>}
+      {tab === 'pending' && state.incoming.length + state.outgoing.length > 0 && (
+        <h2 className="friends-section-title">Pendentes — {state.incoming.length + state.outgoing.length}</h2>
+      )}
+      {tab === 'blocked' && state.blocked.length > 0 && <h2 className="friends-section-title">Bloqueados — {state.blocked.length}</h2>}
 
       {tab === 'all' && (
         <div className="friends-list">
@@ -315,11 +347,11 @@ export function FriendsHome({
               <button type="button" className="secondary-pill" onClick={() => setTab('add')}>Adicionar amigo</button>
             </div>
           ) : (
-            state.friends.map((friend) => (
+            visibleFriends.map((friend) => (
               <div className="friend-row" key={friend.id}>
                 <button type="button" className="friend-row-identity" onClick={(event) => onOpenProfile(friend.id, event)}>
                   <Avatar name={friend.displayName} accentColor={friend.accentColor} avatarUrl={friend.avatarUrl} frame={friend.avatarFrame} />
-                  <span>{friend.displayName}</span>
+                  <span className="friend-row-name">{friend.displayName}</span>
                   {friend.statusText && <small>{friend.statusText}</small>}
                 </button>
                 <div className="friend-row-actions">
@@ -355,7 +387,7 @@ export function FriendsHome({
                 <div className="friend-row" key={request.userId}>
                   <button type="button" className="friend-row-identity" onClick={(event) => onOpenProfile(request.userId, event)}>
                     <Avatar name={request.displayName} accentColor={request.accentColor} avatarUrl={request.avatarUrl} />
-                    <span>{request.displayName}</span>
+                    <span className="friend-row-name">{request.displayName}</span>
                     <small>pediu amizade</small>
                   </button>
                   <div className="friend-row-actions">
@@ -368,7 +400,7 @@ export function FriendsHome({
                 <div className="friend-row" key={request.userId}>
                   <button type="button" className="friend-row-identity" onClick={(event) => onOpenProfile(request.userId, event)}>
                     <Avatar name={request.displayName} accentColor={request.accentColor} avatarUrl={request.avatarUrl} />
-                    <span>{request.displayName}</span>
+                    <span className="friend-row-name">{request.displayName}</span>
                     <small>pedido enviado</small>
                   </button>
                   <div className="friend-row-actions">
@@ -390,7 +422,7 @@ export function FriendsHome({
               <div className="friend-row" key={entry.userId}>
                 <div className="friend-row-identity">
                   <Avatar name={entry.displayName} accentColor={entry.accentColor} avatarUrl={entry.avatarUrl} />
-                  <span>{entry.displayName}</span>
+                  <span className="friend-row-name">{entry.displayName}</span>
                 </div>
                 <div className="friend-row-actions">
                   <button type="button" className="secondary-pill" onClick={() => void unblock(entry.userId)}>Desbloquear</button>
