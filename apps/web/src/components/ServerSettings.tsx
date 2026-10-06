@@ -708,7 +708,7 @@ function RolesPane({ serverId, member }: { serverId: string; member: ServerMembe
               <div>
                 <span className="role-color-dot" style={{ background: selectedRole.color }} />
                 <h2>{selectedRole.name}</h2>
-                <small>{members.filter((candidate) => candidate.roleIds.includes(selectedRole.id)).length} membros</small>
+                <small>{(() => { const count = members.filter((candidate) => candidate.roleIds.includes(selectedRole.id)).length; return `${count} ${count === 1 ? 'membro' : 'membros'}`; })()}</small>
               </div>
               {canEditSelected && !selectedRole.isEveryone && (
                 <button type="button" onClick={() => void removeSelectedRole()} aria-label="Apagar cargo">

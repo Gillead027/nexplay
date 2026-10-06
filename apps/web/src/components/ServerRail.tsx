@@ -49,7 +49,7 @@ function ServerRailButton({
     <button
       className={`server-button server-current ${hasIcon ? 'has-icon' : ''} ${active ? 'active' : ''} ${inFolder ? 'in-folder' : ''}`}
       type="button"
-      title={server.name}
+      data-tooltip={server.name}
       aria-label={server.name}
       onClick={onSelect}
       onMouseEnter={() => setHovered(true)}
@@ -270,7 +270,7 @@ export function ServerRail({
               <button
                 type="button"
                 className={`server-button rail-folder-button ${containsActive && !open ? 'active' : ''}`}
-                title={`${title} — ${item.servers.length} servidor${item.servers.length === 1 ? '' : 'es'}`}
+                data-tooltip={`${title} — ${item.servers.length} servidor${item.servers.length === 1 ? '' : 'es'}`}
                 aria-label={`Pasta ${title}`}
                 aria-expanded={open}
                 onClick={() => toggleFolder(item.folder.id)}

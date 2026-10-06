@@ -108,6 +108,7 @@ import { watchedStreamIdentities } from '../streamAudio';
 import { DEFAULT_PERSON_VOLUME, loadVolumes, saveVolumes, volumeStorageKey } from '../volumePrefs';
 import { DmChannelView } from './DmChannelView';
 import { Store } from './Store';
+import { useRailTooltip } from './RailTooltip';
 import { FriendsHome, FriendsSidebar, isBlockedByMe as computeIsBlockedByMe, relationshipStatus, useFriendsState } from './Friends';
 import { ProfilePopover, type ProfilePopoverTarget } from './ProfilePopover';
 import { RemoteAudioSink } from './RemoteAudioSink';
@@ -2052,6 +2053,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
   const [view, setView] = useState<'server' | 'friends'>('server');
   // Dentro do Início: a Loja ocupa o lugar da página de Amigos (uma conversa aberta tem prioridade).
   const [storeOpen, setStoreOpen] = useState(false);
+  const railTooltip = useRailTooltip();
   const [selectedDmChannelId, setSelectedDmChannelId] = useState<string | null>(null);
   const friendsState = useFriendsState(session);
   const selectedDmChannel = friendsState.dmChannels.find((channel) => channel.id === selectedDmChannelId) ?? null;
@@ -3309,11 +3311,12 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
         onUnblockUser={(userId) => runFriendAction(api.unblockUser(userId))}
         onOpenDm={openDmWith}
       />
-      <aside className="server-rail" aria-label="Servidores">
+      <aside className="server-rail" aria-label="Servidores" {...railTooltip.handlers}>
+        {railTooltip.element}
         <button
           className={`server-button home ${view === 'friends' ? 'active' : ''}`}
           type="button"
-          title="Início"
+          data-tooltip="Mensagens diretas"
           aria-label="Início"
           onClick={() => setView('friends')}
         >
@@ -3334,7 +3337,7 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
           ref={addServerButtonRef}
           className="server-button add"
           type="button"
-          title="Adicionar servidor"
+          data-tooltip="Adicionar um servidor"
           aria-label="Adicionar servidor"
           onClick={() => {
             setAddServerTab('create');

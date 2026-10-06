@@ -1248,3 +1248,81 @@ button:hover > .avatar, .avatar:hover { box-shadow: none; }
   .store-card:hover { transform: none; }
 }
 .store-card-preview.store-preview-nameplate { aspect-ratio: auto; height: 112px; }
+
+/* ==========================================================================
+   Passada 9: animações e transições no ritmo do Discord
+   O Discord anima pouco e rápido: camadas (configurações, janelas, menus, balões) entram com escala curta;
+   listas, mensagens e troca de canal aparecem na hora, sem deslizar nem "pular".
+   ========================================================================== */
+
+/* Nada de entrada animada em listas e mensagens (o visual antigo deslizava tudo ao carregar) */
+.message, .messages .message, .text-message,
+.server-rail > .server-button, .channels > *, .member-list-scroll > *,
+.settings-pane, .settings-modal, .room-content, .main-panel > *, .friends-home, .store-page { animation: none; }
+.message-jump-highlight { animation: dc-jump-flash 1.5s ease-out; }
+@keyframes dc-jump-flash { 0%, 30% { background: rgba(250, 166, 26, .1); box-shadow: inset 2px 0 0 #f0b232; } 100% { background: transparent; box-shadow: none; } }
+
+/* Barra de servidores: a "pill" só cresce (sem o salto antigo) */
+.server-button::before, .server-button.active::before, .rail-folder-button::before { animation: none; }
+
+/* Balão com o nome do servidor */
+.rail-tooltip {
+  position: fixed; z-index: 1000; max-width: 196px; padding: 8px 12px; border-radius: 5px; pointer-events: none;
+  color: #dbdee1; background: #111214; box-shadow: 0 8px 16px rgba(0, 0, 0, .24);
+  font-size: 16px; line-height: 20px; font-weight: 600; word-wrap: break-word;
+  transform: translateY(-50%); transform-origin: left center; animation: dc-tooltip-in 100ms ease-out;
+}
+.rail-tooltip::before {
+  content: ''; position: absolute; top: 50%; left: -5px; width: 0; height: 0; margin-top: -5px;
+  border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-right: 5px solid #111214;
+}
+[data-theme="claro"] .rail-tooltip { color: #060607; background: #fff; box-shadow: 0 0 0 1px rgba(6, 6, 7, .08), 0 8px 16px rgba(0, 0, 0, .16); }
+[data-theme="claro"] .rail-tooltip::before { border-right-color: #fff; }
+@keyframes dc-tooltip-in { from { opacity: 0; transform: translateY(-50%) scale(.95); } to { opacity: 1; transform: translateY(-50%); } }
+
+/* Carregamento: blocos cinzas pulsando, na cor do tema (o antigo era azul-marinho e "varria") */
+.skeleton-line, .skeleton-block, .stream-skeleton span {
+  background: var(--dc-selected-solid); background-size: auto; animation: dc-skeleton 1.6s ease-in-out infinite;
+}
+@keyframes dc-skeleton { 0%, 100% { opacity: .55; } 50% { opacity: 1; } }
+
+/* Erros de formulário não tremem: só o texto vermelho, como no Discord */
+.form-error { animation: none; }
+
+/* Falando: anel verde fixo, sem pulsar */
+.avatar.speaking { border-color: var(--success); box-shadow: 0 0 0 2px var(--success); animation: none; }
+.voice-tile.speaking .voice-tile-avatar .avatar { animation: none; }
+.incoming-call-avatar { animation: dc-ring-call 1.2s ease-in-out infinite; }
+@keyframes dc-ring-call { 0%, 100% { box-shadow: 0 0 0 0 rgba(35, 165, 90, .6); } 50% { box-shadow: 0 0 0 8px rgba(35, 165, 90, 0); } }
+
+/* Quadros da chamada aparecem com um fade curto, sem o "pop" */
+.voice-tile { animation: dc-fade-in 150ms ease-out backwards; }
+
+/* "Fulano está digitando": três pontinhos que somem e voltam, na cor do texto */
+.typing-dots i { width: 6px; height: 6px; background: var(--text-normal); animation: dc-typing 1.4s ease-in-out infinite; }
+.typing-dots i:nth-child(2) { animation-delay: .2s; }
+.typing-dots i:nth-child(3) { animation-delay: .4s; }
+@keyframes dc-typing { 0%, 60%, 100% { opacity: .3; transform: scale(.8); } 30% { opacity: 1; transform: scale(1); } }
+
+/* Menu de status e outros popouts: escala curta */
+.status-menu, .device-menu-popover, .emoji-picker, .soundboard-panel { animation: dc-popout-in 120ms ease-out; }
+
+/* Ao vivo: bolinha vermelha sem brilho pulsante */
+.live-dot, .voice-status-dot { animation: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .rail-tooltip, .voice-tile, .typing-dots i, .incoming-call-avatar, .skeleton-line, .skeleton-block { animation: none; }
+}
+
+/* Editor de cargo: bolinha, nome e contagem na mesma linha do título, como "EDITAR CARGO — NOME" do Discord */
+.role-editor-heading { min-height: 40px; margin-bottom: 16px; }
+.role-editor-heading > div { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.role-editor-heading .role-color-dot { width: 12px; height: 12px; flex: 0 0 12px; border-radius: 50%; }
+.role-editor-heading small { flex-basis: 100%; padding-left: 20px; color: var(--text-muted); font-size: 12px; }
+.role-editor-heading > button { width: 32px; height: 32px; display: grid; place-items: center; border: 0; border-radius: 4px; color: var(--text-secondary); background: transparent; cursor: pointer; }
+.role-editor-heading > button:hover { color: #fff; background: var(--danger); }
+.role-editor-heading h2 { margin: 0; line-height: 20px; }
+.role-editor-heading .role-color-dot { align-self: center; margin: 0; }
+.roles-search { display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border: 0; border-radius: 4px; background: var(--dc-input-bg); }
+.roles-search input, .roles-search input:focus { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; outline: 0; box-shadow: none; background: transparent; color: var(--text-normal); font-size: 14px; }
+.roles-search svg { color: var(--text-muted); }

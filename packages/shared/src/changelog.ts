@@ -173,6 +173,18 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       'Clique em qualquer item para ver como ele fica no seu cartão e na lista de membros antes de usar.',
     ],
   },
+  {
+    id: '2026-10-06-animacoes-estilo-discord',
+    date: '2026-10-06',
+    title: 'Animações no ritmo do Discord e o nome do servidor ao passar o mouse',
+    items: [
+      'Ao passar o mouse num servidor da barra da esquerda, aparece um balão com o nome dele, como no Discord.',
+      'Mensagens, listas e telas aparecem na hora, sem deslizar. Janelas, menus e balões abrem com uma animação curta.',
+      'Quem está falando na voz fica com um anel verde fixo, e o "digitando" mostra três pontinhos que piscam.',
+      'Enquanto algo carrega, aparecem blocos cinzas pulsando, na cor do tema.',
+      'Configurações do servidor > Cargos: o título do cargo ficou alinhado e a busca de cargos foi corrigida.',
+    ],
+  },
 ];
 
 export const UPDATES_CHANNEL_NAME = 'atualizações';
