@@ -9,6 +9,7 @@ import {
   Menu,
   nativeImage,
   safeStorage,
+  screen,
   session,
   shell,
   systemPreferences,
@@ -19,6 +20,13 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs
 import path from 'node:path';
 import type { Activity, DesktopAppInfo } from '@nexplay/shared';
 import { IpcChannels as CH } from '@nexplay/shared';
+import {
+  parseWindowState,
+  serializeWindowState,
+  isPositionVisible,
+  DEFAULT_WINDOW_STATE,
+  type WindowState,
+} from './windowState.js';
 import { checkForUpdatesNow, initAutoUpdater } from './updater.js';
 import { externalWebUrl, findDeepLink, isAllowedPermission } from './policy.js';
 import {
@@ -796,10 +804,50 @@ function deliverDeepLink(link: string): void {
 
 let hiddenLoadRetries = 0;
 
+// Estado da janela (tamanho/posição/maximizado), para reabrir como foi deixado.
+const windowStateFile = (): string => path.join(app.getPath('userData'), 'window-state.json');
+
+function readWindowState(): WindowState {
+  try {
+    return parseWindowState(readFileSync(windowStateFile(), 'utf8'));
+  } catch {
+    return { ...DEFAULT_WINDOW_STATE };
+  }
+}
+
+let saveWindowStateTimer: NodeJS.Timeout | null = null;
+function saveWindowState(win: BrowserWindow): void {
+  if (win.isDestroyed()) return;
+  // getNormalBounds dá o retângulo de restaurar mesmo com a janela maximizada.
+  const b = win.getNormalBounds();
+  const state: WindowState = { width: b.width, height: b.height, x: b.x, y: b.y, maximized: win.isMaximized() };
+  try {
+    writeFileSync(windowStateFile(), serializeWindowState(state), 'utf8');
+  } catch (error) {
+    debugLog(`salvar estado da janela falhou: ${String(error)}`);
+  }
+}
+function scheduleSaveWindowState(win: BrowserWindow): void {
+  if (saveWindowStateTimer) clearTimeout(saveWindowStateTimer);
+  saveWindowStateTimer = setTimeout(() => saveWindowState(win), 400);
+}
+
 function createMainWindow(appUrl: URL): BrowserWindow {
+  const saved = readWindowState();
+  // Posição salva num monitor que sumiu abriria a janela fora da tela: só usa
+  // o canto guardado se ainda estiver visível em algum monitor atual.
+  const useSavedPosition =
+    saved.x !== undefined &&
+    saved.y !== undefined &&
+    isPositionVisible(
+      { x: saved.x, y: saved.y, width: saved.width, height: saved.height },
+      screen.getAllDisplays().map((d) => d.workArea),
+    );
+
   const window = new BrowserWindow({
-    width: 1440,
-    height: 900,
+    width: saved.width,
+    height: saved.height,
+    ...(useSavedPosition ? { x: saved.x, y: saved.y } : {}),
     minWidth: 1280,
     minHeight: 720,
     show: false,
@@ -824,6 +872,16 @@ function createMainWindow(appUrl: URL): BrowserWindow {
       backgroundThrottling: false,
     },
   });
+
+  if (saved.maximized) window.maximize();
+  // Salva o estado da janela quando a pessoa a move, redimensiona ou (des)maximiza,
+  // e uma última vez ao fechar — para reabrir exatamente como ficou.
+  const onWindowStateChange = () => scheduleSaveWindowState(window);
+  window.on('resize', onWindowStateChange);
+  window.on('move', onWindowStateChange);
+  window.on('maximize', onWindowStateChange);
+  window.on('unmaximize', onWindowStateChange);
+  window.on('close', () => saveWindowState(window));
 
   // Links de mensagem são <a target="_blank">. Antes este tratador negava tudo e
   // nada abria o link no app desktop. Agora só http(s) vai pro navegador do

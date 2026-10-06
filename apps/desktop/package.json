@@ -8,7 +8,7 @@
     "dev": "npm run build && wait-on http-get://localhost:5173 http-get://localhost:3000/api/health && node scripts/dev.mjs",
     "build": "tsup --config tsup.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "node --import tsx --test src/policy.test.ts src/settings.test.ts",
+    "test": "node --import tsx --test src/policy.test.ts src/settings.test.ts src/windowState.test.ts",
     "package": "node scripts/package.mjs"
   },
   "dependencies": {
