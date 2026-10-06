@@ -35,10 +35,11 @@ describe('quem o usuário está assistindo', () => {
 });
 
 describe('qual áudio toca', () => {
-  const mic = { isMicrophone: true, isScreenShareAudio: false, isSoundboard: false };
-  const stream = { isMicrophone: false, isScreenShareAudio: true, isSoundboard: false };
-  const soundboard = { isMicrophone: false, isScreenShareAudio: false, isSoundboard: true };
-  const other = { isMicrophone: false, isScreenShareAudio: false, isSoundboard: false };
+  const mic = { isMicrophone: true, isScreenShareAudio: false, isSoundboard: false, isDeviceMusic: false };
+  const stream = { isMicrophone: false, isScreenShareAudio: true, isSoundboard: false, isDeviceMusic: false };
+  const soundboard = { isMicrophone: false, isScreenShareAudio: false, isSoundboard: true, isDeviceMusic: false };
+  const deviceMusic = { isMicrophone: false, isScreenShareAudio: false, isSoundboard: false, isDeviceMusic: true };
+  const other = { isMicrophone: false, isScreenShareAudio: false, isSoundboard: false, isDeviceMusic: false };
 
   it('o áudio da transmissão NÃO toca sem assistir (o vazamento corrigido)', () => {
     assert.equal(shouldPlayAudioPublication(stream, false), false);
@@ -48,10 +49,11 @@ describe('qual áudio toca', () => {
     assert.equal(shouldPlayAudioPublication(stream, true), true);
   });
 
-  it('a voz e o soundboard tocam sempre, assistindo ou não', () => {
+  it('a voz, o soundboard e a música do PC tocam sempre, assistindo ou não', () => {
     for (const watching of [true, false]) {
       assert.equal(shouldPlayAudioPublication(mic, watching), true);
       assert.equal(shouldPlayAudioPublication(soundboard, watching), true);
+      assert.equal(shouldPlayAudioPublication(deviceMusic, watching), true);
     }
   });
 

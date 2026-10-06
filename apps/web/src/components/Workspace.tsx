@@ -87,6 +87,7 @@ import {
   SettingsIcon,
   BellIcon,
   MenuIcon,
+  MusicNoteIcon,
   ShareIcon,
   SoundboardIcon,
   SpeakerIcon,
@@ -2962,6 +2963,20 @@ export function Workspace({ session, config, onSignOut, onProfileUpdated }: Work
                   )}
                   {voice.screenEnabled && <ShareQualityMenu value={quality} onSelect={changeShareQuality} />}
                 </div>
+                {window.desktop && (
+                  <div className="voice-split-action">
+                    {/* Som do PC (Spotify, o que estiver tocando): vai para a chamada em qualidade original, sem o bot nem o YouTube. */}
+                    <button
+                      className={`voice-action ${voice.deviceMusicActive ? 'sharing' : ''}`}
+                      type="button"
+                      onClick={() => void voice.toggleDeviceMusic()}
+                      title={voice.deviceMusicActive ? 'Parar o som do PC' : 'Tocar o som do meu PC na chamada (ex.: Spotify)'}
+                      aria-label={voice.deviceMusicActive ? 'Parar o som do PC' : 'Tocar o som do meu PC na chamada'}
+                    >
+                      <MusicNoteIcon />
+                    </button>
+                  </div>
+                )}
                 {!dm && (
                 <div className="soundboard-anchor">
                   <button

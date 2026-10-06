@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { RemoteAudioTrack, RemoteParticipant, Track, type RemoteTrackPublication } from 'livekit-client';
-import { shouldPlayAudioPublication } from '../streamAudio';
+import { DEVICE_MUSIC_TRACK_NAME, shouldPlayAudioPublication } from '../streamAudio';
 
 interface RemoteAudioSinkProps {
   participant: RemoteParticipant;
@@ -21,6 +21,11 @@ interface RemoteAudioSinkProps {
 // ninguém além de quem tocou ouviria o som.
 function isSoundboardPublication(publication: RemoteTrackPublication): boolean {
   return publication.source === Track.Source.Unknown && publication.trackName === 'soundboard';
+}
+
+// Música do PC de quem compartilha (ver useVoiceRoom.ts, toggleDeviceMusic): também Unknown, com nome próprio.
+function isDeviceMusicPublication(publication: RemoteTrackPublication): boolean {
+  return publication.source === Track.Source.Unknown && publication.trackName === DEVICE_MUSIC_TRACK_NAME;
 }
 
 export function RemoteAudioSink({
@@ -47,6 +52,7 @@ export function RemoteAudioSink({
             isMicrophone: publication.source === Track.Source.Microphone,
             isScreenShareAudio: publication.source === Track.Source.ScreenShareAudio,
             isSoundboard: isSoundboardPublication(publication),
+            isDeviceMusic: isDeviceMusicPublication(publication),
           },
           watchingStream,
         ),
@@ -55,10 +61,11 @@ export function RemoteAudioSink({
       .map((publication) => {
         // Voz, áudio de transmissão de tela e soundboard têm volumes
         // independentes — alguém pode querer ouvir a pessoa falando alto e
-        // o jogo dela (ou os sons que ela dispara) mais baixo.
+        // o jogo dela (ou os sons que ela dispara) mais baixo. A música do PC
+        // segue o volume de transmissão: é o som que a pessoa compartilha.
         const perTrackVolume = isSoundboardPublication(publication)
           ? soundboardVolume
-          : publication.source === Track.Source.ScreenShareAudio
+          : publication.source === Track.Source.ScreenShareAudio || isDeviceMusicPublication(publication)
             ? streamVolume
             : volume;
         const element = publication.track.attach();

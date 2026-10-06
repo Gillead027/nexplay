@@ -1,4 +1,5 @@
 import { onRealtimeEvent } from '../realtime';
+import { DEVICE_MUSIC_TRACK_NAME } from '../streamAudio';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ConnectionQuality,
@@ -899,6 +900,71 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
     [room, syncRoom, canPublishVideo],
   );
 
+  // Música do PC: o som que sai do alto-falante de quem clica (Spotify, um vídeo, o que for) vai para a chamada como uma faixa à
+  // parte, em qualidade original. Não passa pelo bot nem pelo YouTube. Reaproveita a captura de áudio do sistema da transmissão de
+  // tela (só Windows, no app desktop). O seletor pede uma tela junto, porque é assim que o áudio do sistema é liberado: o vídeo é
+  // descartado na hora.
+  const [deviceMusicActive, setDeviceMusicActive] = useState(false);
+  const deviceMusicTrackRef = useRef<MediaStreamTrack | null>(null);
+
+  const stopDeviceMusic = useCallback(async () => {
+    const track = deviceMusicTrackRef.current;
+    if (!track) return;
+    deviceMusicTrackRef.current = null;
+    setDeviceMusicActive(false);
+    // unpublishTrack com stopOnUnpublish já para a captura; o SDK não precisa de mais nada da nossa parte.
+    await room.localParticipant.unpublishTrack(track, true).catch(() => {});
+  }, [room]);
+
+  const toggleDeviceMusic = useCallback(async () => {
+    setError('');
+    if (deviceMusicTrackRef.current) {
+      await stopDeviceMusic();
+      return;
+    }
+    if (room.state !== ConnectionState.Connected) return;
+
+    let stream: MediaStream;
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: SCREEN_SHARE_AUDIO_CAPTURE as MediaTrackConstraints,
+      });
+    } catch (mediaError) {
+      if (!isScreenShareCancelled(mediaError)) await reportMediaError(mediaError, 'screen');
+      return;
+    }
+    for (const videoTrack of stream.getVideoTracks()) videoTrack.stop();
+    const [audioTrack] = stream.getAudioTracks();
+    if (!audioTrack) {
+      setError('Não captei o som do PC. Ao escolher a tela, marque "Compartilhar áudio" (isso só funciona no Windows).');
+      return;
+    }
+
+    try {
+      await room.localParticipant.publishTrack(audioTrack, {
+        name: DEVICE_MUSIC_TRACK_NAME,
+        source: Track.Source.Unknown,
+        ...SCREEN_SHARE_AUDIO_PUBLISH,
+      });
+    } catch {
+      audioTrack.stop();
+      setError('Não foi possível enviar a música do PC para a chamada.');
+      return;
+    }
+    deviceMusicTrackRef.current = audioTrack;
+    setDeviceMusicActive(true);
+    // Parar pela barra do próprio Windows encerra a faixa: cai no mesmo caminho do botão.
+    audioTrack.addEventListener('ended', () => {
+      void stopDeviceMusic();
+    });
+  }, [room, stopDeviceMusic]);
+
+  // Sair da chamada (ou a conexão cair) encerra a captura: sem isso o Windows continuaria capturando o som do PC.
+  useEffect(() => {
+    if (connectionState !== ConnectionState.Connected) void stopDeviceMusic();
+  }, [connectionState, stopDeviceMusic]);
+
   // Troca a qualidade da transmissão de tela com ela no ar, sem parar nem escolher a tela de novo: a captura passa a entregar a
   // nova resolução e taxa de quadros (o navegador reescala a captura na hora) e o codificador recebe o novo limite de bitrate
   // e de quadros por segundo, sem renegociar com o servidor. Devolve false se o navegador não aceitou a mudança ao vivo.
@@ -1095,6 +1161,8 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
       toggleDeafen,
       toggleCamera,
       toggleScreenShare,
+      deviceMusicActive,
+      toggleDeviceMusic,
       changeShareQuality,
       setWatching,
       sendMessage,
@@ -1142,6 +1210,8 @@ export function useVoiceRoom(options: { canPublishVideo?: boolean } = {}) {
       toggleDeafen,
       toggleCamera,
       toggleScreenShare,
+      deviceMusicActive,
+      toggleDeviceMusic,
       changeShareQuality,
       setWatching,
       sendMessage,
