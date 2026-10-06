@@ -426,3 +426,99 @@ button:hover > .avatar, .avatar:hover { box-shadow: none; }
 /* Grupos: 17px acima de cada grupo novo, nada embaixo (Discord "cozy") */
 .messages.text-channel-messages .message.text-message { margin-bottom: 0; }
 .messages.text-channel-messages .message.text-message:not(.continued) { margin-top: 17px; }
+
+/* ==========================================================================
+   Passada 3 — chamada de voz (valores do CSS da chamada do Discord:
+   grade 16:9, cantos 4–8px, borda de 1px quase invisível, 16px entre grupos)
+   ========================================================================== */
+.room-content.voice-live { background: #000; }
+.room-content.voice-live .stage-column, .room-content.voice-live .stage-content { background: #000; }
+.room-content.voice-live .stage-content { padding: 16px 16px 96px; }
+.stage-content::before, .room-content.voice-live .stage-content::before { display: none; }
+.room-content.voice-live.with-members { grid-template-columns: minmax(0, 1fr) 240px; }
+.room-content.voice-live.with-chat { grid-template-columns: minmax(0, 1fr) 340px; }
+.room-content.voice-live.with-chat.with-members { grid-template-columns: minmax(0, 1fr) 340px 240px; }
+
+/* Cabeçalho da chamada sobre o preto */
+.main-panel:has(.room-content.voice-live) > .room-header { background: #000; box-shadow: none; }
+
+/* Blocos: cor chapada da pessoa, cantos de 8px, sem brilho nem "pulo" */
+.voice-tiles { gap: 8px; }
+.voice-tile {
+  border-radius: 8px; color: #fff;
+  background: color-mix(in srgb, var(--tile-color) 62%, #000);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .04);
+  animation: dc-fade-in 200ms var(--ease-out) backwards; transform: none;
+  transition: box-shadow var(--dur-fast) linear;
+}
+.voice-tile:hover { transform: none; }
+/* Falando: contorno verde por dentro, como no Discord */
+.voice-tile.speaking { box-shadow: inset 0 0 0 2px var(--success), inset 0 0 0 3px #000; }
+.voice-tile-avatar .avatar {
+  width: clamp(48px, 20cqw, 96px); height: clamp(48px, 20cqw, 96px); font-size: clamp(18px, 8cqw, 40px);
+  box-shadow: none; transition: none;
+}
+.voice-tile-avatar:hover:not(:disabled) .avatar { transform: none; }
+.voice-tile.speaking .voice-tile-avatar .avatar { animation: none; box-shadow: 0 0 0 3px var(--success); }
+.voice-tile-label {
+  left: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 4px 8px; gap: 4px;
+  border-radius: 4px; background: rgba(0, 0, 0, .6); backdrop-filter: none;
+  color: #fff; font-size: 14px; font-weight: 500;
+}
+
+/* Convite quando a pessoa está sozinha */
+.voice-invite {
+  border: 0; border-radius: 8px; background: var(--sidebar); backdrop-filter: none; box-shadow: none;
+  animation: dc-fade-in 200ms var(--ease-out) backwards;
+}
+.voice-invite-text strong { font-size: 16px; font-weight: 600; }
+.voice-invite-text span { font-size: 14px; color: var(--text-secondary); }
+.voice-invite-button { border-radius: 4px; background: var(--accent); box-shadow: none; }
+.voice-invite-button:hover:not(:disabled) { background: var(--accent-hover); transform: none; }
+.voice-invite-fab { border: 0; background: var(--sidebar); box-shadow: none; }
+.voice-invite-fab:hover { background: var(--accent); transform: none; }
+
+/* Controles: sem caixa flutuante, botões redondos de 56px, sair em vermelho */
+.voice-toolbar {
+  bottom: 24px; height: auto; padding: 0; gap: 16px;
+  border: 0; border-radius: 0; background: transparent; box-shadow: none; backdrop-filter: none;
+  animation: dc-fade-in 200ms var(--ease-out) backwards;
+}
+.voice-action {
+  width: 56px; height: 56px; min-width: 56px; padding: 0; border: 0; border-radius: 50%;
+  color: #fff; background: #2b2d31; box-shadow: none; transform: none;
+  transition: background-color var(--dur) ease-in-out, color var(--dur) ease-in-out;
+}
+.voice-action:hover:not(:disabled) { color: #fff; background: #3f4147; transform: none; }
+.voice-action:active:not(:disabled) { transform: translateY(1px); }
+.voice-action svg { width: 24px; height: 24px; }
+/* Microfone/fone desligados: botão branco com ícone vermelho riscado (estado "off" do Discord) */
+.voice-action.danger { color: var(--danger); background: #fff; }
+.voice-action.danger:hover:not(:disabled) { color: var(--danger); background: #e3e5e8; }
+.voice-action.sharing { color: #fff; background: var(--success); }
+.voice-action.leave { color: #fff; background: #da373c; box-shadow: none; }
+.voice-action.leave:hover:not(:disabled) { background: #a12d2f; }
+/* Botões com seta de aparelho viram uma pílula: [ícone | seta] */
+.voice-split-action { height: 56px; border: 0; border-radius: 28px; background: #2b2d31; }
+.voice-split-action .voice-action { width: 56px; border-radius: 28px 0 0 28px; background: transparent; }
+.voice-split-action .voice-action.danger { border-radius: 28px; background: #fff; }
+.voice-split-action .device-menu, .voice-split-action > .device-menu-chevron { border-left: 0; }
+.voice-split-action .device-menu-chevron { width: 28px; height: 56px; border-radius: 0 28px 28px 0; color: #b5bac1; }
+.voice-split-action .device-menu-chevron:hover { color: #fff; background: #3f4147; }
+.voice-toolbar .device-menu-popover { bottom: 68px; }
+
+/* Painel "Voz conectada" acima do usuário (RTC do Discord) */
+.voice-status-panel {
+  gap: 8px; padding: 8px; border-top: 0; border-bottom: 1px solid var(--border);
+  background: var(--sidebar-footer); border-radius: 0; animation: none;
+}
+.voice-status-dot { display: none; }
+.voice-status-info strong { color: var(--success); font-size: 14px; font-weight: 600; }
+.voice-status-info span { color: var(--text-secondary); font-size: 12px; }
+.voice-status-actions button {
+  flex: 1; height: 32px; display: grid; place-items: center; border: 0; border-radius: 4px;
+  color: var(--text-normal); background: #2b2d31;
+}
+.voice-status-actions button:hover:not(:disabled) { background: #35373c; }
+.voice-status-actions button.danger, .voice-status-actions button.leave { color: var(--text-normal); }
+.voice-status-panel .voice-status-info .voice-status-dot { display: none !important; }
